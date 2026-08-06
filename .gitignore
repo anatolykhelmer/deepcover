@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Test / coverage
+coverage/
+
+# Tool / IDE
+.deepcover/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+.npmrc
+
+# Logs / debug
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Internal superpowers plans/specs (local only)
+docs/superpowers/
+
+# Local handoff tracker (not for public repo)
+HANDOFF.md
+
+# Fixture subprojects (paradigm e2e)
+fixtures/**/node_modules/
+fixtures/**/coverage/
+
+# npm pack
+*.tgz
+
+# Cursor local state (keep project skills)
+.cursor/*
+!.cursor/skills/
+!.cursor/skills/**

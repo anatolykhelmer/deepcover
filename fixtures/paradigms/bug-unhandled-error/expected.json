@@ -1,0 +1,8 @@
+{
+  "paradigm": "bug-unhandled-error",
+  "description": "Method with try/catch should flag unhandled-error-path when only happy-path is tested",
+  "assertions": {
+    "allMethodsCovered": true,
+    "expectedBugPatterns": ["unhandled-error-path"]
+  }
+}

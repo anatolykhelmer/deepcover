@@ -1,0 +1,83 @@
+{
+  "name": "deep-cover",
+  "version": "0.1.0",
+  "description": "Agentic code coverage analyzer",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "deepcover": "dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    },
+    "./reporter": {
+      "types": "./dist/reporter/index.d.ts",
+      "require": "./dist/reporter/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:paradigms": "jest --testPathPatterns=paradigm-unit",
+    "test:paradigms:e2e": "jest --config jest.e2e.config.js",
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "deepcover": "tsx src/cli/index.ts"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": ["/node_modules/", "paradigm-e2e"],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.spec.ts",
+      "!src/types/**"
+    ]
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "coverage",
+    "testing",
+    "code-quality",
+    "agentic",
+    "jest",
+    "typescript",
+    "mutation-testing",
+    "assertion-quality"
+  ],
+  "author": "Anatoly Khelmer <anatoly.khelmer@gmail.com>",
+  "license": "MIT",
+  "type": "commonjs",
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.39.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "glob": "^13.0.6",
+    "ts-morph": "^27.0.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

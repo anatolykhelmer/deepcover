@@ -1,0 +1,15 @@
+{
+  "paradigm": "dont-test-getters-setters",
+  "description": "Data class with getters/setters and private helpers, fully exercised through service tests",
+  "assertions": {
+    "allMethodsCovered": true,
+    "noGapsForClass": "UserData",
+    "coveredMethods": [
+      "UserData.getName", "UserData.setName",
+      "UserData.getEmail", "UserData.setEmail",
+      "UserData.getAge", "UserData.setAge",
+      "UserData.sanitize", "UserData.normalizeEmail",
+      "UserService.createUser", "UserService.formatUser"
+    ]
+  }
+}
