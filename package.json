@@ -57,6 +57,14 @@
   ],
   "author": "Anatoly Khelmer <anatoly.khelmer@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anatolykhelmer/deepcover.git"
+  },
+  "homepage": "https://github.com/anatolykhelmer/deepcover#readme",
+  "bugs": {
+    "url": "https://github.com/anatolykhelmer/deepcover/issues"
+  },
   "type": "commonjs",
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.39.0"

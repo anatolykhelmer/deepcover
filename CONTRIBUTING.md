@@ -11,7 +11,7 @@ Thanks for contributing. This doc covers local setup and the usual workflows.
 ## Setup
 
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/anatolykhelmer/deepcover.git
 cd deep-cover
 npm install
 npm test
