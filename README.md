@@ -102,6 +102,8 @@ npm run deepcover -- analyze --root . --module src --no-llm
 
 **For Cursor (agent as Reasoner, no API key):** see [Install for Cursor](#install-for-cursor-recommended).
 
+**For Claude Code (agent as Reasoner):** see [Install for Claude Code](#install-for-claude-code).
+
 **For Anthropic API (CLI as Reasoner):** see [Install for Anthropic](#install-for-anthropic).
 
 **Limitations (honest):** DeepCover currently targets **TypeScript** sources and **Jest** tests. Other languages and runners are not supported yet.
@@ -125,14 +127,15 @@ npx @anatolykhelmer/deep-cover --help
 ### 2. Install the Cursor skill (once)
 
 ```bash
-deepcover init
+deepcover init --agent cursor
+# same as: deepcover init
 # → ~/.cursor/skills/deepcover/SKILL.md
 ```
 
 Share with the team (commit the skill into the repo):
 
 ```bash
-deepcover init --project
+deepcover init --agent cursor --project
 # → ./.cursor/skills/deepcover/SKILL.md
 ```
 
@@ -152,9 +155,47 @@ The skill runs extract → reason → analyze. You do not need to fill JSON by h
 
 **Check it worked:** after `deepcover init`, the skill file above should exist. If the agent ignores the skill, start a new Agent chat or reload Cursor so skills are picked up.
 
+## Install for Claude Code
+
+Same skill workflow as Cursor — Claude Code is the Reasoner (uses your Claude Code / Anthropic subscription). No separate `ANTHROPIC_API_KEY` for the agent path; do not set `reasoner.provider: 'anthropic'` unless you want the CLI to call the API itself.
+
+### 1. Install the CLI
+
+```bash
+npm install -g @anatolykhelmer/deep-cover
+```
+
+### 2. Install the Claude Code skill (once)
+
+```bash
+deepcover init --agent claude
+# → ~/.claude/skills/deepcover/SKILL.md
+```
+
+Share with the team:
+
+```bash
+deepcover init --agent claude --project
+# → ./.claude/skills/deepcover/SKILL.md
+```
+
+| | Personal | Project (`--project`) |
+|---|---|---|
+| Where | `~/.claude/skills/deepcover/` | `./.claude/skills/deepcover/` |
+| Scope | All your projects | This repo only |
+| Share | No | Yes — commit and push |
+
+### 3. Run in Claude Code
+
+In a Claude Code session on the project, ask:
+
+> run deepcover on src/your-module
+
+**Check it worked:** the skill file above should exist. If Claude ignores it, restart Claude Code or run `/reload-skills`.
+
 ## Install for Anthropic
 
-Use this when you want the CLI to call Anthropic directly (CI, headless, no Cursor). No Cursor skill needed.
+Use this when you want the CLI to call Anthropic directly (CI, headless, no Cursor/Claude Code agent). No agent skill needed.
 
 ### 1. Install the peer dependency
 
@@ -204,10 +245,10 @@ npx @anatolykhelmer/deep-cover score \
 
 The CLI runs extract → Anthropic Messages API → score in one command. Do not pass `--reasoner-input` unless you already have a filled reasoner JSON.
 
-| | Cursor | Anthropic |
+| | Cursor / Claude Code | Anthropic API |
 |---|---|---|
-| Skill / Agent | yes | no |
-| API key | not needed | `ANTHROPIC_API_KEY` |
+| Skill / Agent | yes (`init --agent …`) | no |
+| API key | not needed for agent path | `ANTHROPIC_API_KEY` |
 | How to run | Agent: «run deepcover…» | `analyze` / `score` in the terminal |
 | `--no-llm` | skips LLM | skips LLM (no API calls) |
 
@@ -263,12 +304,21 @@ Output only the composite score. Exits with code 1 if below threshold.
 
 ### `deepcover init`
 
-Install the Cursor skill so the agent can run extract → reason → analyze. Full walkthrough: [Install for Cursor](#install-for-cursor-recommended).
+Install the agent skill (Cursor or Claude Code) so the agent can run extract → reason → analyze.
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| *(none)* | Install to `~/.cursor/skills/deepcover/` (personal, all projects) | — |
-| `--project` | Install to `./.cursor/skills/deepcover/` (commit and share with the team) | off |
+| `--agent <name>` | Target agent: `cursor` or `claude` | `cursor` |
+| `--project` | Install into `./.<agent>/skills/deepcover/` (commit and share) | off |
+
+```bash
+deepcover init --agent cursor              # ~/.cursor/skills/deepcover/
+deepcover init --agent cursor --project    # ./.cursor/skills/deepcover/
+deepcover init --agent claude              # ~/.claude/skills/deepcover/
+deepcover init --agent claude --project    # ./.claude/skills/deepcover/
+```
+
+Walkthroughs: [Install for Cursor](#install-for-cursor-recommended) · [Install for Claude Code](#install-for-claude-code).
 
 ## Scoring Model
 
@@ -365,7 +415,7 @@ Also supports `.js` and `.json` config files.
 
 ## Using with Cursor
 
-Setup: [Install for Cursor](#install-for-cursor-recommended). After that, in Agent chat say **"run deepcover on my webhooks module"** — the skill handles the rest.
+Setup: [Install for Cursor](#install-for-cursor-recommended) (Claude Code: [Install for Claude Code](#install-for-claude-code)). After that, in the agent say **"run deepcover on my webhooks module"** — the skill handles the rest.
 
 ### How it works
 

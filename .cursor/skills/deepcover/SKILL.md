@@ -47,5 +47,6 @@ Add `--bugs` / `--bug-threshold <n>` when bug-finding was enabled. Use `--format
 
 - Deterministic-only (no LLM): `npx deepcover analyze --root ... --no-llm`
 - Jest runtime data: if the project uses `DeepCoverReporter`, analyze auto-reads `.deepcover/jest-runtime.json` and `istanbul-coverage.json`
-- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is Cursor as Reasoner
+- Install for Cursor: `deepcover init --agent cursor` (default). For Claude Code: `deepcover init --agent claude`
+- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner
 - Do not invent coverage numbers — ground claims in the CodeModel and reasoner output

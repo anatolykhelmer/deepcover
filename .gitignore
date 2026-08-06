@@ -49,3 +49,8 @@ fixtures/**/coverage/
 .cursor/*
 !.cursor/skills/
 !.cursor/skills/**
+
+# Claude Code local state (keep project skills)
+.claude/*
+!.claude/skills/
+!.claude/skills/**
