@@ -42,6 +42,10 @@ HANDOFF.md
 fixtures/**/node_modules/
 fixtures/**/coverage/
 
+# Paradigm unit tests need committed pre-computed Istanbul fixtures
+!fixtures/paradigms/*/.deepcover
+!fixtures/paradigms/*/.deepcover/coverage-final.json
+
 # npm pack
 *.tgz
 
