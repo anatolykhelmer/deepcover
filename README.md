@@ -89,6 +89,11 @@ npm install -g @anatolykhelmer/deep-cover
 # From a clone of this repo:
 npm install && npm run build
 
+# Install Cursor skill (personal — all projects)
+deepcover init
+# Or share with the repo:
+# deepcover init --project
+
 # Deterministic analysis — no API key
 npx @anatolykhelmer/deep-cover analyze --root /path/to/your/project --module src/your-module --no-llm
 
@@ -96,8 +101,7 @@ npx @anatolykhelmer/deep-cover analyze --root /path/to/your/project --module src
 npx @anatolykhelmer/deep-cover score --root /path/to/your/project --module src/your-module --no-llm --min-score 60
 
 # Cursor-powered analysis (agent is the Reasoner — no API key)
-npx @anatolykhelmer/deep-cover extract --root /path/to/your/project --module src/your-module
-# Then ask Cursor: "run deepcover on my module" (uses the project skill)
+# After `deepcover init`, ask Cursor: "run deepcover on my module"
 ```
 
 From a source checkout without installing the package:
@@ -156,6 +160,23 @@ Output only the composite score. Exits with code 1 if below threshold.
 | `--min-score <n>` | Minimum passing score (0-100) | 0 |
 | `--bugs` | Enable bug-finding analysis | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
+
+### `deepcover init`
+
+Install the Cursor skill so the agent can run extract → reason → analyze.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| *(none)* | Install to `~/.cursor/skills/deepcover/` (personal, all projects) | — |
+| `--project` | Install to `./.cursor/skills/deepcover/` (commit and share with the team) | off |
+
+```bash
+npm install -g @anatolykhelmer/deep-cover
+deepcover init              # personal skill
+deepcover init --project    # project skill (optional)
+```
+
+Then in Cursor Agent: **"run deepcover on src/your-module"**.
 
 ## Scoring Model
 
@@ -259,7 +280,17 @@ Then set `reasoner.provider` to `'anthropic'`. Without the SDK installed, DeepCo
 
 ## Using with Cursor
 
-DeepCover is designed to use the Cursor agent as the Reasoner — no external API key needed. A project skill lives at [`.cursor/skills/deepcover/SKILL.md`](.cursor/skills/deepcover/SKILL.md) and orchestrates extract → reason → analyze.
+DeepCover uses the Cursor agent as the Reasoner — no external API key needed. The skill ships in the npm package; install it once with `deepcover init`.
+
+### Setup
+
+```bash
+npm install -g @anatolykhelmer/deep-cover
+deepcover init
+# → ~/.cursor/skills/deepcover/SKILL.md
+```
+
+Use `deepcover init --project` to put the skill in `./.cursor/skills/` (share via git).
 
 ### How it works
 

@@ -1,6 +1,6 @@
 {
   "name": "@anatolykhelmer/deep-cover",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    ".cursor/skills/deepcover/SKILL.md"
   ],
   "scripts": {
     "test": "jest",
