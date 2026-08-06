@@ -84,33 +84,133 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 **Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest.
 
 ```bash
-# Install (after publish) or from this repo after build:
 npm install -g @anatolykhelmer/deep-cover
-# From a clone of this repo:
-npm install && npm run build
-
-# Install Cursor skill (personal — all projects)
-deepcover init
-# Or share with the repo:
-# deepcover init --project
 
 # Deterministic analysis — no API key
 npx @anatolykhelmer/deep-cover analyze --root /path/to/your/project --module src/your-module --no-llm
 
 # CI gating — fail if score below threshold
 npx @anatolykhelmer/deep-cover score --root /path/to/your/project --module src/your-module --no-llm --min-score 60
-
-# Cursor-powered analysis (agent is the Reasoner — no API key)
-# After `deepcover init`, ask Cursor: "run deepcover on my module"
 ```
 
 From a source checkout without installing the package:
 
 ```bash
+npm install && npm run build
 npm run deepcover -- analyze --root . --module src --no-llm
 ```
 
+**For Cursor (agent as Reasoner, no API key):** see [Install for Cursor](#install-for-cursor-recommended).
+
+**For Anthropic API (CLI as Reasoner):** see [Install for Anthropic](#install-for-anthropic).
+
 **Limitations (honest):** DeepCover currently targets **TypeScript** sources and **Jest** tests. Other languages and runners are not supported yet.
+
+## Install for Cursor (recommended)
+
+DeepCover uses the Cursor agent as the Reasoner — no API key. The npm package and the Cursor skill are separate: installing the CLI does not install the skill.
+
+### 1. Install the CLI
+
+```bash
+npm install -g @anatolykhelmer/deep-cover
+```
+
+Or without a global install:
+
+```bash
+npx @anatolykhelmer/deep-cover --help
+```
+
+### 2. Install the Cursor skill (once)
+
+```bash
+deepcover init
+# → ~/.cursor/skills/deepcover/SKILL.md
+```
+
+Share with the team (commit the skill into the repo):
+
+```bash
+deepcover init --project
+# → ./.cursor/skills/deepcover/SKILL.md
+```
+
+| | Personal (`deepcover init`) | Project (`--project`) |
+|---|---|---|
+| Where | `~/.cursor/skills/deepcover/` | `./.cursor/skills/deepcover/` |
+| Scope | All your projects | This repo only |
+| Share | No | Yes — commit and push |
+
+### 3. Run in Cursor Agent
+
+Open the project in Cursor → **Agent** chat (not Ask) → ask:
+
+> run deepcover on src/your-module
+
+The skill runs extract → reason → analyze. You do not need to fill JSON by hand.
+
+**Check it worked:** after `deepcover init`, the skill file above should exist. If the agent ignores the skill, start a new Agent chat or reload Cursor so skills are picked up.
+
+## Install for Anthropic
+
+Use this when you want the CLI to call Anthropic directly (CI, headless, no Cursor). No Cursor skill needed.
+
+### 1. Install the peer dependency
+
+In the project you analyze (or globally alongside the CLI):
+
+```bash
+npm install @anthropic-ai/sdk
+```
+
+Without the SDK, DeepCover prints a clear install error instead of failing at import time.
+
+### 2. Set the API key
+
+DeepCover reads `ANTHROPIC_API_KEY` from the environment (or `reasoner.apiKey` in config). It does **not** auto-load a `.env` file.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### 3. Point config at Anthropic
+
+Create or edit `deepcover.config.ts` in the project root:
+
+```typescript
+export default {
+  reasoner: {
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-20250514', // optional — this is the default
+    // apiKey: process.env.ANTHROPIC_API_KEY, // optional if the env var is set
+  },
+};
+```
+
+### 4. Run (do not pass `--no-llm`)
+
+```bash
+npx @anatolykhelmer/deep-cover analyze \
+  --root /path/to/your/project \
+  --module src/your-module
+
+# CI gating
+npx @anatolykhelmer/deep-cover score \
+  --root /path/to/your/project \
+  --module src/your-module \
+  --min-score 60
+```
+
+The CLI runs extract → Anthropic Messages API → score in one command. Do not pass `--reasoner-input` unless you already have a filled reasoner JSON.
+
+| | Cursor | Anthropic |
+|---|---|---|
+| Skill / Agent | yes | no |
+| API key | not needed | `ANTHROPIC_API_KEY` |
+| How to run | Agent: «run deepcover…» | `analyze` / `score` in the terminal |
+| `--no-llm` | skips LLM | skips LLM (no API calls) |
+
 ## CLI
 
 ### `deepcover extract`
@@ -163,20 +263,12 @@ Output only the composite score. Exits with code 1 if below threshold.
 
 ### `deepcover init`
 
-Install the Cursor skill so the agent can run extract → reason → analyze.
+Install the Cursor skill so the agent can run extract → reason → analyze. Full walkthrough: [Install for Cursor](#install-for-cursor-recommended).
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | *(none)* | Install to `~/.cursor/skills/deepcover/` (personal, all projects) | — |
 | `--project` | Install to `./.cursor/skills/deepcover/` (commit and share with the team) | off |
-
-```bash
-npm install -g @anatolykhelmer/deep-cover
-deepcover init              # personal skill
-deepcover init --project    # project skill (optional)
-```
-
-Then in Cursor Agent: **"run deepcover on src/your-module"**.
 
 ## Scoring Model
 
@@ -269,28 +361,11 @@ export default {
 
 Also supports `.js` and `.json` config files.
 
-**Anthropic (optional):** install the peer dependency and set a key:
-
-```bash
-npm install @anthropic-ai/sdk
-cp .env.example .env   # set ANTHROPIC_API_KEY
-```
-
-Then set `reasoner.provider` to `'anthropic'`. Without the SDK installed, DeepCover prints a clear install error instead of failing at import time.
+**Anthropic:** set `reasoner.provider` to `'anthropic'` and provide a key. Full walkthrough: [Install for Anthropic](#install-for-anthropic).
 
 ## Using with Cursor
 
-DeepCover uses the Cursor agent as the Reasoner — no external API key needed. The skill ships in the npm package; install it once with `deepcover init`.
-
-### Setup
-
-```bash
-npm install -g @anatolykhelmer/deep-cover
-deepcover init
-# → ~/.cursor/skills/deepcover/SKILL.md
-```
-
-Use `deepcover init --project` to put the skill in `./.cursor/skills/` (share via git).
+Setup: [Install for Cursor](#install-for-cursor-recommended). After that, in Agent chat say **"run deepcover on my webhooks module"** — the skill handles the rest.
 
 ### How it works
 
@@ -306,11 +381,7 @@ Use `deepcover init --project` to put the skill in `./.cursor/skills/` (share vi
 2. **Reason** — Cursor agent reads the CodeModel, performs semantic analysis (domain states, assertion quality, criticality, transitive coverage), writes `reasoner-output.json`
 3. **Score** — CLI combines deterministic metrics with agent insights, produces the final report
 
-### Usage
-
-Just say: **"run deepcover on my webhooks module"** — the Cursor Skill handles the rest.
-
-Or run manually:
+### Manual pipeline (without the skill)
 
 ```bash
 # Step 1: Extract
