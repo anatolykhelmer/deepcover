@@ -85,18 +85,18 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 
 ```bash
 # Install (after publish) or from this repo after build:
-npm install -g deep-cover   # or: npm install / path-to-deep-cover
+npm install -g @anatolykhelmer/deep-cover
 # From a clone of this repo:
 npm install && npm run build
 
 # Deterministic analysis — no API key
-npx deepcover analyze --root /path/to/your/project --module src/your-module --no-llm
+npx @anatolykhelmer/deep-cover analyze --root /path/to/your/project --module src/your-module --no-llm
 
 # CI gating — fail if score below threshold
-npx deepcover score --root /path/to/your/project --module src/your-module --no-llm --min-score 60
+npx @anatolykhelmer/deep-cover score --root /path/to/your/project --module src/your-module --no-llm --min-score 60
 
 # Cursor-powered analysis (agent is the Reasoner — no API key)
-npx deepcover extract --root /path/to/your/project --module src/your-module
+npx @anatolykhelmer/deep-cover extract --root /path/to/your/project --module src/your-module
 # Then ask Cursor: "run deepcover on my module" (uses the project skill)
 ```
 
@@ -283,13 +283,13 @@ Or run manually:
 
 ```bash
 # Step 1: Extract
-npx deepcover extract \
+npx @anatolykhelmer/deep-cover extract \
   --root . --module src/webhooks
 
 # Step 2: Cursor agent fills .deepcover/reasoner-output.json
 
 # Step 3: Score with insights
-npx deepcover analyze \
+npx @anatolykhelmer/deep-cover analyze \
   --root . --module src/webhooks \
   --reasoner-input .deepcover/reasoner-output.json
 ```
@@ -348,7 +348,7 @@ Add the DeepCover reporter to your project's Jest config, and enable coverage:
 
 ```json
 {
-  "reporters": ["default", "deep-cover/reporter"],
+  "reporters": ["default", "@anatolykhelmer/deep-cover/reporter"],
   "collectCoverage": true
 }
 ```
