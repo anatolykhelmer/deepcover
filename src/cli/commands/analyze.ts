@@ -6,6 +6,7 @@ import { runReasoner } from '../../reasoner';
 import { runScorer } from '../../scorer';
 import { resolveCoverage } from '../../resolver';
 import type { IstanbulCoverageData, JestRuntimeData } from '../../resolver/types';
+import { loadIstanbulCoverage } from '../../resolver/istanbul-source';
 import { formatTerminalReport } from '../formatters/terminal';
 import { loadConfig } from '../config';
 import { resolveLLMProvider } from '../resolve-provider';
@@ -46,12 +47,7 @@ function loadJestData(rootDir: string): { istanbul?: IstanbulCoverageData; runti
   const deepcoverDir = path.resolve(rootDir, '.deepcover');
   const jestData: { istanbul?: IstanbulCoverageData; runtime?: JestRuntimeData } = {};
 
-  const istanbulPath = path.join(deepcoverDir, 'istanbul-coverage.json');
-  if (fs.existsSync(istanbulPath)) {
-    try {
-      jestData.istanbul = JSON.parse(fs.readFileSync(istanbulPath, 'utf-8'));
-    } catch { /* ignore malformed file */ }
-  }
+  jestData.istanbul = loadIstanbulCoverage(deepcoverDir);
 
   const runtimePath = path.join(deepcoverDir, 'jest-runtime.json');
   if (fs.existsSync(runtimePath)) {

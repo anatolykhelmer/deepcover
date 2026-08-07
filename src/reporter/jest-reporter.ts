@@ -9,6 +9,12 @@ export interface DeepCoverRuntimeData {
     assertionCount: number;
   }[];
   timestamp: string;
+  /**
+   * Absolute path to Jest's coverage directory. Jest writes `coverage-final.json`
+   * there only after every reporter's `onRunComplete` has resolved, so we record
+   * where to find it rather than copying data that isn't on disk yet.
+   */
+  coverageDirectory: string;
 }
 
 export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
@@ -35,6 +41,7 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
     const data: DeepCoverRuntimeData = {
       testResults: [],
       timestamp: new Date().toISOString(),
+      coverageDirectory: path.resolve(this.coverageDirectory),
     };
 
     for (const suite of results.testResults) {
@@ -54,6 +61,9 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
       JSON.stringify(data, null, 2)
     );
 
+    // Best-effort snapshot. Jest has usually not written this file yet for the run
+    // we just observed, so the CLI reads the coverage directory directly and falls
+    // back to this copy only when it is the fresher of the two.
     const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
     if (fs.existsSync(istanbulSource)) {
       fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));

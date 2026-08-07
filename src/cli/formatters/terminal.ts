@@ -14,7 +14,8 @@ function methodIndicator(fn: FunctionScore): string {
 
 function methodLabel(fn: FunctionScore): string {
   const name = `${fn.className}.${fn.methodName}`;
-  const hasDirectTests = fn.strongAssertions > 0 || fn.weakAssertions > 0;
+  const hasDirectTests =
+    fn.strongAssertions > 0 || (fn.mediumAssertions ?? 0) > 0 || fn.weakAssertions > 0;
 
   if (fn.composite === 0 && fn.coverageSource !== 'istanbul') return `${name}  (no tests)`;
   if (fn.composite === 0 && fn.coverageSource === 'istanbul') return `${name}  (Istanbul-only, no direct tests)`;

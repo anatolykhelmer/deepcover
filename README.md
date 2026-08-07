@@ -100,6 +100,8 @@ npm install && npm run build
 npm run deepcover -- analyze --root . --module src --no-llm
 ```
 
+**Strongly recommended:** wire up the [Jest reporter](#jest-integration) and run tests with `--coverage` before analyzing. Without it, DeepCover falls back to static heuristics only — with it, scoring uses real pass/fail and Istanbul line/branch data, which is significantly more accurate.
+
 **For Cursor (agent as Reasoner, no API key):** see [Install for Cursor](#install-for-cursor-recommended).
 
 **For Claude Code (agent as Reasoner):** see [Install for Claude Code](#install-for-claude-code).
@@ -337,6 +339,23 @@ The LLM can adjust each sub-score by at most ±20%, scaled by its confidence. Wi
 
 **Per-method composite** uses three factors: Istanbul line coverage baseline (up to 30 pts), state score (up to 35 pts), and assertion score (up to 35 pts). Methods with 100% Istanbul line coverage get the full baseline even without direct test assertions.
 
+**Per-method domain states** come from two sources, unioned and deduplicated by state description:
+
+- the **static extractor**, which derives states from enums, union types and parameter guards and attaches them to every method they affect. A static state counts as tested when any method it affects is covered.
+- the **Reasoner**, whose `discoveredStates` are keyed by class and method. A reasoner state counts as tested when the Reasoner marked it tested *and* the resolver confirms the method is genuinely covered — a state inside a method no test reaches cannot have been exercised, whatever the model says.
+
+Most services have no type-level states at all, so without the reasoner join a method's state score is 0 and its composite cannot exceed 65 no matter how well tested it is.
+
+**Matcher strength** is one shared taxonomy (`src/scorer/matchers.ts`) used by every sub-score and by the per-method rollup:
+
+| Strength | Matchers | Why |
+|----------|----------|-----|
+| Strong | `toEqual`, `toStrictEqual`, `toBe`, `toMatchObject`, `toBeCloseTo`, `toThrow`, `toHaveBeenCalledWith`, `toHaveBeenLastCalledWith` | Pins a concrete expected value or call shape |
+| Medium | `toContain`, `toMatch`, `toHaveLength`, `toHaveBeenCalledTimes` | Pins a property of the value |
+| Weak | `toBeDefined`, `toBeTruthy`, `toBeFalsy`, `toBeNull` | Pins only that something was produced |
+
+The `resolves`, `rejects` and `not` modifiers are unwrapped, so `await expect(p).resolves.toEqual(x)` classifies as `toEqual`.
+
 **Transitive assertion credit:** When an assertion targets a method call (e.g. `expect(user.getName()).toBe('Alice')`), the `getName` method gets credit even though the test targets `createUser`. This properly reflects how service-level tests transitively verify data-class methods.
 
 ## Example Output
@@ -492,11 +511,11 @@ fixtures/
 
 ## Jest Integration
 
-DeepCover integrates with Jest to combine static analysis with real runtime coverage data. When Jest data is available, coverage accuracy improves significantly — Istanbul line/branch counts replace heuristic method-to-test mapping, and runtime pass/fail results filter out broken tests.
+DeepCover works without this section — the Extractor can score a module from static AST analysis alone. But **configuring the Jest reporter and running tests with coverage is strongly recommended**: it's the difference between DeepCover *guessing* which test covers which method and *knowing*, from real Istanbul line/branch data and real pass/fail results. This directly sharpens Assertion Quality, State Coverage, Mutation Resilience, and Criticality (see "How it works" below). Do this once per project and every `analyze`/`score` run after that benefits automatically.
 
 ### Setup
 
-Add the DeepCover reporter to your project's Jest config, and enable coverage:
+Add the DeepCover reporter to your project's Jest config, **and** enable coverage — both are required, together:
 
 ```json
 {
@@ -505,6 +524,20 @@ Add the DeepCover reporter to your project's Jest config, and enable coverage:
 }
 ```
 
+If you'd rather not turn on coverage by default, keep `collectCoverage` out of the config and always pass `--coverage` when running tests before a DeepCover analysis:
+
+```bash
+npm test -- --coverage
+npx @anatolykhelmer/deep-cover analyze --root . --module src/your-module
+```
+
+**Both pieces matter independently:**
+
+- Reporter only, no coverage → `jest-runtime.json` is written (pass/fail, durations, assertion counts), but `istanbul-coverage.json` is silently skipped — no error, the file just won't exist and DeepCover falls back to heuristic line/branch estimates.
+- Coverage only, no reporter → Jest still writes `coverage/coverage-final.json`, but DeepCover never sees runtime pass/fail data, and nothing gets copied into `.deepcover/`.
+
+You want both configured together to get the full accuracy benefit.
+
 ### What gets captured
 
 After each test run, the reporter writes to `.deepcover/`:
@@ -512,7 +545,7 @@ After each test run, the reporter writes to `.deepcover/`:
 | File | Contents |
 |------|----------|
 | `jest-runtime.json` | Per-test pass/fail status, duration, assertion counts |
-| `istanbul-coverage.json` | Istanbul line/branch/function coverage (from `coverage-final.json`) |
+| `istanbul-coverage.json` | Istanbul line/branch/function coverage (from `coverage-final.json`, requires `collectCoverage: true`) |
 
 ### How it works
 

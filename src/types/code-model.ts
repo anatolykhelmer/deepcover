@@ -86,6 +86,8 @@ export interface TestFileNode {
 export interface DescribeBlockNode {
   name: string;
   tests: TestNode[];
+  /** Set when the block comes from `describe.each`; `name` is then the title template. */
+  parameterized?: ParameterizedInfo;
 }
 
 export interface TestNode {
@@ -94,6 +96,19 @@ export interface TestNode {
   assertions: AssertionNode[];
   mocks: string[];
   isAsync: boolean;
+  /** Set when the test comes from `it.each` / `test.each`. */
+  parameterized?: ParameterizedInfo;
+}
+
+export interface ParameterizedInfo {
+  /** `array` for `it.each([...])`, `template` for the tagged-template table form. */
+  form: 'array' | 'template';
+  /** Title as written, before per-case token substitution. */
+  titleTemplate: string;
+  /** Rows in the table; 0 when the table could not be read statically. */
+  caseCount: number;
+  /** Row this entry stands for; absent when one entry covers every case. */
+  caseIndex?: number;
 }
 
 export interface AssertionNode {

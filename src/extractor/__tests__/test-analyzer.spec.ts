@@ -5,6 +5,11 @@ import { analyzeTestFile } from '../test-analyzer';
 const WEAK_TESTS_PATH = path.join(__dirname, '../../../fixtures/assertion-quality/weak-tests.spec.ts');
 const STRONG_TESTS_PATH = path.join(__dirname, '../../../fixtures/assertion-quality/strong-tests.spec.ts');
 
+function analyzeSource(code: string) {
+  const project = new Project({ useInMemoryFileSystem: true });
+  return analyzeTestFile(project.createSourceFile('sample.spec.ts', code));
+}
+
 describe('test-analyzer', () => {
   let weakTestsFile: ReturnType<Project['addSourceFileAtPath']>;
   let strongTestsFile: ReturnType<Project['addSourceFileAtPath']>;
@@ -102,6 +107,53 @@ describe('test-analyzer', () => {
     });
   });
 
+  describe('expect-chain modifiers', () => {
+    function matchersIn(code: string): string[] {
+      const file = analyzeSource(`describe('S', () => { it('t', async () => { ${code} }); });`);
+      return file.describes[0].tests[0].assertions.map((a) => a.matcherUsed);
+    }
+
+    it('records the matcher under `resolves`, not the modifier', () => {
+      expect(matchersIn('await expect(svc.charge(1)).resolves.toEqual({ ok: true });')).toEqual(['toEqual']);
+    });
+
+    it('records the matcher under `rejects`, not the modifier', () => {
+      expect(matchersIn('await expect(svc.charge(1)).rejects.toThrow("boom");')).toEqual(['toThrow']);
+    });
+
+    it('records the matcher under `not`, not the modifier', () => {
+      expect(matchersIn('expect(result).not.toBe(1);')).toEqual(['toBe']);
+    });
+
+    it('unwraps stacked modifiers', () => {
+      expect(matchersIn('await expect(svc.charge(1)).resolves.not.toBeNull();')).toEqual(['toBeNull']);
+    });
+
+    it('categorizes any rejects chain as an error-path assertion', () => {
+      const file = analyzeSource(`
+        describe('S', () => {
+          it('t', async () => {
+            await expect(svc.charge(1)).rejects.toEqual(new Error('declined'));
+          });
+        });
+      `);
+      const assertion = file.describes[0].tests[0].assertions[0];
+      expect(assertion.matcherUsed).toBe('toEqual');
+      expect(assertion.type).toBe('rejects');
+    });
+
+    it('keeps `resolves` chains as value checks', () => {
+      const file = analyzeSource(`
+        describe('S', () => {
+          it('t', async () => {
+            await expect(svc.charge(1)).resolves.toEqual({ ok: true });
+          });
+        });
+      `);
+      expect(file.describes[0].tests[0].assertions[0].type).toBe('value_check');
+    });
+  });
+
   describe('assertion count', () => {
     it('weak-tests has fewer assertions than strong-tests', () => {
       const weak = analyzeTestFile(weakTestsFile);
@@ -164,6 +216,432 @@ describe('test-analyzer', () => {
     it('includes file path in result', () => {
       const weak = analyzeTestFile(weakTestsFile);
       expect(weak.filePath).toContain('weak-tests.spec.ts');
+    });
+  });
+
+  describe('parameterized tests - array form', () => {
+    const source = `
+      describe('OrdersService', () => {
+        let service: OrdersService;
+
+        beforeEach(() => {
+          service = new OrdersService();
+        });
+
+        it.each([
+          ['no coupon', undefined, 200, 0],
+          ['SAVE10', 'SAVE10', 200, 20],
+          ['HALF', 'HALF', 200, 100],
+        ])('%s: charges the discounted total', async (label, coupon, price, discount) => {
+          const result = await service.createOrder('cust-1', price, coupon);
+          expect(result.discount).toBe(discount);
+          expect(result.total).toBe(price - discount);
+        });
+      });
+    `;
+
+    it('expands one entry per row with the printf tokens substituted', () => {
+      const names = analyzeSource(source).describes[0].tests.map((t) => t.name);
+      expect(names).toEqual([
+        'no coupon: charges the discounted total',
+        'SAVE10: charges the discounted total',
+        'HALF: charges the discounted total',
+      ]);
+    });
+
+    it('captures the assertions inside the callback for every case', () => {
+      const tests = analyzeSource(source).describes[0].tests;
+      expect(tests).toHaveLength(3);
+      for (const test of tests) {
+        expect(test.assertions.map((a) => a.matcherUsed)).toEqual(['toBe', 'toBe']);
+        expect(test.targetMethod).toBe('createOrder');
+        expect(test.isAsync).toBe(true);
+      }
+    });
+
+    it('records the raw template and case position on each entry', () => {
+      const tests = analyzeSource(source).describes[0].tests;
+      expect(tests[0].parameterized).toEqual({
+        form: 'array',
+        titleTemplate: '%s: charges the discounted total',
+        caseCount: 3,
+        caseIndex: 0,
+      });
+      expect(tests[2].parameterized?.caseIndex).toBe(2);
+    });
+
+    it('substitutes %# with the case index', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each([[1, 2], [2, 4]])('case %#: doubles %d', (input, expected) => {
+            expect(double(input)).toBe(expected);
+          });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual([
+        'case 0: doubles 1',
+        'case 1: doubles 2',
+      ]);
+    });
+
+    it('supports single-column tables where each row is one value', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each(['SAVE10', 'HALF'])('applies %s', (coupon) => {
+            expect(discountFor(coupon)).toBeGreaterThan(0);
+          });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual(['applies SAVE10', 'applies HALF']);
+    });
+
+    it('substitutes $-named tokens for object rows', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each([
+            { coupon: 'SAVE10', total: 180 },
+            { coupon: 'HALF', total: 100 },
+          ])('$coupon leaves a total of $total', ({ coupon, total }) => {
+            expect(apply(coupon)).toBe(total);
+          });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual([
+        'SAVE10 leaves a total of 180',
+        'HALF leaves a total of 100',
+      ]);
+    });
+
+    it('resolves $-tokens that reach into a nested object property', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each([{ user: { name: 'ann' }, out: 1 }])('$user.name scores $out', ({ user, out }) => {
+            expect(score(user)).toBe(out);
+          });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual(['ann scores 1']);
+    });
+
+    it('falls back to a single entry when a spread hides rows', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          const extra = [[3]];
+          it.each([[1], ...extra])('handles %d', (n) => {
+            expect(run(n)).toBe(n);
+          });
+        });
+      `);
+      const tests = result.describes[0].tests;
+      expect(tests).toHaveLength(1);
+      expect(tests[0].name).toBe('handles %d');
+      expect(tests[0].assertions).toHaveLength(1);
+    });
+
+    it('resolves a table referenced by variable name', () => {
+      const result = analyzeSource(`
+        const CASES = [['a', 1], ['b', 2]];
+
+        describe('Calc', () => {
+          it.each(CASES)('%s maps to %d', (key, value) => {
+            expect(lookup(key)).toBe(value);
+          });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual(['a maps to 1', 'b maps to 2']);
+    });
+  });
+
+  describe('parameterized tests - tagged template form', () => {
+    const source = `
+      describe('Calc', () => {
+        it.each\`
+          a    | b    | expected
+          \${1} | \${1} | \${2}
+          \${2} | \${3} | \${5}
+        \`('returns $expected for $a + $b', ({ a, b, expected }) => {
+          expect(add(a, b)).toBe(expected);
+          expect(add(b, a)).toEqual(expected);
+        });
+      });
+    `;
+
+    it('expands one entry per table row with $-named tokens substituted', () => {
+      const tests = analyzeSource(source).describes[0].tests;
+      expect(tests.map((t) => t.name)).toEqual([
+        'returns 2 for 1 + 1',
+        'returns 5 for 2 + 3',
+      ]);
+    });
+
+    it('captures the assertions inside the callback', () => {
+      const tests = analyzeSource(source).describes[0].tests;
+      for (const test of tests) {
+        expect(test.assertions.map((a) => a.matcherUsed)).toEqual(['toBe', 'toEqual']);
+        expect(test.targetMethod).toBe('add');
+      }
+    });
+
+    it('marks the entries as template-form parameterized tests', () => {
+      const tests = analyzeSource(source).describes[0].tests;
+      expect(tests[0].parameterized).toEqual({
+        form: 'template',
+        titleTemplate: 'returns $expected for $a + $b',
+        caseCount: 2,
+        caseIndex: 0,
+      });
+    });
+  });
+
+  describe('parameterized tests - aliases and fallbacks', () => {
+    it('handles test.each, xit.each, fit.each and modifier chains', () => {
+      const result = analyzeSource(`
+        describe('Aliases', () => {
+          test.each([[1]])('test.each %d', (n) => { expect(run(n)).toBe(1); });
+          xit.each([[2]])('xit.each %d', (n) => { expect(run(n)).toBe(2); });
+          fit.each([[3]])('fit.each %d', (n) => { expect(run(n)).toBe(3); });
+          it.only.each([[4]])('it.only.each %d', (n) => { expect(run(n)).toBe(4); });
+          it.skip.each([[5]])('it.skip.each %d', (n) => { expect(run(n)).toBe(5); });
+        });
+      `);
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual([
+        'test.each 1',
+        'xit.each 2',
+        'fit.each 3',
+        'it.only.each 4',
+        'it.skip.each 5',
+      ]);
+      expect(result.describes[0].tests.every((t) => t.assertions.length === 1)).toBe(true);
+    });
+
+    it('records a single entry when the table cannot be read statically', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each(buildCases())('handles %s', (name) => {
+            expect(run(name)).toBe(true);
+          });
+        });
+      `);
+      const tests = result.describes[0].tests;
+      expect(tests).toHaveLength(1);
+      expect(tests[0].name).toBe('handles %s');
+      expect(tests[0].parameterized).toEqual({
+        form: 'array',
+        titleTemplate: 'handles %s',
+        caseCount: 0,
+      });
+      expect(tests[0].assertions).toHaveLength(1);
+    });
+
+    it('records a single entry for tables larger than the expansion cap', () => {
+      const rows = Array.from({ length: 40 }, (_, i) => `[${i}]`).join(', ');
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it.each([${rows}])('handles %d', (n) => {
+            expect(run(n)).toBe(true);
+          });
+        });
+      `);
+      const tests = result.describes[0].tests;
+      expect(tests).toHaveLength(1);
+      expect(tests[0].name).toBe('handles %d');
+      expect(tests[0].parameterized?.caseCount).toBe(40);
+      expect(tests[0].parameterized?.caseIndex).toBeUndefined();
+      expect(tests[0].assertions).toHaveLength(1);
+    });
+
+    it('captures tests inside a describe.each block once, with the case count', () => {
+      const result = analyzeSource(`
+        describe.each([
+          ['SAVE10', 20],
+          ['HALF', 100],
+        ])('coupon %s', (coupon, discount) => {
+          it('applies the discount', () => {
+            expect(apply(coupon)).toBe(discount);
+          });
+        });
+      `);
+      expect(result.describes).toHaveLength(1);
+      expect(result.describes[0].name).toBe('coupon %s');
+      expect(result.describes[0].parameterized).toEqual({
+        form: 'array',
+        titleTemplate: 'coupon %s',
+        caseCount: 2,
+      });
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual(['applies the discount']);
+      expect(result.describes[0].tests[0].assertions).toHaveLength(1);
+    });
+
+    it('captures tests inside a tagged-template describe.each block', () => {
+      const result = analyzeSource(`
+        describe.each\`
+          n    | out
+          \${1} | \${2}
+          \${3} | \${4}
+        \`('case $n', ({ n, out }) => {
+          it('doubles the input', () => {
+            expect(double(n)).toBe(out);
+          });
+        });
+      `);
+      expect(result.describes).toHaveLength(1);
+      expect(result.describes[0].parameterized).toEqual({
+        form: 'template',
+        titleTemplate: 'case $n',
+        caseCount: 2,
+      });
+      expect(result.describes[0].tests.map((t) => t.name)).toEqual(['doubles the input']);
+    });
+
+    it('captures assertions in concise arrow bodies', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it('adds', () => expect(add(1, 2)).toBe(3));
+        });
+      `);
+      const test = result.describes[0].tests[0];
+      expect(test.assertions.map((a) => a.matcherUsed)).toEqual(['toBe']);
+      expect(test.targetMethod).toBe('add');
+    });
+
+    it('leaves plain it() blocks unchanged', () => {
+      const result = analyzeSource(`
+        describe('Calc', () => {
+          it('adds two numbers', () => {
+            expect(add(1, 2)).toBe(3);
+          });
+        });
+      `);
+      const test = result.describes[0].tests[0];
+      expect(test.name).toBe('adds two numbers');
+      expect(test.parameterized).toBeUndefined();
+    });
+  });
+
+  describe('target method attribution', () => {
+    const inventorySource = `
+      describe('InventoryService', () => {
+        let inventory: InventoryService;
+
+        beforeEach(() => {
+          inventory = new InventoryService();
+        });
+
+        it('decrements stock on a successful reservation', () => {
+          inventory.seed('SKU-1', 5);
+
+          expect(inventory.reserve('SKU-1', 2)).toBe(true);
+          expect(inventory.available('SKU-1')).toBe(3);
+        });
+
+        it('restores the original quantity on release', () => {
+          inventory.seed('SKU-1', 5);
+          inventory.reserve('SKU-1', 2);
+
+          inventory.release('SKU-1', 2);
+
+          expect(inventory.available('SKU-1')).toBe(5);
+        });
+      });
+    `;
+
+    it('prefers the method named in the test title over the first call in the body', () => {
+      const tests = analyzeSource(inventorySource).describes[0].tests;
+      expect(tests.find((t) => t.name.includes('successful reservation'))?.targetMethod).toBe('reserve');
+      expect(tests.find((t) => t.name.includes('on release'))?.targetMethod).toBe('release');
+    });
+
+    it('prefers the subject under test over collaborators asserted on', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+          let inventory: InventoryService;
+
+          beforeEach(async () => {
+            const module = await Test.createTestingModule({}).compile();
+            service = module.get(OrdersService);
+            inventory = module.get(InventoryService);
+          });
+
+          it('decrements stock for every reserved item', async () => {
+            await service.createOrder('cust-1', [{ sku: 'SKU-1', qty: 1 }]);
+
+            expect(inventory.available('SKU-1')).toBe(9);
+            expect(inventory.available('SKU-2')).toBe(7);
+          });
+        });
+      `);
+      expect(result.describes[0].tests[0].targetMethod).toBe('createOrder');
+    });
+
+    it('resolves the subject from an enclosing describe for nested blocks', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+          let inventory: InventoryService;
+
+          beforeEach(() => {
+            service = new OrdersService();
+            inventory = new InventoryService();
+          });
+
+          describe('discounts', () => {
+            it('leaves the stock report untouched', async () => {
+              await service.createOrder('cust-1', []);
+
+              expect(inventory.available('SKU-1')).toBe(10);
+            });
+          });
+        });
+      `);
+      const nested = result.describes.find((d) => d.name === 'discounts');
+      expect(nested?.tests[0].targetMethod).toBe('createOrder');
+    });
+
+    it('looks through a test-local helper to the method it calls', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+
+          beforeEach(() => {
+            service = new OrdersService();
+          });
+
+          describe('discounts', () => {
+            const order = (unitPrice: number, couponCode?: string) =>
+              service.createOrder('cust-1', [{ unitPrice }], couponCode);
+
+            it('rounds fractional totals to whole cents', async () => {
+              const result = await order(0.335, 'SAVE10');
+
+              expect(result.total).toBeCloseTo(0.3015, 6);
+            });
+          });
+        });
+      `);
+      const nested = result.describes.find((d) => d.name === 'discounts');
+      expect(nested?.tests[0].targetMethod).toBe('createOrder');
+    });
+
+    it('infers the target method for a parameterized test from the title template', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+
+          beforeEach(() => {
+            service = new OrdersService();
+          });
+
+          it.each([['SAVE10', 180], ['HALF', 100]])(
+            '%s: createOrder charges the discounted total',
+            async (coupon, total) => {
+              const result = await service.createOrder('cust-1', coupon);
+              expect(result.total).toBe(total);
+            },
+          );
+        });
+      `);
+      expect(result.describes[0].tests.every((t) => t.targetMethod === 'createOrder')).toBe(true);
     });
   });
 });

@@ -12,6 +12,7 @@ import { resolveCoverage } from '../../resolver';
 import { mapIstanbulToMethod } from '../../resolver/istanbul-mapper';
 import type { ClassNode, FunctionNode, TestFileNode, TestInventory } from '../../types/code-model';
 import type { IstanbulCoverageData, JestRuntimeData } from '../../resolver/types';
+import { loadIstanbulCoverage as readIstanbulCoverage } from '../../resolver/istanbul-source';
 
 function buildTestsByMethod(
   testInventory: TestInventory,
@@ -84,11 +85,10 @@ function loadIstanbulCoverage(
   classes: ClassNode[],
   modules: { filePath: string; classes: ClassNode[]; functions?: FunctionNode[] }[],
 ): Map<string, MethodCoverageInfo> | undefined {
-  const istanbulPath = path.join(outputDir, 'istanbul-coverage.json');
-  if (!fs.existsSync(istanbulPath)) return undefined;
+  const data = readIstanbulCoverage(outputDir);
+  if (!data) return undefined;
 
   try {
-    const data: IstanbulCoverageData = JSON.parse(fs.readFileSync(istanbulPath, 'utf-8'));
     const result = new Map<string, MethodCoverageInfo>();
 
     for (const mod of modules) {

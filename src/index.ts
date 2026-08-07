@@ -14,7 +14,8 @@ export type { SubScore, FunctionScore, PrioritizedGap } from './scorer';
 export { runReasoner } from './reasoner';
 export type { LLMProvider } from './reasoner/providers/base';
 
-export { DeepCoverReporter } from './reporter';
+export { DeepCoverReporter } from './reporter/jest-reporter';
+export type { DeepCoverRuntimeData } from './reporter/jest-reporter';
 
 export { runBugDetector } from './bug-detector';
 export type { BugSignal } from './bug-detector';

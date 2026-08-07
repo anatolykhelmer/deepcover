@@ -1,15 +1,142 @@
-import type { CodeModel } from '../types/code-model';
+import type { CodeModel, StateNode } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { ScoreResult, SubScore, FunctionScore } from './types';
 import { generateGaps } from './gap-generator';
-
-const STRONG_MATCHERS = ['toEqual', 'toHaveBeenCalledWith', 'toThrow', 'toStrictEqual', 'toBe'];
-const WEAK_MATCHERS = ['toBeDefined', 'toBeTruthy', 'toBeFalsy', 'toBeNull'];
+import { classifyMatcher } from './matchers';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
   return match ? match[1] : null;
+}
+
+/** Assertion tally for one method, split by matcher strength. */
+interface AssertionTally {
+  strong: number;
+  medium: number;
+  weak: number;
+}
+
+function emptyTally(): AssertionTally {
+  return { strong: 0, medium: 0, weak: 0 };
+}
+
+function tallyAssertion(tally: AssertionTally, matcherUsed: string): void {
+  const strength = classifyMatcher(matcherUsed);
+  if (strength === 'strong') tally.strong += 1;
+  else if (strength === 'medium') tally.medium += 1;
+  else if (strength === 'weak') tally.weak += 1;
+}
+
+/**
+ * Count the assertions that bear on one method, direct and transitive.
+ *
+ * A test counts as direct when it names the method as its target, or when one
+ * of its assertions is written against a call to it. Assertions from tests that
+ * merely happen to execute the method count at half weight.
+ */
+function tallyAssertionsForMethod(
+  codeModel: CodeModel,
+  methodName: string,
+  testNames: string[]
+): AssertionTally {
+  const direct = emptyTally();
+  const transitive = emptyTally();
+
+  for (const file of codeModel.testInventory.testFiles) {
+    for (const block of file.describes) {
+      for (const test of block.tests) {
+        const directMatch = test.targetMethod === methodName && testNames.includes(test.name);
+        const transitiveMatch =
+          !directMatch && test.targetMethod !== methodName && testNames.includes(test.name);
+        if (directMatch) {
+          for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
+        } else if (transitiveMatch) {
+          for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
+        } else {
+          for (const a of test.assertions) {
+            if (extractMethodFromTarget(a.target) === methodName) {
+              tallyAssertion(direct, a.matcherUsed);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const TRANSITIVE_DISCOUNT = 0.5;
+  return {
+    strong: direct.strong + Math.round(transitive.strong * TRANSITIVE_DISCOUNT),
+    medium: direct.medium + Math.round(transitive.medium * TRANSITIVE_DISCOUNT),
+    weak: direct.weak + Math.round(transitive.weak * TRANSITIVE_DISCOUNT),
+  };
+}
+
+/** Per-method assertion points, capped at the 35-point share of the composite. */
+const STRONG_POINTS = 10;
+const MEDIUM_POINTS = 5;
+const WEAK_POINTS = 2;
+const MAX_ASSERTION_POINTS = 35;
+const MAX_STATE_POINTS = 35;
+const MAX_ISTANBUL_POINTS = 30;
+
+function assertionScore(tally: AssertionTally): number {
+  return Math.min(
+    MAX_ASSERTION_POINTS,
+    tally.strong * STRONG_POINTS + tally.medium * MEDIUM_POINTS + tally.weak * WEAK_POINTS
+  );
+}
+
+function normalizeStateKey(state: string): string {
+  return state.trim().toLowerCase();
+}
+
+/**
+ * Domain states bearing on one method, from both sources that know about them.
+ *
+ * The static extractor derives `StateNode`s from enums, unions and guards and
+ * attaches them to every method they affect; it finds nothing at all for an
+ * ordinary service whose states live in control flow rather than in the type
+ * system. The Reasoner names those states directly, keyed by class and method.
+ * Using only the static source left `totalStates` at 0 for most real methods,
+ * which zeroed the 35-point state share and capped every method at 65.
+ *
+ * The two sources are unioned and deduplicated by state description, so a state
+ * both of them found counts once. A state is tested when:
+ *   - static: some method it affects is covered, or
+ *   - reasoner: the Reasoner marked it tested AND the method is genuinely
+ *     covered per the resolver. The coverage check is a floor on LLM optimism —
+ *     a state in a method no test ever reaches cannot have been exercised.
+ */
+function collectMethodStates(
+  staticStates: StateNode[],
+  reasonerOutput: ReasonerOutput,
+  className: string,
+  methodName: string,
+  resolvedCoverage: ResolvedCoverage
+): { testedStates: number; totalStates: number } {
+  const tested = new Map<string, boolean>();
+
+  for (const s of staticStates) {
+    if (!s.affectedMethods.includes(methodName)) continue;
+    const isTested = s.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(className, m));
+    const key = normalizeStateKey(s.name);
+    tested.set(key, (tested.get(key) ?? false) || isTested);
+  }
+
+  const methodCovered = resolvedCoverage.isMethodCovered(className, methodName);
+  for (const ds of reasonerOutput.discoveredStates) {
+    if (ds.className !== className || ds.methodName !== methodName) continue;
+    const key = normalizeStateKey(ds.state);
+    const isTested = ds.isTested && methodCovered;
+    tested.set(key, (tested.get(key) ?? false) || isTested);
+  }
+
+  let testedStates = 0;
+  for (const isTested of tested.values()) {
+    if (isTested) testedStates += 1;
+  }
+  return { testedStates, totalStates: tested.size };
 }
 
 export interface ScoreWeights {
@@ -102,167 +229,73 @@ export function composeScore(
 
   const perFunction: FunctionScore[] = [];
 
-  for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      const statesForClass = cls.states;
-      for (const method of cls.methods) {
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name);
-        const testNames = resolvedCoverage.getTestsForMethod(cls.name, method.name);
+  /**
+   * Score one callable. Class methods key on the class name; standalone
+   * functions key on the module file path, matching how the resolver, the
+   * reasoner prompts and the gap generator identify them.
+   */
+  function scoreCallable(
+    owner: string,
+    callable: { name: string; branchCount: number; externalCalls: string[] },
+    staticStates: StateNode[]
+  ): FunctionScore {
+    const mc = resolvedCoverage.getMethodCoverage(owner, callable.name);
+    const testNames = resolvedCoverage.getTestsForMethod(owner, callable.name);
 
-        const methodStates = statesForClass.filter((s) => s.affectedMethods.includes(method.name));
-        const testedStates = methodStates.filter((s) =>
-          s.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(cls.name, m))
-        ).length;
-        const totalStates = methodStates.length;
+    const { testedStates, totalStates } = collectMethodStates(
+      staticStates,
+      reasonerOutput,
+      owner,
+      callable.name,
+      resolvedCoverage
+    );
 
-        let strongAssertions = 0;
-        let weakAssertions = 0;
-        let transitiveStrong = 0;
-        let transitiveWeak = 0;
-        for (const file of codeModel.testInventory.testFiles) {
-          for (const block of file.describes) {
-            for (const test of block.tests) {
-              const directMatch = test.targetMethod === method.name && testNames.includes(test.name);
-              const transitiveMatch = !directMatch && test.targetMethod !== method.name && testNames.includes(test.name);
-              if (directMatch) {
-                for (const a of test.assertions) {
-                  if (STRONG_MATCHERS.includes(a.matcherUsed)) strongAssertions += 1;
-                  else if (WEAK_MATCHERS.includes(a.matcherUsed)) weakAssertions += 1;
-                }
-              } else if (transitiveMatch) {
-                for (const a of test.assertions) {
-                  if (STRONG_MATCHERS.includes(a.matcherUsed)) transitiveStrong += 1;
-                  else if (WEAK_MATCHERS.includes(a.matcherUsed)) transitiveWeak += 1;
-                }
-              } else {
-                for (const a of test.assertions) {
-                  if (extractMethodFromTarget(a.target) === method.name) {
-                    if (STRONG_MATCHERS.includes(a.matcherUsed)) strongAssertions += 1;
-                    else if (WEAK_MATCHERS.includes(a.matcherUsed)) weakAssertions += 1;
-                  }
-                }
-              }
-            }
-          }
-        }
-        const TRANSITIVE_DISCOUNT = 0.5;
-        strongAssertions += Math.round(transitiveStrong * TRANSITIVE_DISCOUNT);
-        weakAssertions += Math.round(transitiveWeak * TRANSITIVE_DISCOUNT);
+    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames);
 
-        const untested: string[] = [];
-        if (!mc?.isCovered) {
-          untested.push('no test coverage');
-        }
-        for (const ds of reasonerOutput.discoveredStates) {
-          if (ds.className === cls.name && ds.methodName === method.name && !ds.isTested) {
-            untested.push(ds.state);
-          }
-        }
-
-        const istanbulBase = mc?.istanbul?.lineCoveragePercent
-          ? (mc.istanbul.lineCoveragePercent / 100) * 30
-          : (mc?.isCovered ? 15 : 0);
-        const stateScore = totalStates > 0
-          ? (testedStates / totalStates) * 35
-          : 0;
-        const assertionScore = Math.min(35, strongAssertions * 10 + weakAssertions * 2);
-        const methodComposite = istanbulBase + stateScore + assertionScore;
-
-        const lineCoveragePercent = mc?.istanbul?.lineCoveragePercent;
-        const branchCoveragePercent = mc?.istanbul?.branchCoveragePercent;
-
-        perFunction.push({
-          className: cls.name,
-          methodName: method.name,
-          composite: Math.min(100, methodComposite),
-          criticality: getCriticality(method, reasonerOutput, cls.name, method.name),
-          testedStates,
-          totalStates,
-          strongAssertions,
-          weakAssertions,
-          untested,
-          ...(lineCoveragePercent !== undefined ? { lineCoveragePercent } : {}),
-          ...(branchCoveragePercent !== undefined ? { branchCoveragePercent } : {}),
-          coverageSource: mc?.coverageSource,
-        });
+    const untested: string[] = [];
+    if (!mc?.isCovered) {
+      untested.push('no test coverage');
+    }
+    for (const ds of reasonerOutput.discoveredStates) {
+      if (ds.className === owner && ds.methodName === callable.name && !ds.isTested) {
+        untested.push(ds.state);
       }
     }
 
+    const istanbulBase = mc?.istanbul?.lineCoveragePercent
+      ? (mc.istanbul.lineCoveragePercent / 100) * MAX_ISTANBUL_POINTS
+      : (mc?.isCovered ? MAX_ISTANBUL_POINTS / 2 : 0);
+    const stateScore = totalStates > 0 ? (testedStates / totalStates) * MAX_STATE_POINTS : 0;
+    const methodComposite = istanbulBase + stateScore + assertionScore(tally);
+
+    const lineCoveragePercent = mc?.istanbul?.lineCoveragePercent;
+    const branchCoveragePercent = mc?.istanbul?.branchCoveragePercent;
+
+    return {
+      className: owner,
+      methodName: callable.name,
+      composite: Math.min(100, methodComposite),
+      criticality: getCriticality(callable, reasonerOutput, owner, callable.name),
+      testedStates,
+      totalStates,
+      strongAssertions: tally.strong,
+      mediumAssertions: tally.medium,
+      weakAssertions: tally.weak,
+      untested,
+      ...(lineCoveragePercent !== undefined ? { lineCoveragePercent } : {}),
+      ...(branchCoveragePercent !== undefined ? { branchCoveragePercent } : {}),
+      coverageSource: mc?.coverageSource,
+    };
+  }
+
+  for (const mod of codeModel.modules) {
+    for (const cls of mod.classes) {
+      for (const method of cls.methods) {
+        perFunction.push(scoreCallable(cls.name, method, cls.states));
+      }
+    }
     for (const fn of mod.functions ?? []) {
-      const className = mod.filePath;
-      const mc = resolvedCoverage.getMethodCoverage(className, fn.name);
-      const testNames = resolvedCoverage.getTestsForMethod(className, fn.name);
-      const testedStates = 0;
-      const totalStates = 0;
-
-      let strongAssertions = 0;
-      let weakAssertions = 0;
-      let transitiveStrong = 0;
-      let transitiveWeak = 0;
-      for (const file of codeModel.testInventory.testFiles) {
-        for (const block of file.describes) {
-          for (const test of block.tests) {
-            const directMatch = test.targetMethod === fn.name && testNames.includes(test.name);
-            const transitiveMatch = !directMatch && test.targetMethod !== fn.name && testNames.includes(test.name);
-            if (directMatch) {
-              for (const a of test.assertions) {
-                if (STRONG_MATCHERS.includes(a.matcherUsed)) strongAssertions += 1;
-                else if (WEAK_MATCHERS.includes(a.matcherUsed)) weakAssertions += 1;
-              }
-            } else if (transitiveMatch) {
-              for (const a of test.assertions) {
-                if (STRONG_MATCHERS.includes(a.matcherUsed)) transitiveStrong += 1;
-                else if (WEAK_MATCHERS.includes(a.matcherUsed)) transitiveWeak += 1;
-              }
-            } else {
-              for (const a of test.assertions) {
-                if (extractMethodFromTarget(a.target) === fn.name) {
-                  if (STRONG_MATCHERS.includes(a.matcherUsed)) strongAssertions += 1;
-                  else if (WEAK_MATCHERS.includes(a.matcherUsed)) weakAssertions += 1;
-                }
-              }
-            }
-          }
-        }
-      }
-      const TRANSITIVE_DISCOUNT = 0.5;
-      strongAssertions += Math.round(transitiveStrong * TRANSITIVE_DISCOUNT);
-      weakAssertions += Math.round(transitiveWeak * TRANSITIVE_DISCOUNT);
-
-      const untested: string[] = [];
-      if (!mc?.isCovered) {
-        untested.push('no test coverage');
-      }
-      for (const ds of reasonerOutput.discoveredStates) {
-        if (ds.className === className && ds.methodName === fn.name && !ds.isTested) {
-          untested.push(ds.state);
-        }
-      }
-
-      const istanbulBase = mc?.istanbul?.lineCoveragePercent
-        ? (mc.istanbul.lineCoveragePercent / 100) * 30
-        : (mc?.isCovered ? 15 : 0);
-      const stateScore = 0;
-      const assertionScore = Math.min(35, strongAssertions * 10 + weakAssertions * 2);
-      const methodComposite = istanbulBase + stateScore + assertionScore;
-
-      const lineCoveragePercent = mc?.istanbul?.lineCoveragePercent;
-      const branchCoveragePercent = mc?.istanbul?.branchCoveragePercent;
-
-      perFunction.push({
-        className,
-        methodName: fn.name,
-        composite: Math.min(100, methodComposite),
-        criticality: getCriticality(fn, reasonerOutput, className, fn.name),
-        testedStates,
-        totalStates,
-        strongAssertions,
-        weakAssertions,
-        untested,
-        ...(lineCoveragePercent !== undefined ? { lineCoveragePercent } : {}),
-        ...(branchCoveragePercent !== undefined ? { branchCoveragePercent } : {}),
-        coverageSource: mc?.coverageSource,
-      });
+      perFunction.push(scoreCallable(mod.filePath, fn, []));
     }
   }
 

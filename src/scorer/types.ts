@@ -16,6 +16,8 @@ export interface FunctionScore {
   testedStates: number;
   totalStates: number;
   strongAssertions: number;
+  /** Matchers that pin a property of the value (`toContain`, `toHaveLength`, ...). */
+  mediumAssertions?: number;
   weakAssertions: number;
   untested: string[];
   lineCoveragePercent?: number;

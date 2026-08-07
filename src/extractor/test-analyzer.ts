@@ -5,13 +5,63 @@ import {
   CallExpression,
   PropertyAccessExpression,
   ArrowFunction,
+  FunctionExpression,
   Block,
   VariableDeclaration,
   ObjectLiteralExpression,
+  ArrayLiteralExpression,
   PropertyAssignment,
   BinaryExpression,
+  Identifier,
 } from 'ts-morph';
-import type { TestFileNode, DescribeBlockNode, TestNode, AssertionNode } from '../types/code-model';
+import type {
+  TestFileNode,
+  DescribeBlockNode,
+  TestNode,
+  AssertionNode,
+  ParameterizedInfo,
+} from '../types/code-model';
+
+/** Jest globals that declare a single test, including the skipped/focused aliases. */
+const TEST_FN_NAMES = new Set(['it', 'test', 'xit', 'fit', 'xtest', 'ftest']);
+const DESCRIBE_FN_NAMES = new Set(['describe', 'xdescribe', 'fdescribe']);
+/** Chainable modifiers that do not change what the call declares (`it.only`, `it.skip.each`, ...). */
+const TEST_MODIFIERS = new Set(['only', 'skip', 'concurrent', 'failing']);
+/** Links in an `expect(...)` chain that wrap a matcher without being one. */
+const EXPECT_MODIFIERS = new Set(['resolves', 'rejects', 'not']);
+/** Above this many rows a `.each` table is recorded as one entry instead of one per case. */
+const MAX_EXPANDED_CASES = 25;
+/** How deep `$a.b` title tokens are resolved into object rows. */
+const MAX_ROW_NESTING = 2;
+
+type CalleeKind = 'test' | 'describe';
+
+interface EachRow {
+  /** Positional values, used for printf-style tokens (%s, %d, ...). */
+  values: string[];
+  /** Column/property values, used for `$name` tokens. */
+  named?: Record<string, string>;
+}
+
+interface EachTable {
+  form: 'array' | 'template';
+  rows: EachRow[];
+  /** False when the table could not be read statically (e.g. `it.each(buildCases())`). */
+  resolved: boolean;
+}
+
+interface CalleeInfo {
+  kind: CalleeKind;
+  each: EachTable | null;
+}
+
+type TestCallback = ArrowFunction | FunctionExpression;
+
+/** A variable that holds the subject under test, e.g. `service = new OrdersService()`. */
+interface SubjectBinding {
+  varName: string;
+  className: string;
+}
 
 export function analyzeTestFile(sourceFile: SourceFile): TestFileNode {
   const filePath = sourceFile.getFilePath();
@@ -21,44 +71,333 @@ export function analyzeTestFile(sourceFile: SourceFile): TestFileNode {
 
 function extractDescribeBlocks(sourceFile: SourceFile): DescribeBlockNode[] {
   const describes: DescribeBlockNode[] = [];
+  const subjectBindings = collectSubjectBindings(sourceFile);
   const callExps = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
 
   for (const call of callExps) {
-    const expr = call.getExpression();
-    if (!Node.isIdentifier(expr)) continue;
-    const calleeName = expr.getText();
-    if (calleeName !== 'describe') continue;
+    const callee = resolveCallee(call);
+    if (!callee || callee.kind !== 'describe') continue;
 
     const args = call.getArguments();
     if (args.length < 2) continue;
-    const nameArg = args[0];
-    const callbackArg = args[1];
-    const name = getStringLiteralValue(nameArg);
+    const name = getTitle(args[0]);
     if (!name) continue;
 
-    const callback = callbackArg;
-    if (!Node.isArrowFunction(callback) && !Node.isFunctionExpression(callback)) continue;
+    const callback = args[1];
+    if (!isTestCallback(callback)) continue;
 
     const body = callback.getBody();
     const block = Node.isBlock(body) ? (body as Block) : null;
     if (!block) continue;
 
     const mocks = extractMocksFromBlock(block);
-    const tests = extractTestsFromBlock(block);
+    const subjectVars = resolveSubjectVars(call, name, subjectBindings);
+    const tests = extractTestsFromBlock(block, subjectVars);
     for (const test of tests) {
       test.mocks = [...mocks];
     }
 
-    describes.push({ name, tests });
+    // `describe.each` runs the whole block once per row. Expanding it here would
+    // duplicate every nested test and its assertions, so the block is recorded once
+    // with the raw title template and the number of cases it runs.
+    const parameterized = callee.each ? buildParameterizedInfo(callee.each, name) : undefined;
+
+    describes.push({ name, tests, ...(parameterized ? { parameterized } : {}) });
   }
 
   return describes;
+}
+
+/* ------------------------------------------------------------------ *
+ * Callee resolution (`it`, `it.only`, `it.each([...])`, `it.each` ``)  *
+ * ------------------------------------------------------------------ */
+
+function resolveNameChain(node: Node): { kind: CalleeKind; names: string[] } | null {
+  const names: string[] = [];
+  let current: Node = node;
+
+  while (Node.isPropertyAccessExpression(current)) {
+    names.unshift((current as PropertyAccessExpression).getName());
+    current = (current as PropertyAccessExpression).getExpression();
+  }
+
+  if (!Node.isIdentifier(current)) return null;
+  const base = (current as Identifier).getText();
+  if (TEST_FN_NAMES.has(base)) return { kind: 'test', names };
+  if (DESCRIBE_FN_NAMES.has(base)) return { kind: 'describe', names };
+  return null;
+}
+
+function isModifierOnlyChain(names: string[]): boolean {
+  return names.every((n) => TEST_MODIFIERS.has(n));
+}
+
+function isEachChain(names: string[]): boolean {
+  return (
+    names.length > 0 &&
+    names[names.length - 1] === 'each' &&
+    isModifierOnlyChain(names.slice(0, -1))
+  );
+}
+
+/**
+ * Classifies a call expression as a test/describe declaration, if it is one.
+ * Handles `it(...)`, `it.only(...)`, `it.each([...])(...)` and ``it.each`...`(...)``.
+ */
+function resolveCallee(call: CallExpression): CalleeInfo | null {
+  const expr = call.getExpression();
+
+  if (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr)) {
+    const chain = resolveNameChain(expr);
+    if (!chain || !isModifierOnlyChain(chain.names)) return null;
+    return { kind: chain.kind, each: null };
+  }
+
+  // Array form: the callee is itself the call `it.each([...])`.
+  if (Node.isCallExpression(expr)) {
+    const inner = expr as CallExpression;
+    const chain = resolveNameChain(inner.getExpression());
+    if (!chain || !isEachChain(chain.names)) return null;
+    return { kind: chain.kind, each: buildEachFromArray(inner.getArguments()[0]) };
+  }
+
+  // Tagged-template form: the callee is ``it.each`table` ``.
+  if (Node.isTaggedTemplateExpression(expr)) {
+    const chain = resolveNameChain(expr.getTag());
+    if (!chain || !isEachChain(chain.names)) return null;
+    return { kind: chain.kind, each: buildEachFromTemplate(expr.getTemplate()) };
+  }
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ *
+ * `.each` tables                                                      *
+ * ------------------------------------------------------------------ */
+
+function buildEachFromArray(rowsArg: Node | undefined): EachTable {
+  const arrayLit = resolveArrayLiteral(rowsArg);
+  if (!arrayLit) return { form: 'array', rows: [], resolved: false };
+
+  const rows: EachRow[] = [];
+  for (const element of arrayLit.getElements()) {
+    // A spread hides rows we cannot enumerate, so the table is not expandable.
+    if (Node.isSpreadElement(element)) return { form: 'array', rows: [], resolved: false };
+
+    if (Node.isArrayLiteralExpression(element)) {
+      rows.push({ values: element.getElements().map(literalText) });
+      continue;
+    }
+    if (Node.isObjectLiteralExpression(element)) {
+      rows.push({ values: [literalText(element)], named: objectRowProperties(element) });
+      continue;
+    }
+    rows.push({ values: [literalText(element)] });
+  }
+
+  return { form: 'array', rows, resolved: true };
+}
+
+/** Flattens an object row, keeping dotted keys so `$user.name` resolves like Jest does. */
+function objectRowProperties(
+  objLit: ObjectLiteralExpression,
+  prefix = '',
+  depth = 0
+): Record<string, string> {
+  const named: Record<string, string> = {};
+
+  for (const prop of objLit.getProperties()) {
+    if (Node.isPropertyAssignment(prop)) {
+      const initializer = prop.getInitializer();
+      if (!initializer) continue;
+      const key = `${prefix}${prop.getName()}`;
+      named[key] = literalText(initializer);
+      const nested = unwrapExpression(initializer);
+      if (Node.isObjectLiteralExpression(nested) && depth < MAX_ROW_NESTING) {
+        Object.assign(named, objectRowProperties(nested as ObjectLiteralExpression, `${key}.`, depth + 1));
+      }
+      continue;
+    }
+    if (Node.isShorthandPropertyAssignment(prop)) {
+      named[`${prefix}${prop.getName()}`] = prop.getName();
+    }
+  }
+
+  return named;
+}
+
+function resolveArrayLiteral(node: Node | undefined): ArrayLiteralExpression | null {
+  if (!node) return null;
+  const unwrapped = unwrapExpression(node);
+  if (Node.isArrayLiteralExpression(unwrapped)) return unwrapped as ArrayLiteralExpression;
+  if (Node.isIdentifier(unwrapped)) return findArrayInitializer(unwrapped as Identifier);
+  return null;
+}
+
+function unwrapExpression(node: Node): Node {
+  let current = node;
+  while (
+    Node.isAsExpression(current) ||
+    Node.isTypeAssertion(current) ||
+    Node.isParenthesizedExpression(current) ||
+    Node.isSatisfiesExpression(current)
+  ) {
+    current = current.getExpression();
+  }
+  return current;
+}
+
+/** Follows `it.each(CASES)` back to a `const CASES = [...]` in an enclosing scope. */
+function findArrayInitializer(id: Identifier): ArrayLiteralExpression | null {
+  const name = id.getText();
+  let scope: Node | undefined = id.getParent();
+
+  while (scope) {
+    if (Node.isBlock(scope) || Node.isSourceFile(scope)) {
+      for (const stmt of scope.getStatements()) {
+        if (!Node.isVariableStatement(stmt)) continue;
+        for (const decl of stmt.getDeclarations()) {
+          if (decl.getName() !== name) continue;
+          const initializer = decl.getInitializer();
+          if (!initializer) return null;
+          const unwrapped = unwrapExpression(initializer);
+          return Node.isArrayLiteralExpression(unwrapped)
+            ? (unwrapped as ArrayLiteralExpression)
+            : null;
+        }
+      }
+    }
+    scope = scope.getParent();
+  }
+
+  return null;
+}
+
+/**
+ * Reads a tagged-template table:
+ *
+ *   it.each`
+ *     a    | b    | expected
+ *     ${1} | ${2} | ${3}
+ *   `('$a + $b', ...)
+ *
+ * The first non-empty line names the columns, every later line is a case.
+ */
+function buildEachFromTemplate(template: Node): EachTable {
+  const parts: Array<{ text: string; isValue: boolean }> = [];
+
+  if (Node.isNoSubstitutionTemplateLiteral(template)) {
+    parts.push({ text: template.getLiteralText(), isValue: false });
+  } else if (Node.isTemplateExpression(template)) {
+    parts.push({ text: template.getHead().getLiteralText(), isValue: false });
+    for (const span of template.getTemplateSpans()) {
+      parts.push({ text: literalText(span.getExpression()), isValue: true });
+      parts.push({ text: span.getLiteral().getLiteralText(), isValue: false });
+    }
+  } else {
+    return { form: 'template', rows: [], resolved: false };
+  }
+
+  const lines: string[][] = [[]];
+  let cell = '';
+  const pushCell = () => {
+    lines[lines.length - 1].push(cell.trim());
+    cell = '';
+  };
+
+  for (const part of parts) {
+    if (part.isValue) {
+      cell += part.text;
+      continue;
+    }
+    for (const char of part.text) {
+      if (char === '\n') {
+        pushCell();
+        lines.push([]);
+      } else if (char === '|') {
+        pushCell();
+      } else {
+        cell += char;
+      }
+    }
+  }
+  pushCell();
+
+  const populated = lines.filter((cells) => cells.some((c) => c.length > 0));
+  if (populated.length === 0) return { form: 'template', rows: [], resolved: false };
+
+  const header = populated[0];
+  const rows: EachRow[] = populated.slice(1).map((cells) => {
+    const named: Record<string, string> = {};
+    header.forEach((column, i) => {
+      if (column) named[column] = cells[i] ?? '';
+    });
+    return { values: cells, named };
+  });
+
+  return { form: 'template', rows, resolved: true };
+}
+
+/**
+ * Substitutes Jest's title tokens for one row: printf-style (%s, %d, %#, ...)
+ * consumed positionally, then `$name` / `$#` for object and template rows.
+ */
+function interpolateEachTitle(titleTemplate: string, row: EachRow, index: number): string {
+  let valueIndex = 0;
+  let title = titleTemplate.replace(/%([sdifjop#%])/g, (match, token: string) => {
+    if (token === '%') return '%';
+    if (token === '#') return String(index);
+    const value = row.values[valueIndex++];
+    return value === undefined ? match : value;
+  });
+
+  if (row.named) {
+    title = title.replace(/\$([#\w]+(?:\.\w+)*)/g, (match, ref: string) => {
+      if (ref === '#') return String(index);
+      const direct = row.named?.[ref];
+      if (direct !== undefined) return direct;
+      const base = row.named?.[ref.split('.')[0]];
+      return base !== undefined ? base : match;
+    });
+  }
+
+  return title;
+}
+
+function buildParameterizedInfo(each: EachTable, titleTemplate: string): ParameterizedInfo {
+  return { form: each.form, titleTemplate, caseCount: each.rows.length };
+}
+
+function shouldExpandCases(each: EachTable): boolean {
+  return each.resolved && each.rows.length > 0 && each.rows.length <= MAX_EXPANDED_CASES;
+}
+
+/* ------------------------------------------------------------------ *
+ * Titles, mocks                                                       *
+ * ------------------------------------------------------------------ */
+
+function getTitle(node: Node): string | null {
+  const literal = getStringLiteralValue(node);
+  if (literal !== null) return literal;
+  // `.each` titles are occasionally built from a template literal; keep the raw text.
+  if (Node.isTemplateExpression(node)) return node.getText().slice(1, -1);
+  return null;
 }
 
 function getStringLiteralValue(node: Node): string | null {
   if (Node.isStringLiteral(node)) return node.getLiteralValue();
   if (Node.isNoSubstitutionTemplateLiteral(node)) return node.getLiteralValue();
   return null;
+}
+
+function literalText(node: Node): string {
+  const value = getStringLiteralValue(node);
+  if (value !== null) return value;
+  return node.getText().replace(/\s+/g, ' ');
+}
+
+function isTestCallback(node: Node): node is TestCallback {
+  return Node.isArrowFunction(node) || Node.isFunctionExpression(node);
 }
 
 function extractMocksFromBlock(block: Block): string[] {
@@ -117,41 +456,74 @@ function findVariableNameForObjectLiteral(objLit: ObjectLiteralExpression): stri
   return null;
 }
 
-function extractTestsFromBlock(block: Block): TestNode[] {
-  const tests: TestNode[] = [];
-  const statements = block.getStatements();
+/* ------------------------------------------------------------------ *
+ * Tests                                                               *
+ * ------------------------------------------------------------------ */
 
-  for (const stmt of statements) {
+function extractTestsFromBlock(block: Block, subjectVars: Set<string>): TestNode[] {
+  const tests: TestNode[] = [];
+
+  for (const stmt of block.getStatements()) {
     if (!Node.isExpressionStatement(stmt)) continue;
     const expr = stmt.getExpression();
     if (!Node.isCallExpression(expr)) continue;
 
     const call = expr as CallExpression;
-    const callExpr = call.getExpression();
-    if (!Node.isIdentifier(callExpr)) continue;
-    const calleeName = callExpr.getText();
-    if (calleeName !== 'it' && calleeName !== 'test') continue;
+    const callee = resolveCallee(call);
+    if (!callee || callee.kind !== 'test') continue;
 
     const args = call.getArguments();
     if (args.length < 2) continue;
-    const name = getStringLiteralValue(args[0]);
+    const title = getTitle(args[0]);
     const callback = args[1];
-    if (!name) continue;
-    if (!Node.isArrowFunction(callback) && !Node.isFunctionExpression(callback)) continue;
+    if (!title) continue;
+    if (!isTestCallback(callback)) continue;
 
-    const testNode = analyzeTest(name, callback as ArrowFunction);
-    tests.push(testNode);
+    if (!callee.each) {
+      tests.push(analyzeTest(title, title, callback, subjectVars));
+      continue;
+    }
+
+    const info = buildParameterizedInfo(callee.each, title);
+    if (!shouldExpandCases(callee.each)) {
+      // Table could not be read statically (or is very large): keep one entry that
+      // carries the raw title template, so the assertions still reach the inventory.
+      tests.push({
+        ...analyzeTest(title, title, callback, subjectVars),
+        parameterized: info,
+      });
+      continue;
+    }
+
+    callee.each.rows.forEach((row, index) => {
+      const caseName = interpolateEachTitle(title, row, index);
+      tests.push({
+        ...analyzeTest(caseName, title, callback, subjectVars),
+        parameterized: { ...info, caseIndex: index },
+      });
+    });
   }
 
   return tests;
 }
 
-function analyzeTest(name: string, callback: ArrowFunction): TestNode {
+/**
+ * @param name         canonical name recorded in the inventory (a `.each` case name)
+ * @param titleForHint title used to infer the target method — the raw template for
+ *                     `.each`, so per-row values do not skew the match
+ */
+function analyzeTest(
+  name: string,
+  titleForHint: string,
+  callback: TestCallback,
+  subjectVars: Set<string>
+): TestNode {
   const body = callback.getBody();
-  const block = Node.isBlock(body) ? (body as Block) : null;
+  // Concise arrow bodies (`it('x', () => expect(...).toBe(1))`) carry assertions too.
+  const scope = Node.isBlock(body) ? (body as Block) : body;
   const isAsync = callback.isAsync();
-  const assertions = block ? extractAssertions(block) : [];
-  const targetMethod = inferTargetMethod(name, block);
+  const assertions = extractAssertions(scope);
+  const targetMethod = inferTargetMethod(titleForHint, scope, subjectVars);
   const mocks: string[] = [];
 
   return {
@@ -163,16 +535,15 @@ function analyzeTest(name: string, callback: ArrowFunction): TestNode {
   };
 }
 
-function extractAssertions(block: Block): AssertionNode[] {
+function extractAssertions(scope: Node): AssertionNode[] {
   const assertions: AssertionNode[] = [];
-  const callExps = block.getDescendantsOfKind(SyntaxKind.CallExpression);
 
-  for (const call of callExps) {
+  for (const call of getCallExpressions(scope)) {
     const expr = call.getExpression();
     if (!Node.isIdentifier(expr)) continue;
     if (expr.getText() !== 'expect') continue;
 
-    const outerCall = findOuterExpectCall(call as CallExpression);
+    const outerCall = findOuterExpectCall(call);
     if (!outerCall) continue;
 
     const outerExpr = outerCall.getExpression();
@@ -183,12 +554,18 @@ function extractAssertions(block: Block): AssertionNode[] {
     const { matcher, hasRejects } = chain;
     if (!matcher) continue;
 
-    const target = getExpectTarget(call as CallExpression);
+    const target = getExpectTarget(call);
     const type = categorizeAssertion(matcher, hasRejects);
     assertions.push({ type, target, matcherUsed: matcher });
   }
 
   return assertions;
+}
+
+function getCallExpressions(scope: Node): CallExpression[] {
+  const calls = scope.getDescendantsOfKind(SyntaxKind.CallExpression);
+  if (Node.isCallExpression(scope)) calls.unshift(scope as CallExpression);
+  return calls;
 }
 
 function findOuterExpectCall(expectCall: CallExpression): CallExpression | null {
@@ -200,6 +577,16 @@ function findOuterExpectCall(expectCall: CallExpression): CallExpression | null 
   return null;
 }
 
+/**
+ * Walk an `expect(...)` chain from the outside in and report the matcher that
+ * actually does the checking.
+ *
+ * The chain is `expect(x).<modifier>*.<matcher>`, so the outermost property
+ * access is the matcher and everything nested inside it is a modifier. Only
+ * `resolves` / `rejects` / `not` may appear as modifiers; recording one of them
+ * as `matcherUsed` (as this used to do for `resolves` and `not`) hides the real
+ * matcher from every strength classifier downstream.
+ */
 function getExpectChain(pa: PropertyAccessExpression): { matcher: string; hasRejects: boolean } {
   let current: Node = pa;
   let matcher = '';
@@ -208,7 +595,9 @@ function getExpectChain(pa: PropertyAccessExpression): { matcher: string; hasRej
   while (Node.isPropertyAccessExpression(current)) {
     const name = (current as PropertyAccessExpression).getName();
     if (name === 'rejects') hasRejects = true;
-    else matcher = name;
+    // The outermost non-modifier name is the matcher; `resolves`/`not` sit
+    // between it and `expect(...)` and must not overwrite it.
+    else if (!EXPECT_MODIFIERS.has(name) && !matcher) matcher = name;
     const expr = (current as PropertyAccessExpression).getExpression();
     if (Node.isCallExpression(expr)) {
       break;
@@ -229,11 +618,16 @@ function getExpectTarget(expectCall: CallExpression): string {
 function categorizeAssertion(matcher: string, hasRejects: boolean): AssertionNode['type'] {
   if (matcher === 'toHaveBeenCalledWith') return 'called_with';
   if (matcher === 'toHaveBeenCalled' || matcher === 'toHaveBeenCalledTimes') return 'spy_call_count';
-  if (matcher === 'toThrow' && hasRejects) return 'rejects';
-  if (matcher === 'toThrow' && !hasRejects) return 'throws';
+  // Any `rejects.*` chain asserts on an error path, not just `rejects.toThrow`.
+  if (hasRejects) return 'rejects';
+  if (matcher === 'toThrow') return 'throws';
   if (matcher === 'toMatchSnapshot' || matcher === 'toMatchInlineSnapshot') return 'snapshot';
   return 'value_check';
 }
+
+/* ------------------------------------------------------------------ *
+ * Target method inference                                             *
+ * ------------------------------------------------------------------ */
 
 const TEST_UTILITY_METHODS = new Set([
   'fn', 'spyOn', 'mock', 'mockReturnValue', 'mockReturnValueOnce',
@@ -255,48 +649,240 @@ const TEST_UTILITY_METHODS = new Set([
   'then', 'catch', 'finally',
 ]);
 
-function inferTargetMethod(testName: string, block: Block | null): string | null {
-  if (!block) return null;
+const GLOBAL_RECEIVERS = new Set([
+  'jest', 'expect', 'console', 'JSON', 'Object', 'Array', 'Math', 'Date', 'Promise',
+]);
 
-  const candidates = new Map<string, number>();
-  const calls = block.getDescendantsOfKind(SyntaxKind.CallExpression);
+/** How much a single call counts towards being the method the test targets. */
+const ROLE_WEIGHTS = { act: 3, assert: 2, post: 1.5, arrange: 0.5 } as const;
 
-  for (const call of calls) {
-    const expr = call.getExpression();
-    if (Node.isPropertyAccessExpression(expr)) {
-      const pa = expr as PropertyAccessExpression;
-      const methodName = pa.getName();
+type CallRole = keyof typeof ROLE_WEIGHTS;
 
-      if (TEST_UTILITY_METHODS.has(methodName)) continue;
-      if (methodName.startsWith('mock') || methodName.startsWith('__')) continue;
+interface Candidate {
+  name: string;
+  weight: number;
+  onSubject: boolean;
+}
 
-      const obj = pa.getExpression();
-      const objText = obj.getText();
-      if (objText === 'jest' || objText === 'expect' || objText === 'console' || objText === 'JSON' || objText === 'Object' || objText === 'Array' || objText === 'Math' || objText === 'Date' || objText === 'Promise') continue;
+interface CallOccurrence {
+  name: string;
+  role: CallRole;
+  onSubject: boolean;
+  /** Position of the call in the test body; helper calls report their call site. */
+  start: number;
+}
 
-      if (isPartOfAssertionChain(call)) continue;
-      if (isDescendantOfMockChain(call)) continue;
+/** How far to follow test-local helper functions when looking for the real call. */
+const MAX_HELPER_DEPTH = 2;
 
-      candidates.set(methodName, (candidates.get(methodName) ?? 0) + 1);
-      continue;
-    }
+/**
+ * Picks the method a test exercises. The first call in the body is a poor proxy —
+ * it is usually setup — so candidates are ranked by, in order: a match against the
+ * test title, being called on the subject under test, and the role their calls play
+ * (act > assertion target > post-assertion > arrange).
+ */
+function inferTargetMethod(
+  testName: string,
+  scope: Node | null,
+  subjectVars: Set<string>
+): string | null {
+  if (!scope) return null;
 
-    if (Node.isIdentifier(expr)) {
-      const functionName = expr.getText();
-      if (TEST_UTILITY_METHODS.has(functionName)) continue;
-      if (functionName.startsWith('mock') || functionName.startsWith('__')) continue;
+  const occurrences = collectCallOccurrences(scope, subjectVars);
+  if (occurrences.length === 0) return null;
 
-      if (isPartOfAssertionChain(call)) continue;
-      if (isDescendantOfMockChain(call)) continue;
+  const candidates = new Map<string, Candidate>();
+  for (const occurrence of occurrences) {
+    const existing = candidates.get(occurrence.name);
+    candidates.set(occurrence.name, {
+      name: occurrence.name,
+      weight: (existing?.weight ?? 0) + ROLE_WEIGHTS[occurrence.role],
+      onSubject: (existing?.onSubject ?? false) || occurrence.onSubject,
+    });
+  }
 
-      candidates.set(functionName, (candidates.get(functionName) ?? 0) + 1);
+  // The last setup-phase call is the "act" of an arrange/act/assert test.
+  const lastArrange = occurrences
+    .filter((o) => o.role === 'arrange')
+    .reduce<CallOccurrence | null>((acc, cur) => (acc === null || cur.start > acc.start ? cur : acc), null);
+  if (lastArrange) {
+    const candidate = candidates.get(lastArrange.name);
+    if (candidate) {
+      candidate.weight += ROLE_WEIGHTS.act - ROLE_WEIGHTS.arrange;
     }
   }
 
-  if (candidates.size === 0) return null;
+  const titleTokens = tokenizeTitle(testName);
+  const ranked = [...candidates.values()].sort((a, b) => {
+    const titleDiff = Number(matchesTitle(b.name, titleTokens)) - Number(matchesTitle(a.name, titleTokens));
+    if (titleDiff !== 0) return titleDiff;
+    const subjectDiff = Number(b.onSubject) - Number(a.onSubject);
+    if (subjectDiff !== 0) return subjectDiff;
+    return b.weight - a.weight;
+  });
 
-  const sorted = [...candidates.entries()].sort((a, b) => b[1] - a[1]);
-  return sorted[0][0];
+  return ranked[0].name;
+}
+
+/**
+ * Lists the calls in a test body that could name the method under test. Calls to
+ * helpers declared in the test file itself (`const order = (p) => service.createOrder(p)`)
+ * are replaced by the calls inside the helper, which is what the test really exercises.
+ */
+function collectCallOccurrences(
+  scope: Node,
+  subjectVars: Set<string>,
+  depth = 0,
+  visited: Set<string> = new Set(),
+  roleOverride?: CallRole
+): CallOccurrence[] {
+  const occurrences: CallOccurrence[] = [];
+  const firstAssertionStart = roleOverride ? Number.POSITIVE_INFINITY : getFirstAssertionStart(scope);
+
+  for (const call of getCallExpressions(scope)) {
+    const expr = call.getExpression();
+    let name: string | null = null;
+    let onSubject = false;
+
+    if (Node.isPropertyAccessExpression(expr)) {
+      const pa = expr as PropertyAccessExpression;
+      name = pa.getName();
+      const receiver = pa.getExpression();
+      if (GLOBAL_RECEIVERS.has(receiver.getText())) continue;
+      onSubject = subjectVars.has(getRootIdentifierName(receiver) ?? '');
+    } else if (Node.isIdentifier(expr)) {
+      name = expr.getText();
+    }
+
+    if (!name) continue;
+    if (TEST_UTILITY_METHODS.has(name)) continue;
+    if (name.startsWith('mock') || name.startsWith('__')) continue;
+    if (isPartOfAssertionChain(call)) continue;
+    if (isDescendantOfMockChain(call)) continue;
+
+    const role = roleOverride ?? classifyCallRole(call, firstAssertionStart);
+
+    if (Node.isIdentifier(expr) && depth < MAX_HELPER_DEPTH && !visited.has(name)) {
+      const helperBody = findLocalFunctionBody(expr as Identifier);
+      if (helperBody) {
+        const inner = collectCallOccurrences(
+          helperBody,
+          subjectVars,
+          depth + 1,
+          new Set([...visited, name]),
+          role
+        );
+        for (const occurrence of inner) {
+          occurrences.push({ ...occurrence, start: call.getStart() });
+        }
+        continue;
+      }
+    }
+
+    occurrences.push({ name, role, onSubject, start: call.getStart() });
+  }
+
+  return occurrences;
+}
+
+/** Resolves an identifier to a function declared in the same file, if there is one. */
+function findLocalFunctionBody(id: Identifier): Node | null {
+  const name = id.getText();
+  let scope: Node | undefined = id.getParent();
+
+  while (scope) {
+    if (Node.isBlock(scope) || Node.isSourceFile(scope)) {
+      for (const stmt of scope.getStatements()) {
+        if (Node.isFunctionDeclaration(stmt) && stmt.getName() === name) {
+          return stmt.getBody() ?? null;
+        }
+        if (!Node.isVariableStatement(stmt)) continue;
+        for (const decl of stmt.getDeclarations()) {
+          if (decl.getName() !== name) continue;
+          const initializer = decl.getInitializer();
+          if (!initializer) return null;
+          const unwrapped = unwrapExpression(initializer);
+          return isTestCallback(unwrapped) ? unwrapped.getBody() : null;
+        }
+      }
+    }
+    scope = scope.getParent();
+  }
+
+  return null;
+}
+
+function getRootIdentifierName(node: Node): string | null {
+  let current: Node = node;
+  while (Node.isPropertyAccessExpression(current) || Node.isCallExpression(current)) {
+    current = current.getExpression();
+  }
+  return Node.isIdentifier(current) ? current.getText() : null;
+}
+
+function getFirstAssertionStart(scope: Node): number {
+  let first = Number.POSITIVE_INFINITY;
+  for (const call of getCallExpressions(scope)) {
+    const expr = call.getExpression();
+    if (!Node.isIdentifier(expr) || expr.getText() !== 'expect') continue;
+    first = Math.min(first, call.getStart());
+  }
+  return first;
+}
+
+function classifyCallRole(call: CallExpression, firstAssertionStart: number): CallRole {
+  if (isInsideExpectArgument(call)) return 'assert';
+  if (call.getStart() < firstAssertionStart) return 'arrange';
+  return 'post';
+}
+
+function isInsideExpectArgument(node: Node): boolean {
+  let current: Node | undefined = node.getParent();
+  while (current) {
+    if (Node.isCallExpression(current)) {
+      const expr = (current as CallExpression).getExpression();
+      if (Node.isIdentifier(expr) && expr.getText() === 'expect') {
+        const args = (current as CallExpression).getArguments();
+        return args.length > 0 && args[0].containsRange(node.getStart(), node.getEnd());
+      }
+    }
+    current = current.getParent();
+  }
+  return false;
+}
+
+function tokenizeTitle(testName: string): string[] {
+  return testName
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function splitIdentifierWords(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+/** True when every word of the method name shows up in the test title. */
+function matchesTitle(methodName: string, titleTokens: string[]): boolean {
+  const words = splitIdentifierWords(methodName);
+  if (words.length === 0 || titleTokens.length === 0) return false;
+  return words.every((word) => titleTokens.some((token) => wordMatchesToken(word, token)));
+}
+
+/** Exact match for short words, shared-stem match for longer ones ("reserve" ~ "reservation"). */
+function wordMatchesToken(word: string, token: string): boolean {
+  if (word.length < 4) return word === token;
+  if (word === token) return true;
+  const required = Math.max(4, word.length - 2);
+  let shared = 0;
+  while (shared < word.length && shared < token.length && word[shared] === token[shared]) {
+    shared += 1;
+  }
+  return shared >= required;
 }
 
 function isPartOfAssertionChain(node: Node): boolean {
@@ -334,4 +920,102 @@ function isDescendantOfMockChain(node: Node): boolean {
     current = current.getParent();
   }
   return false;
+}
+
+/* ------------------------------------------------------------------ *
+ * Subject-under-test detection                                        *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Finds variables bound to a class instance — `new OrdersService()`,
+ * `module.get(OrdersService)`, `TestBed.inject(OrdersService)` — so calls on the
+ * subject can outrank calls on its collaborators.
+ */
+function collectSubjectBindings(sourceFile: SourceFile): SubjectBinding[] {
+  const bindings: SubjectBinding[] = [];
+
+  for (const decl of sourceFile.getDescendantsOfKind(SyntaxKind.VariableDeclaration)) {
+    const initializer = decl.getInitializer();
+    const className = initializer ? getConstructedClassName(initializer) : null;
+    if (className) bindings.push({ varName: decl.getName(), className });
+  }
+
+  for (const bin of sourceFile.getDescendantsOfKind(SyntaxKind.BinaryExpression)) {
+    if (bin.getOperatorToken().getText() !== '=') continue;
+    const left = bin.getLeft();
+    if (!Node.isIdentifier(left)) continue;
+    const className = getConstructedClassName(bin.getRight());
+    if (className) bindings.push({ varName: left.getText(), className });
+  }
+
+  return bindings;
+}
+
+const INJECTOR_METHODS = new Set(['get', 'inject', 'resolve', 'select']);
+
+function getConstructedClassName(node: Node): string | null {
+  const expr = unwrapExpression(stripAwait(node));
+
+  if (Node.isNewExpression(expr)) {
+    const target = expr.getExpression();
+    return Node.isIdentifier(target) ? target.getText() : null;
+  }
+
+  if (Node.isCallExpression(expr)) {
+    const callee = expr.getExpression();
+    if (!Node.isPropertyAccessExpression(callee)) return null;
+    if (!INJECTOR_METHODS.has((callee as PropertyAccessExpression).getName())) return null;
+    const arg = expr.getArguments()[0];
+    if (arg && Node.isIdentifier(arg)) return arg.getText();
+    const typeArg = expr.getTypeArguments()[0];
+    return typeArg ? typeArg.getText() : null;
+  }
+
+  return null;
+}
+
+function stripAwait(node: Node): Node {
+  return Node.isAwaitExpression(node) ? node.getExpression() : node;
+}
+
+/**
+ * Matches a describe block (or its ancestors, for nested blocks) against the
+ * classes constructed in the file.
+ */
+function resolveSubjectVars(
+  describeCall: CallExpression,
+  describeName: string,
+  bindings: SubjectBinding[]
+): Set<string> {
+  const names = [describeName, ...getAncestorDescribeNames(describeCall)];
+  const subjectVars = new Set<string>();
+
+  for (const name of names) {
+    for (const binding of bindings) {
+      if (binding.className.toLowerCase() === name.trim().toLowerCase()) {
+        subjectVars.add(binding.varName);
+      }
+    }
+    if (subjectVars.size > 0) break;
+  }
+
+  return subjectVars;
+}
+
+function getAncestorDescribeNames(describeCall: CallExpression): string[] {
+  const names: string[] = [];
+  let current: Node | undefined = describeCall.getParent();
+
+  while (current) {
+    if (Node.isCallExpression(current)) {
+      const callee = resolveCallee(current as CallExpression);
+      if (callee?.kind === 'describe') {
+        const title = getTitle((current as CallExpression).getArguments()[0]);
+        if (title) names.push(title);
+      }
+    }
+    current = current.getParent();
+  }
+
+  return names;
 }

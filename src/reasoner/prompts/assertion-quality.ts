@@ -49,6 +49,7 @@ function serializeTestFiles(
               })),
               mocks: t.mocks,
               isAsync: t.isAsync,
+              ...(t.parameterized ? { parameterized: t.parameterized } : {}),
               ...(method ? {
                 targetMethodInfo: {
                   visibility: method.visibility,

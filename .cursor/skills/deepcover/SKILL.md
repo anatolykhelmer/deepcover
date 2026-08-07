@@ -12,6 +12,19 @@ Orchestrate the extract → reason → analyze pipeline. Prefer the installed CL
 
 ## Workflow
 
+### 0. Check for Jest runtime data (recommended)
+
+Before extracting, check whether the target project's Jest config already has the DeepCover reporter wired up:
+
+```json
+{
+  "reporters": ["default", "@anatolykhelmer/deep-cover/reporter"],
+  "collectCoverage": true
+}
+```
+
+If it's missing, tell the user and offer to add it (both `reporters` and `collectCoverage: true` are required together — one without the other silently loses half the data). Then have them run their test suite with coverage once (e.g. `npm test -- --coverage`) so `.deepcover/jest-runtime.json` and `.deepcover/istanbul-coverage.json` exist before `extract`/`analyze`. Without these files, scoring falls back to static heuristics only — noticeably less accurate for Assertion Quality, State Coverage, Mutation Resilience, and Criticality. This step is optional but strongly recommended; proceed without it only if the user declines.
+
 ### 1. Extract
 
 ```bash
@@ -46,7 +59,7 @@ Add `--bugs` / `--bug-threshold <n>` when bug-finding was enabled. Use `--format
 ## Notes
 
 - Deterministic-only (no LLM): `npx deepcover analyze --root ... --no-llm`
-- Jest runtime data: if the project uses `DeepCoverReporter`, analyze auto-reads `.deepcover/jest-runtime.json` and `istanbul-coverage.json`
+- Jest runtime data: `analyze` auto-reads `.deepcover/jest-runtime.json` and `istanbul-coverage.json` when present (see step 0). Report which files were found — if either is missing, say so rather than presenting heuristic numbers as ground truth
 - Install for Cursor: `deepcover init --agent cursor` (default). For Claude Code: `deepcover init --agent claude`
 - Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner
 - Do not invent coverage numbers — ground claims in the CodeModel and reasoner output

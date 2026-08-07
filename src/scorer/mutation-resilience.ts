@@ -2,15 +2,7 @@ import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
-
-const STRONG_MATCHERS = ['toEqual', 'toStrictEqual', 'toHaveBeenCalledWith', 'toThrow', 'toBe'];
-const MEDIUM_MATCHERS = ['toContain', 'toMatch', 'toHaveBeenCalledTimes', 'toHaveLength'];
-
-function getAssertionSpecificity(matcherUsed: string): number {
-  if (STRONG_MATCHERS.includes(matcherUsed)) return 1;
-  if (MEDIUM_MATCHERS.includes(matcherUsed)) return 0.6;
-  return 0.2;
-}
+import { getAssertionSpecificity } from './matchers';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
