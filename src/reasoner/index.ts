@@ -109,7 +109,7 @@ export async function runReasoner(
   });
 
   const bugP: Promise<BugFindingOutput | undefined> =
-    bugSignals && bugSignals.length > 0
+    bugSignals !== undefined
       ? (async () => {
           try {
             const { system, user } = buildBugFindingPrompt({

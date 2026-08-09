@@ -101,6 +101,12 @@ describe('runReasoner', () => {
     expect(maxInFlight).toBeGreaterThanOrEqual(2);
   });
 
+  it('runs bug-finding when bugSignals is an empty array', async () => {
+    const output = await runReasoner(minimalCodeModel, new MockLLMProvider(), []);
+    expect(output.bugFindings).toBeDefined();
+    expect(output.bugFindings!.findings.length + output.bugFindings!.signalValidations.length).toBeGreaterThan(0);
+  });
+
   it('runs bug-finding when bugSignals are provided', async () => {
     const signals = [
       {
