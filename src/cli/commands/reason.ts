@@ -10,6 +10,7 @@ import type { BugSignal } from '../../bug-detector/types';
 import { loadConfig } from '../config';
 import { resolveLLMProvider } from '../resolve-provider';
 import { loadIstanbulCoverage } from '../../resolver/istanbul-source';
+import { scopeModelForReasoner } from '../module-scope';
 
 function resolvePaths(root: string, module?: string, file?: string) {
   const rootDir = path.resolve(root);
@@ -103,9 +104,11 @@ export const reasonCommand = new Command('reason')
       });
     }
 
+    const scopedModel = scopeModelForReasoner(codeModel, options.module);
+
     const provider = resolveLLMProvider(config);
-    const bugSignals = options.bugs ? loadBugSignals(rootDir, codeModel) : undefined;
-    const reasonerOutput = await runReasoner(codeModel, provider, bugSignals);
+    const bugSignals = options.bugs ? loadBugSignals(rootDir, scopedModel) : undefined;
+    const reasonerOutput = await runReasoner(scopedModel, provider, bugSignals);
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(reasonerOutput, null, 2));

@@ -32,6 +32,31 @@ describe('reason command', () => {
     expect(parsed.transitiveInferences.length).toBeGreaterThan(0);
   });
 
+  it('judges only tests inside --module, not the whole project', () => {
+    const out = path.join(tmpDir, 'reasoner-output.json');
+    execSync(
+      `${CLI} reason --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${out}`,
+      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    );
+    const parsed = ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(out, 'utf-8')));
+
+    // extract already scopes prompts to the module — reason must agree with it.
+    execSync(
+      `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${tmpDir}`,
+      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    );
+    const prompts = JSON.parse(fs.readFileSync(path.join(tmpDir, 'prompts.json'), 'utf-8'));
+    const promptTestFiles = JSON.parse(prompts.assertionQuality.user).testFiles as Array<{
+      describes: Array<{ tests: Array<{ name: string }> }>;
+    }>;
+    const expected = new Set(
+      promptTestFiles.flatMap((tf) => tf.describes.flatMap((d) => d.tests.map((t) => t.name))),
+    );
+
+    expect(expected.size).toBeGreaterThan(0);
+    expect(new Set(parsed.assertionJudgments.map((j) => j.testName))).toEqual(expected);
+  });
+
   it('loads --code-model without needing --module', () => {
     execSync(
       `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${tmpDir}`,

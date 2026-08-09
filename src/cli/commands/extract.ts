@@ -10,9 +10,14 @@ import { buildBugFindingPrompt } from '../../reasoner/prompts/bug-finding';
 import { runBugDetector } from '../../bug-detector';
 import { resolveCoverage } from '../../resolver';
 import { mapIstanbulToMethod } from '../../resolver/istanbul-mapper';
-import type { ClassNode, FunctionNode, TestFileNode, TestInventory } from '../../types/code-model';
+import type { ClassNode, FunctionNode, TestInventory } from '../../types/code-model';
 import type { IstanbulCoverageData, JestRuntimeData } from '../../resolver/types';
 import { loadIstanbulCoverage as readIstanbulCoverage } from '../../resolver/istanbul-source';
+import {
+  collectSourceMethodNames,
+  filterClassesForPrompts,
+  filterTestFilesByModule,
+} from '../module-scope';
 
 function buildTestsByMethod(
   testInventory: TestInventory,
@@ -54,30 +59,6 @@ function buildTestsByMethod(
   }
 
   return result;
-}
-
-export function filterTestFilesByModule(
-  testFiles: TestFileNode[],
-  modulePath: string | undefined,
-  sourceMethodNames: Set<string>,
-): TestFileNode[] {
-  if (!modulePath) return testFiles;
-  const moduleBasename = path.basename(modulePath.replace(/\/$/, ''));
-
-  return testFiles.filter((tf) => {
-    if (tf.filePath.includes(moduleBasename)) return true;
-    return tf.describes.some((d) =>
-      d.tests.some((t) => t.targetMethod && sourceMethodNames.has(t.targetMethod)),
-    );
-  });
-}
-
-const STRUCTURAL_CLASS_TYPES = new Set(['controller', 'service', 'gateway', 'module']);
-
-export function filterClassesForPrompts(classes: ClassNode[]): ClassNode[] {
-  return classes.filter(
-    (cls) => cls.methods.length > 0 || STRUCTURAL_CLASS_TYPES.has(cls.type),
-  );
 }
 
 function loadIstanbulCoverage(
@@ -264,17 +245,7 @@ export const extractCommand = new Command('extract')
     const promptClasses = filterClassesForPrompts(allClasses);
     const testsByMethod = buildTestsByMethod(codeModel.testInventory, rootDir);
 
-    const sourceMethodNames = new Set<string>();
-    for (const cls of allClasses) {
-      for (const m of cls.methods) {
-        sourceMethodNames.add(m.name);
-      }
-    }
-    for (const entry of standaloneFunctions) {
-      for (const fn of entry.functions) {
-        sourceMethodNames.add(fn.name);
-      }
-    }
+    const sourceMethodNames = collectSourceMethodNames(codeModel.modules);
 
     const relevantTestFiles = filterTestFilesByModule(
       codeModel.testInventory.testFiles,
