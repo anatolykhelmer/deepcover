@@ -20,6 +20,21 @@ export class MockLLMProvider implements LLMProvider {
     if (s.includes('transitive coverage') || s.includes('dependency graph')) {
       return this.getTransitiveCoverageResponse(user);
     }
+    if (s.includes('potential bugs') || s.includes('bug signal')) {
+      return JSON.stringify({
+        findings: [
+          {
+            pattern: 'untested-invariant',
+            className: 'ItemService',
+            methodName: 'create',
+            description: 'Validation not asserted',
+            risk: 'medium',
+            suggestedTest: 'expect reject on invalid input',
+          },
+        ],
+        signalValidations: [{ signalIndex: 0, confirmed: true, reasoning: 'matches evidence' }],
+      });
+    }
 
     // Default: return empty array
     return '[]';

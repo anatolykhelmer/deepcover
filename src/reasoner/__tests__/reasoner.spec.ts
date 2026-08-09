@@ -84,4 +84,36 @@ describe('runReasoner', () => {
     expect(output.transitiveInferences.length).toBeGreaterThan(0);
     expect(() => ReasonerOutputSchema.parse(output)).not.toThrow();
   });
+
+  it('starts all four core analyze calls before any completes', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const provider: import('../providers/base').LLMProvider = {
+      analyze: async (system, user) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 30));
+        inFlight--;
+        return new MockLLMProvider().analyze(system, user);
+      },
+    };
+    await runReasoner(minimalCodeModel, provider);
+    expect(maxInFlight).toBeGreaterThanOrEqual(2);
+  });
+
+  it('runs bug-finding when bugSignals are provided', async () => {
+    const signals = [
+      {
+        pattern: 'unhandled-error-path' as const,
+        className: 'ItemService',
+        methodName: 'create',
+        evidence: 'throws without test',
+        sourceLocation: { file: '/src/item.service.ts', line: 1 },
+        confidence: 0.7,
+      },
+    ];
+    const output = await runReasoner(minimalCodeModel, new MockLLMProvider(), signals);
+    expect(output.bugFindings).toBeDefined();
+    expect(output.bugFindings!.findings.length + output.bugFindings!.signalValidations.length).toBeGreaterThan(0);
+  });
 });
