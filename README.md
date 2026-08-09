@@ -274,6 +274,30 @@ Produces:
 - `reasoner-output.json` — empty template for the agent to fill
 - `bug-signals.json` — *(with `--bugs`)* deterministic bug detector signals
 
+### `deepcover reason`
+
+Run the LLM Reasoner via the configured provider and write `reasoner-output.json` (no scoring).
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--root <path>` | Project root directory | Current directory |
+| `--module <path>` | Module to analyze (relative to root) | — |
+| `--file <path>` | Single file to analyze | — |
+| `--code-model <file>` | Existing CodeModel JSON (skips extract) | — |
+| `--output <file>` | Output path | `<root>/.deepcover/reasoner-output.json` |
+| `--bugs` | Include bug-finding (`bugFindings`) | off |
+
+Staged CI example:
+
+```bash
+npx @anatolykhelmer/deep-cover extract --module src/orders
+npx @anatolykhelmer/deep-cover reason  --module src/orders --bugs
+npx @anatolykhelmer/deep-cover score   --module src/orders \
+  --reasoner-input .deepcover/reasoner-output.json --min-score 60 --bugs
+```
+
+`--code-model .deepcover/code-model.json` can replace `--module` on `reason` if `extract` already ran.
+
 ### `deepcover analyze`
 
 Run the full analysis pipeline and produce a report.

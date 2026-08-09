@@ -28,22 +28,22 @@ If it's missing, tell the user and offer to add it (both `reporters` and `collec
 ### 1. Extract
 
 ```bash
-npx deepcover extract --root <PROJECT_ROOT> --module <MODULE_PATH>
+npx deepcover extract --root <PROJECT_ROOT> --module <MODULE_PATH> --bugs
 ```
 
-Optional: `--file <path>`, `--bugs` (adds bug-finding prompt + deterministic signals).
+Optional: `--file <path>`. Bug-finding is on by default in this skill (`--bugs` writes `bug-signals.json` and the 5th prompt). CLI still requires the flag; omit it only if the user wants coverage-only.
 
 Outputs under `.deepcover/`:
 - `code-model.json`
-- `prompts.json`
+- `prompts.json` (includes bug-finding)
 - `reasoner-output.json` (template — **you fill this**)
-- optionally `bug-signals.json` when `--bugs`
+- `bug-signals.json`
 
 ### 2. Reason (you are the Reasoner)
 
 1. Read `.deepcover/code-model.json` and `.deepcover/prompts.json`.
-2. Follow every job in `prompts.json` (domain states, assertion quality, criticality, transitive coverage; plus bug-finding when present).
-3. Write results into `.deepcover/reasoner-output.json`.
+2. Follow every job in `prompts.json` (domain states, assertion quality, criticality, transitive coverage, and bug-finding). Signals are already embedded in the bug-finding prompt — you do not need to open `bug-signals.json` separately.
+3. Write results into `.deepcover/reasoner-output.json` (include `bugFindings`).
 4. Every item needs `confidence` (0–1). Prefer a few high-quality insights over many generic ones.
 5. If `.deepcover/AGENT_README.md` (or similar agent instructions) exists, follow it.
 
@@ -51,15 +51,16 @@ Outputs under `.deepcover/`:
 
 ```bash
 npx deepcover analyze --root <PROJECT_ROOT> --module <MODULE_PATH> \
-  --reasoner-input .deepcover/reasoner-output.json
+  --reasoner-input .deepcover/reasoner-output.json --bugs
 ```
 
-Add `--bugs` / `--bug-threshold <n>` when bug-finding was enabled. Use `--format json` for machine-readable output.
+Use `--format json` for machine-readable output. Add `--bug-threshold <n>` when the user wants CI-style gating on high-risk bugs.
 
 ## Notes
 
 - Deterministic-only (no LLM): `npx deepcover analyze --root ... --no-llm`
+- Coverage-only (skip bug-finding): omit `--bugs` on extract/analyze
 - Jest runtime data: `analyze` auto-reads `.deepcover/jest-runtime.json` and `istanbul-coverage.json` when present (see step 0). Report which files were found — if either is missing, say so rather than presenting heuristic numbers as ground truth
 - Install for Cursor: `deepcover init --agent cursor` (default). For Claude Code: `deepcover init --agent claude`
-- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner
+- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner. If Anthropic is configured, you may run `npx deepcover reason --root … --module … --bugs` instead of filling `reasoner-output.json` yourself, then `analyze --reasoner-input … --bugs`
 - Do not invent coverage numbers — ground claims in the CodeModel and reasoner output
