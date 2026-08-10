@@ -1,0 +1,8 @@
+{
+  "paradigm": "compound-guard-operand",
+  "description": "A guard clause is a chain of four `||` operands, but every test that enters it does so through `a`. Istanbul reports the binary-expr fully covered ([3,3,3,2] — every operand evaluated, none of them proven decisive), so the gap has to be found from the operand structure plus the arguments the tests pass. Dropping `|| Number.isNaN(b)` from the guard would keep all three tests green.",
+  "assertions": {
+    "expectedBugPatterns": ["untested-condition-operand"],
+    "expectedBugEvidence": ["Number.isNaN(b)", "bRaw === undefined"]
+  }
+}

@@ -4,17 +4,12 @@ import {
   ArrowFunction,
   FunctionExpression,
   Node,
-  SyntaxKind,
-  IfStatement,
-  SwitchStatement,
-  ConditionalExpression,
-  TryStatement,
-  Block,
   PropertyAccessExpression,
   CallExpression,
   VariableStatement,
 } from 'ts-morph';
-import type { FunctionNode, BranchNode, ParamNode } from '../types/code-model';
+import type { FunctionNode, ParamNode } from '../types/code-model';
+import { collectBranches } from './branch-analyzer';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 
@@ -74,7 +69,7 @@ function analyzeFunction(candidate: FunctionCandidate, functionNames: Set<string
   const returnType = node.getReturnTypeNode()?.getText() ?? 'void';
 
   const body = node.getBody();
-  const branches = body ? collectBranches(body) : [];
+  const branches = body ? collectBranches(body, params.map((p) => p.name)) : [];
   const branchCount = branches.length;
   const hasAsyncOps = node.isAsync() || (body ? hasAwait(body) : false);
   const throwsErrors = body ? hasThrow(body) : false;
@@ -95,60 +90,6 @@ function analyzeFunction(candidate: FunctionCandidate, functionNames: Set<string
     startLine: node.getStartLineNumber(),
     endLine: node.getEndLineNumber(),
   };
-}
-
-function collectBranches(body: Node): BranchNode[] {
-  const branches: BranchNode[] = [];
-
-  function visit(node: Node): void {
-    if (Node.isIfStatement(node)) {
-      const ifStmt = node as IfStatement;
-      const branchType = isGuardClause(ifStmt) ? 'guard' : 'if';
-      branches.push({
-        type: branchType,
-        condition: ifStmt.getExpression().getText(),
-        lineNumber: ifStmt.getStartLineNumber(),
-      });
-    } else if (Node.isSwitchStatement(node)) {
-      const switchStmt = node as SwitchStatement;
-      const expr = switchStmt.getExpression().getText();
-      branches.push({
-        type: 'switch',
-        condition: `switch(${expr})`,
-        lineNumber: switchStmt.getStartLineNumber(),
-      });
-    } else if (Node.isConditionalExpression(node)) {
-      const ternary = node as ConditionalExpression;
-      branches.push({
-        type: 'ternary',
-        condition: ternary.getCondition().getText(),
-        lineNumber: ternary.getStartLineNumber(),
-      });
-    } else if (Node.isTryStatement(node)) {
-      const tryStmt = node as TryStatement;
-      branches.push({
-        type: 'try_catch',
-        condition: 'try/catch',
-        lineNumber: tryStmt.getStartLineNumber(),
-      });
-    }
-    node.forEachChild((child) => visit(child));
-  }
-
-  visit(body);
-  return branches;
-}
-
-function isGuardClause(ifStmt: IfStatement): boolean {
-  const thenStmt = ifStmt.getThenStatement();
-  if (Node.isBlock(thenStmt)) {
-    const block = thenStmt as Block;
-    const stmts = block.getStatements();
-    if (stmts.length !== 1) return false;
-    const stmt = stmts[0];
-    return Node.isReturnStatement(stmt) || Node.isThrowStatement(stmt);
-  }
-  return Node.isReturnStatement(thenStmt) || Node.isThrowStatement(thenStmt);
 }
 
 function hasAwait(node: Node): boolean {

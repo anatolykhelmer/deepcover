@@ -1,4 +1,4 @@
-import type { IstanbulFileCoverage, IstanbulMethodMetrics } from './types';
+import type { BinaryExprCoverage, IstanbulFileCoverage, IstanbulMethodMetrics } from './types';
 
 export function mapIstanbulToMethod(
   fileCoverage: IstanbulFileCoverage,
@@ -19,6 +19,7 @@ export function mapIstanbulToMethod(
 
   let branchesTotal = 0;
   let branchesHit = 0;
+  const binaryExpressions: BinaryExprCoverage[] = [];
 
   for (const [id, branch] of Object.entries(fileCoverage.branchMap)) {
     if (branch.loc.start.line >= startLine && branch.loc.end.line <= endLine) {
@@ -26,6 +27,9 @@ export function mapIstanbulToMethod(
       for (const armCount of arms) {
         branchesTotal += 1;
         if (armCount > 0) branchesHit += 1;
+      }
+      if (branch.type === 'binary-expr') {
+        binaryExpressions.push({ line: branch.loc.start.line, pathCounts: [...arms] });
       }
     }
   }
@@ -37,5 +41,6 @@ export function mapIstanbulToMethod(
     branchesHit,
     branchesTotal,
     branchCoveragePercent: branchesTotal > 0 ? (branchesHit / branchesTotal) * 100 : 100,
+    binaryExpressions,
   };
 }

@@ -529,6 +529,7 @@ function analyzeTest(
   const isAsync = callback.isAsync();
   const assertions = extractAssertions(scope);
   const targetMethod = inferTargetMethod(titleForHint, scope, subjectVars);
+  const targetCallArgs = targetMethod ? findTargetCallArgs(scope, targetMethod) : null;
   const mocks: string[] = [];
 
   return {
@@ -538,7 +539,28 @@ function analyzeTest(
     mocks,
     isAsync,
     targetClass,
+    ...(targetCallArgs ? { targetCallArgs } : {}),
   };
+}
+
+/**
+ * Reads the arguments the test passes to the method under test. Which argument a test
+ * varies is the only static evidence of *which* operand of a compound condition it can
+ * have made decisive, so the values are kept as written.
+ */
+function findTargetCallArgs(scope: Node, targetMethod: string): string[] | null {
+  for (const call of getCallExpressions(scope)) {
+    const expr = call.getExpression();
+    const name = Node.isPropertyAccessExpression(expr)
+      ? (expr as PropertyAccessExpression).getName()
+      : Node.isIdentifier(expr)
+        ? expr.getText()
+        : null;
+    if (name !== targetMethod) continue;
+    if (isDescendantOfMockChain(call)) continue;
+    return call.getArguments().map(literalText);
+  }
+  return null;
 }
 
 function extractAssertions(scope: Node): AssertionNode[] {

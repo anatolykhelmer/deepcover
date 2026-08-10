@@ -758,4 +758,66 @@ describe('test-analyzer', () => {
       expect(bBlock?.tests[0].targetClass).toBe('BService');
     });
   });
+
+  describe('target call arguments', () => {
+    it('records the arguments passed to the method under test', () => {
+      const result = analyzeSource(`
+        describe('CalculatorController', () => {
+          let controller: CalculatorController;
+          beforeEach(() => { controller = new CalculatorController(); });
+
+          it('returns the sum', () => {
+            expect(controller.calculate('2', '3', 'add')).toEqual({ result: 5 });
+          });
+        });
+      `);
+
+      expect(result.describes[0].tests[0].targetCallArgs).toEqual(['2', '3', 'add']);
+    });
+
+    it('reaches the call inside an expect(() => ...) throw assertion', () => {
+      const result = analyzeSource(`
+        describe('CalculatorController', () => {
+          let controller: CalculatorController;
+          beforeEach(() => { controller = new CalculatorController(); });
+
+          it('throws on non-numeric input', () => {
+            expect(() => controller.calculate('foo', '3', 'add')).toThrow(BadRequestException);
+          });
+        });
+      `);
+
+      expect(result.describes[0].tests[0].targetCallArgs).toEqual(['foo', '3', 'add']);
+    });
+
+    it('keeps non-literal arguments as written', () => {
+      const result = analyzeSource(`
+        describe('OrderService', () => {
+          let service: OrderService;
+          beforeEach(() => { service = new OrderService(); });
+
+          it('creates an order', async () => {
+            await service.createOrder(amount, { retry: true });
+          });
+        });
+      `);
+
+      expect(result.describes[0].tests[0].targetCallArgs).toEqual(['amount', '{ retry: true }']);
+    });
+
+    it('records an empty list for a no-argument call', () => {
+      const result = analyzeSource(`
+        describe('OrderService', () => {
+          let service: OrderService;
+          beforeEach(() => { service = new OrderService(); });
+
+          it('lists orders', () => {
+            expect(service.listOrders()).toEqual([]);
+          });
+        });
+      `);
+
+      expect(result.describes[0].tests[0].targetCallArgs).toEqual([]);
+    });
+  });
 });

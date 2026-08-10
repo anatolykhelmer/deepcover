@@ -1,0 +1,7 @@
+{
+  "paradigm": "compound-guard-operand-covered",
+  "description": "The same four-operand guard as `compound-guard-operand`, plus one test that enters it through `b` while `a` is valid. Every operand now has a test that makes it the deciding one, so the operand finding must switch off — this is the false-positive guard for that detector.",
+  "assertions": {
+    "unexpectedBugPatterns": ["untested-condition-operand"]
+  }
+}

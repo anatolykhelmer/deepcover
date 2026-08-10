@@ -65,6 +65,33 @@ export interface BranchNode {
   type: 'if' | 'switch' | 'ternary' | 'try_catch' | 'guard';
   condition: string;
   lineNumber: number;
+  /** Set when `condition` is a `||`/`&&` chain; names the operator joining `operands`. */
+  operator?: '||' | '&&';
+  /** How a `guard` branch leaves the method. Absent for every other branch type. */
+  guardExit?: 'throw' | 'return';
+  /**
+   * The chain's top-level operands, left to right, when `condition` is a `||`/`&&`
+   * chain (always 2+ entries; absent otherwise). Short-circuit evaluation means each
+   * operand is independently testable — a test can enter the branch through one
+   * operand and leave every other one non-decisive — so downstream layers reason per
+   * operand rather than over the collapsed condition text.
+   *
+   * `branchCount` deliberately does NOT count these: it counts branch points, and
+   * inflating it would silently reweight `getComplexityWeight` and the gap-generator's
+   * risk thresholds for every existing project.
+   */
+  operands?: BranchOperandNode[];
+}
+
+export interface BranchOperandNode {
+  /** The operand as written, e.g. `Number.isNaN(b)`. */
+  text: string;
+  /**
+   * Params the operand reads, directly or through a local alias
+   * (`const b = Number(bRaw)` makes `Number.isNaN(b)` depend on param `bRaw`).
+   * Empty when the operand reads no param — e.g. a check on injected state.
+   */
+  paramRefs: string[];
 }
 
 export interface DependencyEdge {
@@ -112,6 +139,13 @@ export interface TestNode {
    * type-check; treat `undefined` the same as `null`.
    */
   targetClass?: string | null;
+  /**
+   * Arguments the test passes to `targetMethod`, as written (`['2', 'foo', 'add']`).
+   * Absent when no call to the target method could be located statically. Used to tell
+   * which parameter a test actually varies, and from that which operand of a compound
+   * condition it can have made decisive.
+   */
+  targetCallArgs?: string[];
 }
 
 export interface ParameterizedInfo {

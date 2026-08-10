@@ -123,6 +123,68 @@ describe('Reasoner prompt templates', () => {
       expect(user).toContain('buildFormattedValidationErrors');
       expect(user).toContain('http-error-formatter.ts');
     });
+
+    describe('compound conditions', () => {
+      const compoundGuard = {
+        type: 'guard' as const,
+        condition: 'aRaw === undefined || Number.isNaN(b)',
+        lineNumber: 19,
+        operator: '||' as const,
+        guardExit: 'throw' as const,
+        operands: [
+          { text: 'aRaw === undefined', paramRefs: ['aRaw'] },
+          { text: 'Number.isNaN(b)', paramRefs: ['bRaw'] },
+        ],
+      };
+
+      it('sends the operands of a class method alongside the whole condition', () => {
+        const classNode = {
+          ...minimalClassNode,
+          methods: [{ ...minimalClassNode.methods[0], branches: [compoundGuard] }],
+        };
+        const { user } = buildDomainStatesPrompt({ classes: [classNode] });
+
+        expect(user).toContain('aRaw === undefined || Number.isNaN(b)');
+        expect(JSON.parse(user).classes[0].methods[0].branches[0]).toMatchObject({
+          operator: '||',
+          operands: ['aRaw === undefined', 'Number.isNaN(b)'],
+        });
+      });
+
+      it('sends the operands of a standalone function too', () => {
+        const functions = [{
+          ...standaloneFunctions[0],
+          functions: [{ ...standaloneFunctions[0].functions[0], branches: [compoundGuard] }],
+        }];
+        const { user } = buildDomainStatesPrompt({ classes: [], standaloneFunctions: functions });
+
+        expect(JSON.parse(user).standaloneFunctions[0].functions[0].branches[0].operands)
+          .toEqual(['aRaw === undefined', 'Number.isNaN(b)']);
+      });
+
+      it('omits the operands field for a simple condition', () => {
+        const classNode = {
+          ...minimalClassNode,
+          methods: [{
+            ...minimalClassNode.methods[0],
+            branches: [{ type: 'if' as const, condition: 'Number.isNaN(b)', lineNumber: 19 }],
+          }],
+        };
+        const { user } = buildDomainStatesPrompt({ classes: [classNode] });
+        const branch = JSON.parse(user).classes[0].methods[0].branches[0];
+
+        expect(branch).toHaveProperty('condition');
+        expect(branch).not.toHaveProperty('operands');
+      });
+
+      it('system prompt tells the model to split operands into separate states', () => {
+        const { system } = buildDomainStatesPrompt({ classes: [] });
+
+        expect(system).toContain('Compound Conditions');
+        expect(system).toContain('one state per operand');
+        expect(system).toMatch(/never.*"or"|"or".*never/is);
+      });
+    });
   });
 
   describe('buildAssertionQualityPrompt', () => {

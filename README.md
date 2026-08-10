@@ -34,6 +34,7 @@ Istanbul reports full coverage for `createOrder`. But that test would still pass
 
 - **Assertion strength** — `toBeDefined()` is weak, `toEqual(expected)` is strong, `toHaveBeenCalledWith(...)` verifies interactions. Istanbul can't distinguish these.
 - **Branch semantics** — Istanbul knows a branch was hit; the Extractor knows it's a guard clause, error path, or retry condition — and feeds the exact condition expressions to the Reasoner for state discovery.
+- **Compound conditions** — `if (a || b)` is four things to test, not one. Istanbul's `binary-expr` counters record how often each operand was *evaluated*, never which one was *decisive*, so a guard entered only through `a` still reports as fully covered. The Extractor splits the chain into its operands and the `untested-condition-operand` detector flags the ones no test ever drives — the operands you could delete with the suite still green.
 - **Domain states** — the Reasoner identifies business scenarios, error conditions, and edge cases from branch conditions and test names. Istanbul can't tell you that "HTTP 429 rate limiting" is tested but "token expiry race condition" is not.
 - **Dependency graph** — if Controller delegates to Service which delegates to Gateway, the Extractor traces transitive paths. Istanbul treats each file in isolation.
 - **Criticality ranking** — a public method with high complexity, external calls, and error handling matters more than a simple getter. Istanbul counts all lines equally.
@@ -597,6 +598,8 @@ DeepCover includes acceptance tests that validate the quality of its analysis ag
 | `dont-test-getters-setters` | A data class with getters/setters and private helpers should score 100 when all methods are exercised through a consuming service's tests |
 | `bug-unhandled-error` | A method with a try/catch should flag `unhandled-error-path` when only the happy path is tested |
 | `same-method-name-different-class` | Two unrelated classes declaring a same-named method must be scored independently — the untested one must not inherit the other's test credit |
+| `compound-guard-operand` | A guard built from four `||` operands that every test enters through the same one should flag `untested-condition-operand`, even though Istanbul reports the `binary-expr` fully covered |
+| `compound-guard-operand-covered` | The same guard with a test for the second operand must report nothing — the false-positive guard for that detector |
 
 ### Running paradigm tests
 

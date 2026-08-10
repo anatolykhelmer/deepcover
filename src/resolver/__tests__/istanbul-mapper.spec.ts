@@ -44,4 +44,38 @@ describe('mapIstanbulToMethod', () => {
     const result = mapIstanbulToMethod(fileCoverage, 20, 30);
     expect(result).toBeUndefined();
   });
+
+  describe('binary-expr paths', () => {
+    // `a || b || c || d` where every operand was evaluated but the last one decided
+    // nothing — the aggregate counters above flatten this away entirely.
+    const withBinaryExpr: IstanbulFileCoverage = {
+      statementMap: { '0': { start: { line: 5, column: 0 }, end: { line: 5, column: 30 } } },
+      s: { '0': 3 },
+      branchMap: {
+        '0': { loc: { start: { line: 5 }, end: { line: 5 } }, type: 'if' },
+        '1': { loc: { start: { line: 5 }, end: { line: 5 } }, type: 'binary-expr' },
+        '2': { loc: { start: { line: 40 }, end: { line: 40 } }, type: 'binary-expr' },
+      },
+      b: { '0': [1, 2], '1': [3, 3, 3, 2], '2': [1, 1] },
+      fnMap: {},
+      f: {},
+    };
+
+    it('keeps the per-operand counts of binary expressions in range', () => {
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7);
+      expect(result!.binaryExpressions).toEqual([{ line: 5, pathCounts: [3, 3, 3, 2] }]);
+    });
+
+    it('leaves the aggregate branch counters untouched', () => {
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7);
+      expect(result!.branchesTotal).toBe(6);
+      expect(result!.branchesHit).toBe(6);
+      expect(result!.branchCoveragePercent).toBe(100);
+    });
+
+    it('is empty when the method has no binary expressions', () => {
+      const result = mapIstanbulToMethod(fileCoverage, 4, 7);
+      expect(result!.binaryExpressions).toEqual([]);
+    });
+  });
 });

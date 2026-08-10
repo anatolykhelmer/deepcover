@@ -36,6 +36,20 @@ export interface IstanbulMethodMetrics {
   branchesHit: number;
   branchesTotal: number;
   branchCoveragePercent: number;
+  /**
+   * Per-operand evaluation counts of the method's `binary-expr` branches (`a || b`,
+   * `a && b`), which the aggregate counters above flatten away. A zero proves an operand
+   * was never even evaluated; a non-zero proves nothing about whether it was ever the
+   * operand that decided the branch.
+   */
+  binaryExpressions: BinaryExprCoverage[];
+}
+
+export interface BinaryExprCoverage {
+  /** Line the expression starts on — how a branch in the code model is matched to it. */
+  line: number;
+  /** Times each operand was evaluated, left to right. */
+  pathCounts: number[];
 }
 
 export interface RuntimeTestResult {

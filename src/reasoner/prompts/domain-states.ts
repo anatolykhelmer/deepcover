@@ -1,4 +1,19 @@
-import type { ClassNode, FunctionNode } from '../../types/code-model';
+import type { BranchNode, ClassNode, FunctionNode } from '../../types/code-model';
+
+/**
+ * A `||`/`&&` condition is sent both as written and split into its operands, so the model
+ * enumerates one state per operand instead of collapsing the whole condition into a single
+ * "a or b" state that one test can satisfy.
+ */
+function serializeBranch(branch: BranchNode) {
+  return {
+    type: branch.type,
+    condition: branch.condition,
+    ...(branch.operands
+      ? { operator: branch.operator, operands: branch.operands.map((o) => o.text) }
+      : {}),
+  };
+}
 
 export interface DomainStatesPromptInput {
   classes: ClassNode[];
@@ -20,7 +35,7 @@ function serializeClasses(
           name: m.name,
           visibility: m.visibility,
           returnType: m.returnType,
-          branches: m.branches.map((b) => ({ type: b.type, condition: b.condition })),
+          branches: m.branches.map(serializeBranch),
           throwsErrors: m.throwsErrors,
           hasAsyncOps: m.hasAsyncOps,
           externalCalls: m.externalCalls,
@@ -33,7 +48,7 @@ function serializeClasses(
         functions: entry.functions.map((fn) => ({
           name: fn.name,
           returnType: fn.returnType,
-          branches: fn.branches.map((b) => ({ type: b.type, condition: b.condition })),
+          branches: fn.branches.map(serializeBranch),
           throwsErrors: fn.throwsErrors,
           hasAsyncOps: fn.hasAsyncOps,
           externalCalls: fn.externalCalls,
@@ -57,6 +72,8 @@ For each method, identify domain states — business scenarios, error conditions
 ## Input Data
 
 Each method includes its branch conditions (the exact if/switch/guard/try_catch expressions from the source code) and, when available, the names of tests that exercise it. Use both to identify states.
+
+A branch whose condition is a \`||\` / \`&&\` chain also carries an \`operands\` array — the individual conditions, already split for you. Treat each entry as its own testable condition (see "Compound Conditions" below).
 
 ## State Categories Checklist
 
@@ -84,6 +101,18 @@ These code patterns typically imply specific states:
 - \`switch(x)\` → each case is a potential state
 - \`instanceof\` / type guards → each type branch is a state
 - \`for/forEach\` + \`continue\`/\`if (!cond) skip\`/\`.filter()\` → **"all items filtered → empty aggregate"** state. When a loop or filter can conditionally skip items, ALL items may be skipped, producing an empty result. This is a high-value domain state — flag it even when there is no explicit \`length === 0\` check in the code
+- \`a || b\` / \`a && b\` in a condition → **one state per operand**, never one state for the whole condition (see below)
+
+## Compound Conditions (\`||\` / \`&&\`)
+
+Short-circuit evaluation makes every operand of a compound condition an independently testable state. \`if (a === undefined || Number.isNaN(b))\` throws for two different reasons, and a test that triggers it through \`a\` leaves \`Number.isNaN(b)\` unexercised — the operand could be deleted and that test would still pass. Coverage tools cannot see this: they count how often each operand was *evaluated*, not how often it *decided* the branch, so such a condition reports as fully covered.
+
+So, for every branch with an \`operands\` array:
+
+- Emit one state per operand, each describing only that operand's scenario.
+- Judge \`isTested\` per operand: a state is tested only when some test drives *that specific operand* to decide the branch. A single test can only make one operand of an \`||\` decisive.
+- **Never** write a state whose description joins two operands with "or" / "and" (e.g. "a non-numeric value for a or b throws"). That collapses two independently-testable conditions into one boolean and hides the gap. Split it into "a is non-numeric → throws" and "b is non-numeric → throws".
+- The same holds for the operands of an \`&&\`: each one is a separate way to fall out of the branch.
 
 ## Method Role Awareness
 
@@ -99,6 +128,7 @@ Consider the method's role when identifying states:
 
 - Use test names to match states: if a test name clearly describes a scenario (e.g. "retries on 429" covers the "HTTP 429 rate limited" state), mark isTested: true.
 - If no test name covers a discovered state, mark isTested: false.
+- One test covers one state. If a single test would have to satisfy two states at once, they are the same state or you split them wrong — with operands of a compound condition, keep them split and mark only the one that test actually drives as tested.
 
 ## Risk Assessment (riskIfUntested)
 

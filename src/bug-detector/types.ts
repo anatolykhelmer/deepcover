@@ -5,7 +5,8 @@ export type BugPattern =
   | 'unhandled-error-path'
   | 'unchecked-nullable'
   | 'assertion-mismatch'
-  | 'missing-boundary';
+  | 'missing-boundary'
+  | 'untested-condition-operand';
 
 export interface BugSignal {
   pattern: BugPattern;

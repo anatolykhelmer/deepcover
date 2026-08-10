@@ -5,6 +5,7 @@ import { UnhandledErrorPathDetector } from './detectors/unhandled-error-path';
 import { UncheckedNullableDetector } from './detectors/unchecked-nullable';
 import { AssertionMismatchDetector } from './detectors/assertion-mismatch';
 import { MissingBoundaryDetector } from './detectors/missing-boundary';
+import { UntestedConditionOperandDetector } from './detectors/untested-condition-operand';
 
 export type { BugSignal } from './types';
 
@@ -13,6 +14,7 @@ const ALL_DETECTORS: BugDetector[] = [
   new UncheckedNullableDetector(),
   new AssertionMismatchDetector(),
   new MissingBoundaryDetector(),
+  new UntestedConditionOperandDetector(),
 ];
 
 function runBugDetector(codeModel: CodeModel, coverage: ResolvedCoverage): BugSignal[] {

@@ -17,7 +17,15 @@ function serializeInput(input: BugFindingPromptInput): string {
           name: m.name,
           returnType: m.returnType,
           params: m.params,
-          branches: m.branches.map((b) => ({ type: b.type, condition: b.condition })),
+          branches: m.branches.map((b) => ({
+            type: b.type,
+            condition: b.condition,
+            // Split operands let the model judge an `untested-condition-operand` signal
+            // against the actual structure of the condition.
+            ...(b.operands
+              ? { operator: b.operator, operands: b.operands.map((o) => o.text) }
+              : {}),
+          })),
           externalCalls: m.externalCalls,
           throwsErrors: m.throwsErrors,
         })),
@@ -32,6 +40,7 @@ function serializeInput(input: BugFindingPromptInput): string {
             targetMethod: t.targetMethod,
             assertions: t.assertions,
             mocks: t.mocks,
+            ...(t.targetCallArgs ? { targetCallArgs: t.targetCallArgs } : {}),
           })),
         })),
       })),
@@ -79,6 +88,8 @@ The input includes \`bugSignals\` — findings from deterministic static analysi
 - Evaluate whether it represents a real risk
 - Return \`confirmed: true\` if the signal points to a genuine potential bug
 - Return \`confirmed: false\` with reasoning if it's a false positive
+
+For \`untested-condition-operand\` signals specifically: the claim is that one operand of a \`||\`/\`&&\` condition is never the operand that decides the branch, so deleting it would keep the suite green. Check it against the branch's \`operands\` array and the tests' \`targetCallArgs\` — confirm when no test drives that operand, reject when some test clearly does (or when the operand cannot be driven independently, e.g. it is implied by another operand).
 
 ## Guidelines
 

@@ -29,6 +29,13 @@ export interface ParadigmExpectations {
      *  test credit. */
     uncoveredMethods?: string[];
     expectedBugPatterns?: string[];
+    /** Substrings that must each appear in the evidence of some reported bug. */
+    expectedBugEvidence?: string[];
+    /**
+     * Patterns that must NOT be reported — the false-positive side of a paradigm, for
+     * detectors whose value depends on staying quiet once the gap is actually tested.
+     */
+    unexpectedBugPatterns?: string[];
   };
 }
 
@@ -72,7 +79,9 @@ export function runParadigm(
     istanbul: istanbulData,
   });
 
-  const enableBugs = !!expected.assertions.expectedBugPatterns;
+  const enableBugs = !!(
+    expected.assertions.expectedBugPatterns || expected.assertions.unexpectedBugPatterns
+  );
   const scoreResult = runScorer(codeModel, EMPTY_REASONER_OUTPUT, resolvedCoverage, { enableBugs });
 
   return { scoreResult, resolvedCoverage, expected };
@@ -144,6 +153,20 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
     const foundPatterns = scoreResult.potentialBugs.map((b) => b.pattern);
     for (const expectedPattern of assertions.expectedBugPatterns) {
       expect(foundPatterns).toContain(expectedPattern);
+    }
+  }
+
+  if (assertions.unexpectedBugPatterns) {
+    const foundPatterns = scoreResult.potentialBugs.map((b) => b.pattern);
+    for (const unexpectedPattern of assertions.unexpectedBugPatterns) {
+      expect(foundPatterns).not.toContain(unexpectedPattern);
+    }
+  }
+
+  if (assertions.expectedBugEvidence) {
+    const evidence = scoreResult.potentialBugs.map((b) => b.evidence);
+    for (const fragment of assertions.expectedBugEvidence) {
+      expect(evidence.some((e) => e.includes(fragment))).toBe(true);
     }
   }
 }
