@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { mapIstanbulToMethod } from './istanbul-mapper';
 import { matchRuntimeTests } from './runtime-matcher';
+import { buildClassMethodOwners } from '../types/method-owner';
 
 export { resolveCoverage };
 export type { ResolvedCoverage, MethodCoverage } from './types';
@@ -24,10 +25,12 @@ function resolveCoverage(
   const hasIstanbulData = !!jestData?.istanbul && Object.keys(jestData.istanbul).length > 0;
   const hasRuntimeData = !!jestData?.runtime && jestData.runtime.testResults.length > 0;
 
+  const classMethodOwners = buildClassMethodOwners(codeModel.modules);
   const runtimeMap = matchRuntimeTests(
     jestData?.runtime,
     codeModel.testInventory.testFiles,
-    rootDir
+    rootDir,
+    classMethodOwners
   );
 
   const staticCoverage = codeModel.testInventory.coverage;
@@ -43,7 +46,9 @@ function resolveCoverage(
           methodName: method.name,
           qualifiedName,
           filePath: mod.filePath,
-          staticTests: staticCoverage[method.name] ?? [],
+          // `coverage` keys class methods by `ClassName.methodName` (see extractor/index.ts)
+          // so a same-named method on an unrelated class never shares static test credit.
+          staticTests: staticCoverage[qualifiedName] ?? [],
           isCovered: false,
           coverageSource: 'static',
         };
@@ -59,7 +64,7 @@ function resolveCoverage(
         }
 
         if (hasRuntimeData) {
-          const rt = runtimeMap.get(method.name);
+          const rt = runtimeMap.get(qualifiedName);
           if (rt) {
             mc.runtime = {
               testNames: rt.passed,

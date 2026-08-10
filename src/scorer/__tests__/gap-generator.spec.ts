@@ -39,7 +39,7 @@ describe('gap-generator', () => {
         },
       ],
       dependencyGraph: [],
-      testInventory: { testFiles: [], coverage: { getAll: ['t1'] } },
+      testInventory: { testFiles: [], coverage: { 'WebhooksService.getAll': ['t1'] } },
     };
     const gaps = generateGaps(model, emptyReasonerOutput(), resolvedFor(model));
     expect(gaps.some((g) => g.methodName === 'resend')).toBe(true);
@@ -122,7 +122,7 @@ describe('gap-generator', () => {
         },
       ],
       dependencyGraph: [],
-      testInventory: { testFiles: [], coverage: { process: ['t1'] } },
+      testInventory: { testFiles: [], coverage: { 'OrderService.process': ['t1'] } },
     };
     const reasoner: ReasonerOutput = {
       discoveredStates: [

@@ -34,11 +34,21 @@ function tallyAssertion(tally: AssertionTally, matcherUsed: string): void {
  * A test counts as direct when it names the method as its target, or when one
  * of its assertions is written against a call to it. Assertions from tests that
  * merely happen to execute the method count at half weight.
+ *
+ * The "written against a call to it" path text-scans every assertion in the
+ * whole test inventory, so for a class method it must additionally require the
+ * test's resolved `targetClass` to match `owner` — otherwise a same-named method
+ * on a completely unrelated, untested class gets full-weight credit here just
+ * because some other test happens to call `.methodName(...)`. Standalone
+ * functions (`isClass: false`) have no comparable per-test class signal and
+ * keep the previous unscoped match.
  */
 function tallyAssertionsForMethod(
   codeModel: CodeModel,
   methodName: string,
-  testNames: string[]
+  testNames: string[],
+  owner: string,
+  isClass: boolean
 ): AssertionTally {
   const direct = emptyTally();
   const transitive = emptyTally();
@@ -53,7 +63,7 @@ function tallyAssertionsForMethod(
           for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
         } else if (transitiveMatch) {
           for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
-        } else {
+        } else if (!isClass || test.targetClass === owner) {
           for (const a of test.assertions) {
             if (extractMethodFromTarget(a.target) === methodName) {
               tallyAssertion(direct, a.matcherUsed);
@@ -237,7 +247,8 @@ export function composeScore(
   function scoreCallable(
     owner: string,
     callable: { name: string; branchCount: number; externalCalls: string[] },
-    staticStates: StateNode[]
+    staticStates: StateNode[],
+    isClass: boolean
   ): FunctionScore {
     const mc = resolvedCoverage.getMethodCoverage(owner, callable.name);
     const testNames = resolvedCoverage.getTestsForMethod(owner, callable.name);
@@ -250,7 +261,7 @@ export function composeScore(
       resolvedCoverage
     );
 
-    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames);
+    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames, owner, isClass);
 
     const untested: string[] = [];
     if (!mc?.isCovered) {
@@ -291,11 +302,11 @@ export function composeScore(
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
       for (const method of cls.methods) {
-        perFunction.push(scoreCallable(cls.name, method, cls.states));
+        perFunction.push(scoreCallable(cls.name, method, cls.states, true));
       }
     }
     for (const fn of mod.functions ?? []) {
-      perFunction.push(scoreCallable(mod.filePath, fn, []));
+      perFunction.push(scoreCallable(mod.filePath, fn, [], false));
     }
   }
 

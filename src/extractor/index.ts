@@ -13,6 +13,7 @@ import type {
   TestInventory,
   TestFileNode,
 } from '../types/code-model';
+import { buildClassMethodOwners } from '../types/method-owner';
 
 export interface TsMorphProjectOptions {
   skipAddingFilesFromTsConfig?: boolean;
@@ -107,25 +108,37 @@ export function extractCodeModel(options: ExtractOptions): CodeModel {
     testFiles.push(testFileNode);
   }
 
-  const sourceMethodNames = new Set<string>();
-  for (const cls of allClassNodes) {
-    for (const method of cls.methods) {
-      sourceMethodNames.add(method.name);
-    }
-  }
+  const classMethodOwners = buildClassMethodOwners(modules);
+  const functionNames = new Set<string>();
   for (const fn of allFunctionNodes) {
-    sourceMethodNames.add(fn.name);
+    functionNames.add(fn.name);
   }
 
   const coverage: Record<string, string[]> = {};
+  const addCoverage = (key: string, testName: string) => {
+    if (!coverage[key]) coverage[key] = [];
+    coverage[key].push(testName);
+  };
+
   for (const testFile of testFiles) {
     for (const describe of testFile.describes) {
       for (const test of describe.tests) {
-        if (test.targetMethod && sourceMethodNames.has(test.targetMethod)) {
-          if (!coverage[test.targetMethod]) {
-            coverage[test.targetMethod] = [];
+        if (!test.targetMethod) continue;
+
+        const owners = classMethodOwners.get(test.targetMethod);
+        if (owners && owners.size > 0) {
+          // Class-owned method: only credit the class this test actually resolved to —
+          // fail closed (drop it) when that can't be determined, since a same-named
+          // method on an unrelated class must never share coverage.
+          const testClass = test.targetClass ?? null;
+          if (testClass && owners.has(testClass)) {
+            addCoverage(`${testClass}.${test.targetMethod}`, test.name);
           }
-          coverage[test.targetMethod].push(test.name);
+          continue;
+        }
+
+        if (functionNames.has(test.targetMethod)) {
+          addCoverage(test.targetMethod, test.name);
         }
       }
     }

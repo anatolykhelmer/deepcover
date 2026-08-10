@@ -1,0 +1,26 @@
+{
+  "/repo/fixtures/paradigms/same-method-name-different-class/src/a.service.ts": {
+    "statementMap": {
+      "0": { "start": { "line": 3, "column": 4 }, "end": { "line": 3, "column": 17 } }
+    },
+    "s": { "0": 1 },
+    "branchMap": {},
+    "b": {},
+    "fnMap": {
+      "0": { "name": "doThing", "loc": { "start": { "line": 2 }, "end": { "line": 4 } } }
+    },
+    "f": { "0": 1 }
+  },
+  "/repo/fixtures/paradigms/same-method-name-different-class/src/b.service.ts": {
+    "statementMap": {
+      "0": { "start": { "line": 5, "column": 4 }, "end": { "line": 5, "column": 17 } }
+    },
+    "s": { "0": 0 },
+    "branchMap": {},
+    "b": {},
+    "fnMap": {
+      "0": { "name": "doThing", "loc": { "start": { "line": 4 }, "end": { "line": 6 } } }
+    },
+    "f": { "0": 0 }
+  }
+}

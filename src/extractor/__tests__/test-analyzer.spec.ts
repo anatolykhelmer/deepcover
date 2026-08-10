@@ -644,4 +644,118 @@ describe('test-analyzer', () => {
       expect(result.describes[0].tests.every((t) => t.targetMethod === 'createOrder')).toBe(true);
     });
   });
+
+  describe('target class attribution', () => {
+    it('resolves targetClass from a `new ClassName()` binding matching the describe name', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+
+          beforeEach(() => {
+            service = new OrdersService();
+          });
+
+          it('creates an order', () => {
+            expect(service.createOrder('cust-1', [])).toBeDefined();
+          });
+        });
+      `);
+      expect(result.describes[0].tests[0].targetClass).toBe('OrdersService');
+    });
+
+    it('resolves targetClass from a `TestBed.inject`/`module.get` binding', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+
+          beforeEach(async () => {
+            const module = await Test.createTestingModule({}).compile();
+            service = module.get(OrdersService);
+          });
+
+          it('creates an order', () => {
+            expect(service.createOrder('cust-1', [])).toBeDefined();
+          });
+        });
+      `);
+      expect(result.describes[0].tests[0].targetClass).toBe('OrdersService');
+    });
+
+    it('resolves targetClass for a nested describe from the binding matched on an ancestor', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+
+          beforeEach(() => {
+            service = new OrdersService();
+          });
+
+          describe('discounts', () => {
+            it('applies a coupon', () => {
+              expect(service.createOrder('cust-1', [])).toBeDefined();
+            });
+          });
+        });
+      `);
+      const nested = result.describes.find((d) => d.name === 'discounts');
+      expect(nested?.tests[0].targetClass).toBe('OrdersService');
+    });
+
+    it('falls back to the outermost describe title when no construction binding is found', () => {
+      // Factory-based setup: no `new ClassName()` / `TestBed.inject(ClassName)` in the
+      // file, so the only available signal is the idiomatic `describe('ClassName', ...)`.
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: any;
+
+          beforeEach(() => {
+            service = createOrdersService();
+          });
+
+          describe('#createOrder', () => {
+            it('creates an order', () => {
+              expect(service.createOrder('cust-1', [])).toBeDefined();
+            });
+          });
+        });
+      `);
+      const nested = result.describes.find((d) => d.name === '#createOrder');
+      expect(nested?.tests[0].targetClass).toBe('OrdersService');
+    });
+
+    it('falls back to its own title when a test has no ancestor describe', () => {
+      const result = analyzeSource(`
+        describe('formatDate', () => {
+          it('formats an ISO string', () => {
+            expect(formatDate('2026-01-01')).toBe('Jan 1, 2026');
+          });
+        });
+      `);
+      expect(result.describes[0].tests[0].targetClass).toBe('formatDate');
+    });
+
+    it('does not let one describe block\'s binding leak into an unrelated sibling describe', () => {
+      const result = analyzeSource(`
+        describe('AService', () => {
+          let a: AService;
+          beforeEach(() => { a = new AService(); });
+          it('does the thing', () => {
+            expect(a.doThing(1)).toBe(2);
+          });
+        });
+
+        describe('BService', () => {
+          let b: BService;
+          beforeEach(() => { b = new BService(); });
+          it('does the thing differently', () => {
+            expect(b.doThing(1)).toBe(2);
+          });
+        });
+      `);
+      const aBlock = result.describes.find((d) => d.name === 'AService');
+      const bBlock = result.describes.find((d) => d.name === 'BService');
+      expect(aBlock?.tests[0].targetClass).toBe('AService');
+      expect(bBlock?.tests[0].targetClass).toBe('BService');
+    });
+  });
 });

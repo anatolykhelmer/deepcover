@@ -48,14 +48,14 @@ describe('sub-score calculators', () => {
                 {
                   name: 'ItemService',
                   tests: [
-                    { name: 'weak', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeDefined' }], mocks: [], isAsync: false },
-                    { name: 'weak2', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeTruthy' }], mocks: [], isAsync: false },
+                    { name: 'weak', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeDefined' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
+                    { name: 'weak2', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeTruthy' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
                   ],
                 },
               ],
             },
           ],
-          coverage: { getAll: ['weak', 'weak2'] },
+          coverage: { 'ItemService.getAll': ['weak', 'weak2'] },
         },
       };
 
@@ -69,14 +69,14 @@ describe('sub-score calculators', () => {
                 {
                   name: 'ItemService',
                   tests: [
-                    { name: 'strong', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }], mocks: [], isAsync: false },
-                    { name: 'strong2', targetMethod: 'getAll', assertions: [{ type: 'called_with', target: 'repo.findAll', matcherUsed: 'toHaveBeenCalledWith' }], mocks: [], isAsync: false },
+                    { name: 'strong', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
+                    { name: 'strong2', targetMethod: 'getAll', assertions: [{ type: 'called_with', target: 'repo.findAll', matcherUsed: 'toHaveBeenCalledWith' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
                   ],
                 },
               ],
             },
           ],
-          coverage: { getAll: ['strong', 'strong2'] },
+          coverage: { 'ItemService.getAll': ['strong', 'strong2'] },
         },
       };
 
@@ -136,13 +136,13 @@ describe('sub-score calculators', () => {
                 {
                   name: 'ItemService',
                   tests: [
-                    { name: 't', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }], mocks: [], isAsync: false },
+                    { name: 't', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
                   ],
                 },
               ],
             },
           ],
-          coverage: { getAll: ['t'] },
+          coverage: { 'ItemService.getAll': ['t'] },
         },
       };
 
@@ -328,13 +328,13 @@ describe('sub-score calculators', () => {
                 {
                   name: 'ItemService',
                   tests: [
-                    { name: 't', targetMethod: 'lowComplex', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false },
+                    { name: 't', targetMethod: 'lowComplex', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
                   ],
                 },
               ],
             },
           ],
-          coverage: { lowComplex: ['t'] },
+          coverage: { 'ItemService.lowComplex': ['t'] },
         },
       };
 
@@ -387,10 +387,10 @@ describe('sub-score calculators', () => {
           testFiles: [
             {
               filePath: '/t.spec.ts',
-              describes: [{ name: 'S', tests: [{ name: 't', targetMethod: 'get', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false }] }],
+              describes: [{ name: 'S', tests: [{ name: 't', targetMethod: 'get', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'S' }] }],
             },
           ],
-          coverage: { get: ['t'] },
+          coverage: { 'S.get': ['t'] },
         },
       };
       const empty = emptyReasonerOutput();
@@ -455,13 +455,13 @@ describe('sub-score calculators', () => {
                 {
                   name: 'ItemService',
                   tests: [
-                    { name: 't', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toBeDefined' }], mocks: [], isAsync: false },
+                    { name: 't', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toBeDefined' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
                   ],
                 },
               ],
             },
           ],
-          coverage: { getAll: ['t'] },
+          coverage: { 'ItemService.getAll': ['t'] },
         },
       };
 

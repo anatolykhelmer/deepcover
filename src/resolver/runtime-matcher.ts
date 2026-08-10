@@ -1,6 +1,7 @@
 import path from 'path';
 import type { JestRuntimeData } from './types';
 import type { TestFileNode } from '../types/code-model';
+import type { ClassMethodOwners } from '../types/method-owner';
 
 export interface MethodRuntimeResult {
   passed: string[];
@@ -9,10 +10,18 @@ export interface MethodRuntimeResult {
   perTest: { name: string; status: 'passed' | 'failed' | 'skipped'; assertionCount: number }[];
 }
 
+/**
+ * @param classMethodOwners Class-owned method names in scope, from `buildClassMethodOwners`.
+ *   Runtime results for a class-owned method are only keyed once the test's resolved
+ *   `targetClass` validates against a real owner (fail closed otherwise) — a same-named
+ *   method on an unrelated class must not inherit this test's pass/fail data. Standalone
+ *   functions (absent from the map) keep the previous bare-name keying.
+ */
 export function matchRuntimeTests(
   runtime: JestRuntimeData | undefined,
   testFiles: TestFileNode[],
-  rootDir: string
+  rootDir: string,
+  classMethodOwners: ClassMethodOwners = new Map()
 ): Map<string, MethodRuntimeResult> {
   const result = new Map<string, MethodRuntimeResult>();
   if (!runtime) return result;
@@ -24,23 +33,38 @@ export function matchRuntimeTests(
     const fileTests = testNodeIndex.get(normalizedPath);
     if (!fileTests) continue;
 
-    for (const { testName, targetMethod } of fileTests) {
+    for (const { testName, targetMethod, targetClass } of fileTests) {
       if (!targetMethod) continue;
       if (!rt.testName.endsWith(testName)) continue;
 
-      if (!result.has(targetMethod)) {
-        result.set(targetMethod, { passed: [], failed: [], skipped: [], perTest: [] });
+      const key = resolveRuntimeKey(targetMethod, targetClass, classMethodOwners);
+      if (key) {
+        if (!result.has(key)) {
+          result.set(key, { passed: [], failed: [], skipped: [], perTest: [] });
+        }
+        const bucket = result.get(key)!;
+        if (rt.status === 'passed') bucket.passed.push(testName);
+        else if (rt.status === 'failed') bucket.failed.push(testName);
+        else bucket.skipped.push(testName);
+        bucket.perTest.push({ name: testName, status: rt.status, assertionCount: rt.assertionCount });
       }
-      const bucket = result.get(targetMethod)!;
-      if (rt.status === 'passed') bucket.passed.push(testName);
-      else if (rt.status === 'failed') bucket.failed.push(testName);
-      else bucket.skipped.push(testName);
-      bucket.perTest.push({ name: testName, status: rt.status, assertionCount: rt.assertionCount });
       break;
     }
   }
 
   return result;
+}
+
+function resolveRuntimeKey(
+  targetMethod: string,
+  targetClass: string | null | undefined,
+  classMethodOwners: ClassMethodOwners
+): string | null {
+  const owners = classMethodOwners.get(targetMethod);
+  if (owners && owners.size > 0) {
+    return targetClass && owners.has(targetClass) ? `${targetClass}.${targetMethod}` : null;
+  }
+  return targetMethod;
 }
 
 function normalizePath(filePath: string, rootDir: string): string {
@@ -53,13 +77,13 @@ function normalizePath(filePath: string, rootDir: string): string {
 function buildTestNodeIndex(
   testFiles: TestFileNode[],
   _rootDir: string
-): Map<string, { testName: string; targetMethod: string | null }[]> {
-  const index = new Map<string, { testName: string; targetMethod: string | null }[]>();
+): Map<string, { testName: string; targetMethod: string | null; targetClass: string | null }[]> {
+  const index = new Map<string, { testName: string; targetMethod: string | null; targetClass: string | null }[]>();
   for (const file of testFiles) {
-    const entries: { testName: string; targetMethod: string | null }[] = [];
+    const entries: { testName: string; targetMethod: string | null; targetClass: string | null }[] = [];
     for (const block of file.describes) {
       for (const test of block.tests) {
-        entries.push({ testName: test.name, targetMethod: test.targetMethod });
+        entries.push({ testName: test.name, targetMethod: test.targetMethod, targetClass: test.targetClass ?? null });
       }
     }
     index.set(file.filePath, entries);

@@ -595,6 +595,8 @@ DeepCover includes acceptance tests that validate the quality of its analysis ag
 | Paradigm | What it validates |
 |----------|------------------|
 | `dont-test-getters-setters` | A data class with getters/setters and private helpers should score 100 when all methods are exercised through a consuming service's tests |
+| `bug-unhandled-error` | A method with a try/catch should flag `unhandled-error-path` when only the happy path is tested |
+| `same-method-name-different-class` | Two unrelated classes declaring a same-named method must be scored independently — the untested one must not inherit the other's test credit |
 
 ### Running paradigm tests
 

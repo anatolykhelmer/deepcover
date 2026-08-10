@@ -1,5 +1,6 @@
 import path from 'path';
 import type { ClassNode, CodeModel, ModuleNode, TestFileNode } from '../types/code-model';
+import { buildClassMethodOwners, type ClassMethodOwners } from '../types/method-owner';
 
 /**
  * The extractor always globs every spec file in the project, regardless of the
@@ -8,27 +9,28 @@ import type { ClassNode, CodeModel, ModuleNode, TestFileNode } from '../types/co
  * to prompts — otherwise the Reasoner sees the whole repository's tests.
  */
 
-export function collectSourceMethodNames(modules: ModuleNode[]): Set<string> {
-  const names = new Set<string>();
+export interface SourceMethodNames {
+  classMethodOwners: ClassMethodOwners;
+  functionNames: Set<string>;
+}
+
+export function collectSourceMethodNames(modules: ModuleNode[]): SourceMethodNames {
+  const classMethodOwners = buildClassMethodOwners(modules);
+  const functionNames = new Set<string>();
 
   for (const mod of modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        names.add(method.name);
-      }
-    }
     for (const fn of mod.functions ?? []) {
-      names.add(fn.name);
+      functionNames.add(fn.name);
     }
   }
 
-  return names;
+  return { classMethodOwners, functionNames };
 }
 
 export function filterTestFilesByModule(
   testFiles: TestFileNode[],
   modulePath: string | undefined,
-  sourceMethodNames: Set<string>,
+  sourceMethodNames: SourceMethodNames,
 ): TestFileNode[] {
   if (!modulePath) return testFiles;
   const moduleBasename = path.basename(modulePath.replace(/\/$/, ''));
@@ -46,7 +48,7 @@ export function filterTestFilesByModule(
 export function scopeTestFilesToModel(
   testFiles: TestFileNode[],
   modules: ModuleNode[],
-  sourceMethodNames: Set<string>,
+  sourceMethodNames: SourceMethodNames,
 ): TestFileNode[] {
   if (modules.length === 0) return testFiles;
   const sourceDirs = new Set(modules.map((m) => path.dirname(m.filePath)));
@@ -57,12 +59,34 @@ export function scopeTestFilesToModel(
   });
 }
 
+/**
+ * Whether a test targets a method this module's scope actually owns.
+ *
+ * A module scoped via `--module` only ever sees its own classes — a same-named
+ * class method elsewhere in the repo (invisible here) must not let that test back
+ * in just because the bare name matches. Class-owned methods therefore require a
+ * validated class match: `t.targetClass` must be resolved AND equal one of the
+ * method's real owners, failing closed otherwise. Standalone functions have no
+ * comparable per-test class signal (no `new X()`/`describe('ClassName', …)`
+ * construct ties a test to a specific module), so they keep the previous
+ * bare-name match — a narrower, documented, pre-existing limitation.
+ */
 function testsTargetKnownMethod(
   testFile: TestFileNode,
-  sourceMethodNames: Set<string>,
+  sourceMethodNames: SourceMethodNames,
 ): boolean {
+  const { classMethodOwners, functionNames } = sourceMethodNames;
+
   return testFile.describes.some((d) =>
-    d.tests.some((t) => t.targetMethod && sourceMethodNames.has(t.targetMethod)),
+    d.tests.some((t) => {
+      if (!t.targetMethod) return false;
+      const owners = classMethodOwners.get(t.targetMethod);
+      if (owners && owners.size > 0) {
+        const targetClass = t.targetClass ?? null;
+        return !!targetClass && owners.has(targetClass);
+      }
+      return functionNames.has(t.targetMethod);
+    }),
   );
 }
 

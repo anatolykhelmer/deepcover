@@ -1,8 +1,9 @@
-import type { CodeModel } from '../types/code-model';
+import type { CodeModel, TestNode } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { getAssertionWeight } from './matchers';
+import { buildClassMethodOwners } from '../types/method-owner';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -48,38 +49,54 @@ export function calculateAssertionQuality(
     return { base: 0, llmAdjustment: 0, final: 0, confidence: 0, applicable: true };
   }
 
-  const moduleMethods = new Set<string>();
-  const methodClass = new Map<string, string>();
+  // Class-owned methods are keyed by every class in scope that declares them, so a
+  // test can only be credited toward the specific class it resolved to — a same-named
+  // method on an unrelated class must not share assertion-quality credit. Standalone
+  // functions have no comparable per-test class signal and keep the previous
+  // module-wide (unqualified) match.
+  const classMethodOwners = buildClassMethodOwners(codeModel.modules);
+  const functionOwner = new Map<string, string>();
   for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        moduleMethods.add(method.name);
-        methodClass.set(method.name, cls.name);
-      }
-    }
     for (const fn of mod.functions ?? []) {
-      moduleMethods.add(fn.name);
-      methodClass.set(fn.name, mod.filePath);
+      functionOwner.set(fn.name, mod.filePath);
     }
   }
 
   const failedTestNames = collectFailedTestNames(resolvedCoverage);
   const resolverEmpty = resolvedCoverage.methods.size === 0;
 
-  function targetMethodCovered(targetMethod: string): boolean {
-    if (resolverEmpty) {
-      return (codeModel.testInventory.coverage[targetMethod]?.length ?? 0) > 0;
+  /** Resolves which class/module owns `target`, validating a class-owned method
+   *  against the test's own resolved `targetClass` — fails closed (`null`) when
+   *  that can't be established. */
+  function resolveOwner(
+    target: string,
+    testTargetClass: string | null | undefined
+  ): { owner: string; isClass: boolean } | null {
+    const classOwners = classMethodOwners.get(target);
+    if (classOwners && classOwners.size > 0) {
+      return testTargetClass && classOwners.has(testTargetClass)
+        ? { owner: testTargetClass, isClass: true }
+        : null;
     }
-    return [...resolvedCoverage.methods.values()].some(
-      (mc) => mc.methodName === targetMethod && mc.isCovered
-    );
+    const fileOwner = functionOwner.get(target);
+    return fileOwner ? { owner: fileOwner, isClass: false } : null;
   }
 
-  function shouldCountTest(test: { name: string; targetMethod?: string | null }): boolean {
+  function targetMethodCovered(owner: string, targetMethod: string, isClass: boolean): boolean {
+    if (resolverEmpty) {
+      const key = isClass ? `${owner}.${targetMethod}` : targetMethod;
+      return (codeModel.testInventory.coverage[key]?.length ?? 0) > 0;
+    }
+    return resolvedCoverage.isMethodCovered(owner, targetMethod);
+  }
+
+  function shouldCountTest(test: TestNode): boolean {
     const target = test.targetMethod ?? undefined;
     if (failedTestNames.has(test.name)) return false;
-    if (!target || !moduleMethods.has(target)) return false;
-    return targetMethodCovered(target);
+    if (!target) return false;
+    const resolved = resolveOwner(target, test.targetClass);
+    if (!resolved) return false;
+    return targetMethodCovered(resolved.owner, target, resolved.isClass);
   }
 
   let weightedScore = 0;
@@ -89,13 +106,16 @@ export function calculateAssertionQuality(
   for (const file of testFiles) {
     for (const block of file.describes) {
       for (const test of block.tests) {
-        if (!shouldCountTest(test)) continue;
         const target = test.targetMethod ?? undefined;
         if (!target) continue;
-        const clsName = methodClass.get(target) ?? block.name;
+        if (failedTestNames.has(test.name)) continue;
+        const resolved = resolveOwner(target, test.targetClass);
+        if (!resolved) continue;
+        if (!targetMethodCovered(resolved.owner, target, resolved.isClass)) continue;
+
         let assertions = test.assertions;
         const runtimeAc = resolvedCoverage.hasRuntimeData
-          ? getRuntimeAssertionCount(resolvedCoverage, clsName, target, test.name)
+          ? getRuntimeAssertionCount(resolvedCoverage, resolved.owner, target, test.name)
           : undefined;
         if (runtimeAc !== undefined && runtimeAc !== assertions.length) {
           assertions = assertions.slice(0, Math.min(assertions.length, runtimeAc));
@@ -110,12 +130,22 @@ export function calculateAssertionQuality(
           totalAssertions += 1;
 
           const transitiveMethod = extractMethodFromTarget(assertion.target);
-          if (transitiveMethod && transitiveMethod !== target && moduleMethods.has(transitiveMethod)) {
-            const transitiveKey = `${test.name}:${i}:transitive:${transitiveMethod}`;
-            if (!countedAssertions.has(transitiveKey)) {
-              countedAssertions.add(transitiveKey);
-              weightedScore += w;
-              totalAssertions += 1;
+          if (transitiveMethod && transitiveMethod !== target) {
+            // Transitive credit is scoped to the same test's own resolved owner —
+            // a class-owned transitive method only counts if that same class
+            // declares it too, not any class anywhere with a matching name.
+            const transOwners = classMethodOwners.get(transitiveMethod);
+            const transitiveAllowed =
+              transOwners && transOwners.size > 0
+                ? resolved.isClass && transOwners.has(resolved.owner)
+                : functionOwner.has(transitiveMethod);
+            if (transitiveAllowed) {
+              const transitiveKey = `${test.name}:${i}:transitive:${transitiveMethod}`;
+              if (!countedAssertions.has(transitiveKey)) {
+                countedAssertions.add(transitiveKey);
+                weightedScore += w;
+                totalAssertions += 1;
+              }
             }
           }
         }

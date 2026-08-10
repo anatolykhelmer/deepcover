@@ -28,7 +28,7 @@ function createMinimalCodeModel(): CodeModel {
     dependencyGraph: [],
     testInventory: {
       testFiles: [],
-      coverage: { create: ['test: should create'] },
+      coverage: { 'OrderService.create': ['test: should create'] },
     },
   };
 }
@@ -75,7 +75,7 @@ describe('resolveCoverage', () => {
       filePath: 'src/order.spec.ts',
       describes: [{
         name: 'OrderService',
-        tests: [{ name: 'should create', targetMethod: 'create', assertions: [], mocks: [], isAsync: false }],
+        tests: [{ name: 'should create', targetMethod: 'create', assertions: [], mocks: [], isAsync: false, targetClass: 'OrderService' }],
       }],
     }];
     const runtime: JestRuntimeData = {
@@ -88,5 +88,52 @@ describe('resolveCoverage', () => {
     const resolved = resolveCoverage(model, '/project', { runtime });
     const tests = resolved.getTestsForMethod('OrderService', 'create');
     expect(tests).toContain('should create');
+  });
+
+  it('does not let a same-named method on an unrelated class share static coverage (regression)', () => {
+    const model: CodeModel = {
+      modules: [
+        {
+          filePath: 'src/a.service.ts',
+          classes: [{
+            name: 'AService',
+            type: 'service',
+            methods: [{
+              name: 'doThing', visibility: 'public', params: [], returnType: 'void',
+              branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false,
+              externalCalls: [], internalCalls: [], startLine: 1, endLine: 3,
+            }],
+            dependencies: [],
+            states: [],
+          }],
+        },
+        {
+          filePath: 'src/b.service.ts',
+          classes: [{
+            name: 'BService',
+            type: 'service',
+            methods: [{
+              name: 'doThing', visibility: 'public', params: [], returnType: 'void',
+              branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false,
+              externalCalls: [], internalCalls: [], startLine: 1, endLine: 3,
+            }],
+            dependencies: [],
+            states: [],
+          }],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: {
+        testFiles: [],
+        // Qualified key: only AService.doThing is covered, BService.doThing must not
+        // inherit it just because the bare method name matches.
+        coverage: { 'AService.doThing': ['adds one'] },
+      },
+    };
+
+    const resolved = resolveCoverage(model, '/project');
+    expect(resolved.isMethodCovered('AService', 'doThing')).toBe(true);
+    expect(resolved.isMethodCovered('BService', 'doThing')).toBe(false);
+    expect(resolved.getTestsForMethod('BService', 'doThing')).toEqual([]);
   });
 });

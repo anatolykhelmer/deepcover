@@ -4,10 +4,11 @@ import {
   filterTestFilesByModule,
   scopeModelForReasoner,
   scopeTestFilesToModel,
+  type SourceMethodNames,
 } from '../module-scope';
 import type { ClassNode, CodeModel, ModuleNode, TestFileNode } from '../../types/code-model';
 
-function makeTestFile(filePath: string, targetMethods: string[]): TestFileNode {
+function makeTestFile(filePath: string, targetMethods: string[], targetClass?: string): TestFileNode {
   return {
     filePath,
     describes: [
@@ -19,18 +20,19 @@ function makeTestFile(filePath: string, targetMethods: string[]): TestFileNode {
           assertions: [{ type: 'value_check' as const, target: 'result', matcherUsed: 'toEqual' }],
           mocks: [],
           isAsync: false,
+          targetClass: targetClass ?? null,
         })),
       },
     ],
   };
 }
 
-function makeModule(filePath: string, methodNames: string[]): ModuleNode {
+function makeModule(filePath: string, methodNames: string[], className = 'SomeService'): ModuleNode {
   return {
     filePath,
     classes: [
       {
-        name: 'SomeService',
+        name: className,
         type: 'service',
         methods: methodNames.map((name) => ({
           name,
@@ -54,6 +56,17 @@ function makeModule(filePath: string, methodNames: string[]): ModuleNode {
   };
 }
 
+/** Builds a `SourceMethodNames` directly, for tests that don't need a full ModuleNode[]. */
+function makeSourceMethodNames(
+  classOwners: Record<string, string[]> = {},
+  functionNames: string[] = [],
+): SourceMethodNames {
+  return {
+    classMethodOwners: new Map(Object.entries(classOwners).map(([method, owners]) => [method, new Set(owners)])),
+    functionNames: new Set(functionNames),
+  };
+}
+
 describe('collectSourceMethodNames', () => {
   it('collects method names across modules and classes', () => {
     const modules = [
@@ -62,7 +75,7 @@ describe('collectSourceMethodNames', () => {
     ];
 
     expect(collectSourceMethodNames(modules)).toEqual(
-      new Set(['createOrder', 'reserve', 'release']),
+      makeSourceMethodNames({ createOrder: ['SomeService'], reserve: ['SomeService'], release: ['SomeService'] }),
     );
   });
 
@@ -90,11 +103,22 @@ describe('collectSourceMethodNames', () => {
       },
     ];
 
-    expect(collectSourceMethodNames(modules)).toEqual(new Set(['formatMoney']));
+    expect(collectSourceMethodNames(modules)).toEqual(makeSourceMethodNames({}, ['formatMoney']));
   });
 
-  it('returns an empty set for modules with no classes or functions', () => {
-    expect(collectSourceMethodNames([])).toEqual(new Set());
+  it('returns empty owners for modules with no classes or functions', () => {
+    expect(collectSourceMethodNames([])).toEqual(makeSourceMethodNames());
+  });
+
+  it('records every class in scope that declares a given method name', () => {
+    const modules = [
+      makeModule('/repo/src/a/a.service.ts', ['doThing'], 'AService'),
+      makeModule('/repo/src/b/b.service.ts', ['doThing'], 'BService'),
+    ];
+
+    expect(collectSourceMethodNames(modules)).toEqual(
+      makeSourceMethodNames({ doThing: ['AService', 'BService'] }),
+    );
   });
 });
 
@@ -102,9 +126,9 @@ describe('scopeTestFilesToModel', () => {
   const modules = [makeModule('/repo/src/orders/orders.service.ts', ['createOrder'])];
   const sourceMethodNames = collectSourceMethodNames(modules);
 
-  const ordersSpec = makeTestFile('/repo/src/orders/orders.service.spec.ts', ['createOrder']);
+  const ordersSpec = makeTestFile('/repo/src/orders/orders.service.spec.ts', ['createOrder'], 'SomeService');
   const calculatorSpec = makeTestFile('/repo/src/calculator/calculator.spec.ts', ['calculate']);
-  const sharedSpec = makeTestFile('/repo/test/e2e/orders.e2e.spec.ts', ['createOrder']);
+  const sharedSpec = makeTestFile('/repo/test/e2e/orders.e2e.spec.ts', ['createOrder'], 'SomeService');
 
   it('keeps test files living alongside the model source files', () => {
     const result = scopeTestFilesToModel([ordersSpec, calculatorSpec], modules, sourceMethodNames);
@@ -118,16 +142,32 @@ describe('scopeTestFilesToModel', () => {
     expect(result).not.toContain(calculatorSpec);
   });
 
-  it('keeps out-of-directory tests that target a known source method', () => {
+  it('keeps out-of-directory tests that target a known source method with a validated class', () => {
     const result = scopeTestFilesToModel([sharedSpec], modules, sourceMethodNames);
 
     expect(result).toEqual([sharedSpec]);
   });
 
+  it('drops out-of-directory tests whose resolved class does not match the method owner', () => {
+    const wrongClassSpec = makeTestFile('/repo/test/e2e/orders.e2e.spec.ts', ['createOrder'], 'SomeUnrelatedClass');
+
+    const result = scopeTestFilesToModel([wrongClassSpec], modules, sourceMethodNames);
+
+    expect(result).toEqual([]);
+  });
+
+  it('drops out-of-directory tests with no resolved class at all', () => {
+    const unresolvedSpec = makeTestFile('/repo/test/e2e/orders.e2e.spec.ts', ['createOrder']);
+
+    const result = scopeTestFilesToModel([unresolvedSpec], modules, sourceMethodNames);
+
+    expect(result).toEqual([]);
+  });
+
   it('returns all files when the model has no modules', () => {
     const all = [ordersSpec, calculatorSpec];
 
-    expect(scopeTestFilesToModel(all, [], new Set())).toEqual(all);
+    expect(scopeTestFilesToModel(all, [], makeSourceMethodNames())).toEqual(all);
   });
 });
 
@@ -136,32 +176,46 @@ describe('filterTestFilesByModule', () => {
   const notificationsE2e = makeTestFile('test/notifications/notifications.e2e.spec.ts', ['handleEvent']);
   const ordersUnit = makeTestFile('src/orders/__tests__/orders.spec.ts', ['createOrder']);
   const paymentsUnit = makeTestFile('src/payments/__tests__/payments.spec.ts', ['processPayment']);
-  const sharedHelper = makeTestFile('src/shared/__tests__/utils.spec.ts', ['handleEvent', 'createOrder']);
+  const sharedHelper = makeTestFile(
+    'src/shared/__tests__/utils.spec.ts',
+    ['handleEvent', 'createOrder'],
+    'NotificationsHandler',
+  );
 
   const allFiles = [notificationsUnit, notificationsE2e, ordersUnit, paymentsUnit, sharedHelper];
 
   it('returns all files when modulePath is undefined', () => {
-    const result = filterTestFilesByModule(allFiles, undefined, new Set());
+    const result = filterTestFilesByModule(allFiles, undefined, makeSourceMethodNames());
     expect(result).toHaveLength(5);
   });
 
   it('filters by module basename in file path', () => {
-    const methods = new Set(['handleEvent']);
+    const methods = makeSourceMethodNames({ handleEvent: ['NotificationsHandler'] });
     const result = filterTestFilesByModule(allFiles, 'src/notifications', methods);
 
     expect(result).toContain(notificationsUnit);
     expect(result).toContain(notificationsE2e);
   });
 
-  it('includes files that test relevant methods even if path does not match', () => {
-    const methods = new Set(['handleEvent']);
+  it('includes files that test relevant methods, validated by class, even if path does not match', () => {
+    const methods = makeSourceMethodNames({ handleEvent: ['NotificationsHandler'] });
     const result = filterTestFilesByModule(allFiles, 'src/notifications', methods);
 
     expect(result).toContain(sharedHelper);
   });
 
+  it('excludes an out-of-path test targeting a known method whose class does not resolve', () => {
+    const methods = makeSourceMethodNames({ handleEvent: ['NotificationsHandler'] });
+    // Same method name, but this test's own class never resolved (e.g. no `new X()` /
+    // `describe('ClassName', ...)` signal) — must not fall back to a bare-name match.
+    const unresolved = makeTestFile('src/shared/__tests__/other.spec.ts', ['handleEvent']);
+    const result = filterTestFilesByModule([...allFiles, unresolved], 'src/notifications', methods);
+
+    expect(result).not.toContain(unresolved);
+  });
+
   it('excludes files with no path match and no relevant methods', () => {
-    const methods = new Set(['handleEvent']);
+    const methods = makeSourceMethodNames({ handleEvent: ['NotificationsHandler'] });
     const result = filterTestFilesByModule(allFiles, 'src/notifications', methods);
 
     expect(result).not.toContain(ordersUnit);
@@ -169,7 +223,7 @@ describe('filterTestFilesByModule', () => {
   });
 
   it('handles trailing slash in modulePath', () => {
-    const methods = new Set(['handleEvent']);
+    const methods = makeSourceMethodNames({ handleEvent: ['NotificationsHandler'] });
     const result = filterTestFilesByModule(allFiles, 'src/notifications/', methods);
 
     expect(result).toContain(notificationsUnit);
@@ -177,7 +231,7 @@ describe('filterTestFilesByModule', () => {
   });
 
   it('returns empty array when no files match', () => {
-    const methods = new Set(['unknownMethod']);
+    const methods = makeSourceMethodNames({ unknownMethod: ['SomeService'] });
     const result = filterTestFilesByModule(allFiles, 'src/nonexistent', methods);
 
     expect(result).toHaveLength(0);
@@ -238,7 +292,7 @@ describe('filterClassesForPrompts', () => {
 });
 
 describe('scopeModelForReasoner', () => {
-  const ordersSpec = makeTestFile('/repo/src/orders/orders.service.spec.ts', ['createOrder']);
+  const ordersSpec = makeTestFile('/repo/src/orders/orders.service.spec.ts', ['createOrder'], 'SomeService');
   const calculatorSpec = makeTestFile('/repo/src/calculator/calculator.spec.ts', ['calculate']);
 
   const model: CodeModel = {
@@ -292,5 +346,24 @@ describe('scopeModelForReasoner', () => {
 
     expect(scoped.dependencyGraph).toBe(model.dependencyGraph);
     expect(scoped.testInventory.coverage).toBe(model.testInventory.coverage);
+  });
+
+  it('excludes a same-named method from an unrelated module outside the scope (regression)', () => {
+    // Mirrors the reported leak: a `--module`-scoped CodeModel only contains the
+    // target module's classes, so a same-named method's test in a totally
+    // different, out-of-scope module (invisible here) must still be excluded.
+    const unrelatedModuleTest = makeTestFile(
+      '/repo/src/unrelated/unrelated.service.spec.ts',
+      ['createOrder'],
+      'UnrelatedService',
+    );
+    const modelWithUnrelatedTest: CodeModel = {
+      ...model,
+      testInventory: { ...model.testInventory, testFiles: [ordersSpec, unrelatedModuleTest] },
+    };
+
+    const scoped = scopeModelForReasoner(modelWithUnrelatedTest, 'src/orders');
+
+    expect(scoped.testInventory.testFiles).toEqual([ordersSpec]);
   });
 });

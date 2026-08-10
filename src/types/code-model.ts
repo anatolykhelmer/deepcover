@@ -75,7 +75,13 @@ export interface DependencyEdge {
 
 export interface TestInventory {
   testFiles: TestFileNode[];
-  coverage: Record<string, string[]>; // methodName -> testNames[]
+  /**
+   * `methodName -> testNames[]` for standalone functions (no reliable per-test class
+   * signal to qualify them further); `ClassName.methodName -> testNames[]` for class
+   * methods, keyed by the test's resolved `targetClass` so a same-named method on an
+   * unrelated class can't share coverage.
+   */
+  coverage: Record<string, string[]>;
 }
 
 export interface TestFileNode {
@@ -98,6 +104,14 @@ export interface TestNode {
   isAsync: boolean;
   /** Set when the test comes from `it.each` / `test.each`. */
   parameterized?: ParameterizedInfo;
+  /**
+   * The class this test is believed to target, resolved from a `new ClassName()` /
+   * `TestBed.inject(ClassName)` binding matched against the test's `describe` ancestry,
+   * or (failing that) the outermost `describe` block's title. `null`/absent when neither
+   * signal is available. Optional so existing fixtures that predate this field still
+   * type-check; treat `undefined` the same as `null`.
+   */
+  targetClass?: string | null;
 }
 
 export interface ParameterizedInfo {

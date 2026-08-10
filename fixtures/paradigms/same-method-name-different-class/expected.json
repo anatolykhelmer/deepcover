@@ -1,0 +1,8 @@
+{
+  "paradigm": "same-method-name-different-class",
+  "description": "Two unrelated classes declare a method with the same name; only one is tested. The untested class must not inherit the other's test credit just because the bare method name matches.",
+  "assertions": {
+    "coveredMethods": ["AService.doThing"],
+    "uncoveredMethods": ["BService.doThing"]
+  }
+}

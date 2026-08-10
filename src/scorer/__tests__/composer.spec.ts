@@ -60,13 +60,13 @@ describe('composer', () => {
             {
               name: 'ItemService',
               tests: [
-                { name: 't1', targetMethod: 'getAll', assertions: [], mocks: [], isAsync: false },
+                { name: 't1', targetMethod: 'getAll', assertions: [], mocks: [], isAsync: false, targetClass: 'ItemService' },
               ],
             },
           ],
         },
       ],
-      coverage: { getAll: ['t1'], getById: [] },
+      coverage: { 'ItemService.getAll': ['t1'], 'ItemService.getById': [] },
     },
   };
 
@@ -263,13 +263,13 @@ describe('composer', () => {
               {
                 name: 'PaymentGateway',
                 tests: [
-                  { name: 'charges a card', targetMethod: 'charge', assertions, mocks: [], isAsync: true },
+                  { name: 'charges a card', targetMethod: 'charge', assertions, mocks: [], isAsync: true, targetClass: 'PaymentGateway' },
                 ],
               },
             ],
           },
         ],
-        coverage: { charge: ['charges a card'] },
+        coverage: { 'PaymentGateway.charge': ['charges a card'] },
       },
     };
   }
@@ -373,7 +373,7 @@ describe('composer', () => {
 
     it('does not credit a reasoner state as tested when the method has no coverage', () => {
       const model = paymentGatewayModel([]);
-      model.testInventory.coverage = { charge: [] };
+      model.testInventory.coverage = { 'PaymentGateway.charge': [] };
       const resolved = resolveCoverage(model, PROJECT_ROOT);
       const reasoner = {
         ...emptyReasonerOutput(),
@@ -450,6 +450,97 @@ describe('composer', () => {
       expect(charge.weakAssertions).toBe(1);
       // 30 (Istanbul lines) + 0 states + (2*5 + 1*2) assertion points
       expect(charge.composite).toBeCloseTo(42, 5);
+    });
+  });
+
+  /**
+   * Regression for the reported leak: a same-named method on a completely unrelated,
+   * untested class must not inherit another class's test credit just because an
+   * assertion's expression happens to textually call `.doThing(...)`.
+   */
+  describe('cross-class method-name collision (reported leak)', () => {
+    function twoClassModel(): CodeModel {
+      return {
+        modules: [
+          {
+            filePath: '/src/moduleA/a.service.ts',
+            functions: [],
+            classes: [
+              {
+                name: 'AService',
+                type: 'service',
+                methods: [method('doThing', { startLine: 1, endLine: 3 })],
+                dependencies: [],
+                states: [],
+              },
+            ],
+          },
+          {
+            filePath: '/src/moduleB/b.service.ts',
+            functions: [],
+            classes: [
+              {
+                name: 'BService',
+                type: 'service',
+                methods: [method('doThing', { startLine: 1, endLine: 3 })],
+                dependencies: [],
+                states: [],
+              },
+            ],
+          },
+        ],
+        dependencyGraph: [],
+        testInventory: {
+          testFiles: [
+            {
+              filePath: '/src/moduleA/a.service.spec.ts',
+              describes: [
+                {
+                  name: 'AService',
+                  tests: [
+                    {
+                      name: 'adds one',
+                      targetMethod: 'doThing',
+                      targetClass: 'AService',
+                      assertions: [
+                        { type: 'value_check', target: 'new AService().doThing(1)', matcherUsed: 'toBe' },
+                      ],
+                      mocks: [],
+                      isAsync: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          coverage: { 'AService.doThing': ['adds one'] },
+        },
+      };
+    }
+
+    it('gives the untested class zero assertion credit, consistent with "no test coverage"', () => {
+      const model = twoClassModel();
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+
+      const bThing = result.perFunction.find((f) => f.className === 'BService' && f.methodName === 'doThing');
+      expect(bThing).toBeDefined();
+      expect(bThing!.strongAssertions).toBe(0);
+      expect(bThing!.mediumAssertions).toBe(0);
+      expect(bThing!.weakAssertions).toBe(0);
+      expect(bThing!.untested).toContain('no test coverage');
+      expect(bThing!.composite).toBe(0);
+    });
+
+    it('still gives the actually-tested class its own credit', () => {
+      const model = twoClassModel();
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+
+      const aThing = result.perFunction.find((f) => f.className === 'AService' && f.methodName === 'doThing');
+      expect(aThing).toBeDefined();
+      expect(aThing!.strongAssertions).toBe(1);
+      expect(aThing!.untested).not.toContain('no test coverage');
     });
   });
 });

@@ -1,4 +1,4 @@
-import type { CodeModel } from '../types/code-model';
+import type { CodeModel, TestFileNode } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
@@ -7,6 +7,52 @@ import { getAssertionSpecificity } from './matchers';
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
   return match ? match[1] : null;
+}
+
+/**
+ * Tallies assertion specificity for one method — a direct match (test named the
+ * method as its target) or a text match (some assertion literally calls it).
+ *
+ * For class methods (`isClass: true`) every test considered must have a resolved
+ * `targetClass` equal to `owner` first: the text-match path in particular scans
+ * every test in the inventory, and without this gate a same-named method on a
+ * completely unrelated class would inflate this method's specificity score.
+ * Standalone functions have no comparable per-test class signal and keep the
+ * previous unscoped match.
+ */
+function tallyAssertionSpecificity(
+  testFiles: TestFileNode[],
+  methodName: string,
+  owner: string,
+  isClass: boolean
+): { specificitySum: number; count: number } {
+  let specificitySum = 0;
+  let count = 0;
+
+  for (const file of testFiles) {
+    for (const block of file.describes) {
+      for (const test of block.tests) {
+        if (isClass && test.targetClass !== owner) continue;
+
+        if (test.targetMethod === methodName) {
+          for (const a of test.assertions) {
+            specificitySum += getAssertionSpecificity(a.matcherUsed);
+            count += 1;
+          }
+          continue;
+        }
+
+        for (const a of test.assertions) {
+          if (extractMethodFromTarget(a.target) === methodName) {
+            specificitySum += getAssertionSpecificity(a.matcherUsed);
+            count += 1;
+          }
+        }
+      }
+    }
+  }
+
+  return { specificitySum, count };
 }
 
 export function calculateMutationResilience(
@@ -52,25 +98,9 @@ export function calculateMutationResilience(
         }
 
         if (hasTests) {
-          for (const file of testFiles) {
-            for (const block of file.describes) {
-              for (const test of block.tests) {
-                if (test.targetMethod === method.name) {
-                  for (const a of test.assertions) {
-                    assertionSpecificitySum += getAssertionSpecificity(a.matcherUsed);
-                    assertionCount += 1;
-                  }
-                } else {
-                  for (const a of test.assertions) {
-                    if (extractMethodFromTarget(a.target) === method.name) {
-                      assertionSpecificitySum += getAssertionSpecificity(a.matcherUsed);
-                      assertionCount += 1;
-                    }
-                  }
-                }
-              }
-            }
-          }
+          const { specificitySum, count } = tallyAssertionSpecificity(testFiles, method.name, cls.name, true);
+          assertionSpecificitySum += specificitySum;
+          assertionCount += count;
         }
       }
     }
@@ -100,25 +130,9 @@ export function calculateMutationResilience(
       }
 
       if (hasTests) {
-        for (const file of testFiles) {
-          for (const block of file.describes) {
-            for (const test of block.tests) {
-              if (test.targetMethod === fn.name) {
-                for (const a of test.assertions) {
-                  assertionSpecificitySum += getAssertionSpecificity(a.matcherUsed);
-                  assertionCount += 1;
-                }
-              } else {
-                for (const a of test.assertions) {
-                  if (extractMethodFromTarget(a.target) === fn.name) {
-                    assertionSpecificitySum += getAssertionSpecificity(a.matcherUsed);
-                    assertionCount += 1;
-                  }
-                }
-              }
-            }
-          }
-        }
+        const { specificitySum, count } = tallyAssertionSpecificity(testFiles, fn.name, mod.filePath, false);
+        assertionSpecificitySum += specificitySum;
+        assertionCount += count;
       }
     }
   }

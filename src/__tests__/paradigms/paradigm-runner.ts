@@ -24,6 +24,10 @@ export interface ParadigmExpectations {
     allMethodsCovered?: boolean;
     noGapsForClass?: string;
     coveredMethods?: string[];
+    /** `ClassName.methodName` entries that must NOT be covered — e.g. a same-named
+     *  method on an unrelated, untested class must not inherit another class's
+     *  test credit. */
+    uncoveredMethods?: string[];
     expectedBugPatterns?: string[];
   };
 }
@@ -116,6 +120,23 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
       const [className, methodName] = qualifiedName.split('.');
       const isCovered = resolvedCoverage.isMethodCovered(className, methodName);
       expect(isCovered).toBe(true);
+    }
+  }
+
+  if (assertions.uncoveredMethods) {
+    for (const qualifiedName of assertions.uncoveredMethods) {
+      const [className, methodName] = qualifiedName.split('.');
+      const isCovered = resolvedCoverage.isMethodCovered(className, methodName);
+      expect(isCovered).toBe(false);
+
+      const perMethod = scoreResult.perFunction.find(
+        (f) => f.className === className && f.methodName === methodName
+      );
+      if (perMethod) {
+        expect(perMethod.strongAssertions).toBe(0);
+        expect(perMethod.mediumAssertions).toBe(0);
+        expect(perMethod.weakAssertions).toBe(0);
+      }
     }
   }
 

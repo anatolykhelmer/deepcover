@@ -49,21 +49,21 @@ describe('extractor', () => {
       expect(filePaths.some((p) => p.endsWith('strong-tests.spec.ts'))).toBe(true);
     });
 
-    it('testInventory.coverage maps method names to test names', () => {
+    it('testInventory.coverage maps ClassName.methodName to test names', () => {
       const model = extractCodeModel({ rootDir: ASSERTION_QUALITY_DIR });
-      expect(model.testInventory.coverage.getAll).toBeDefined();
-      expect(model.testInventory.coverage.getById).toBeDefined();
-      expect(model.testInventory.coverage.create).toBeDefined();
+      expect(model.testInventory.coverage['ItemService.getAll']).toBeDefined();
+      expect(model.testInventory.coverage['ItemService.getById']).toBeDefined();
+      expect(model.testInventory.coverage['ItemService.create']).toBeDefined();
 
-      expect(model.testInventory.coverage.getAll).toContain('should get all items');
-      expect(model.testInventory.coverage.getAll).toContain('should return all items from repository');
+      expect(model.testInventory.coverage['ItemService.getAll']).toContain('should get all items');
+      expect(model.testInventory.coverage['ItemService.getAll']).toContain('should return all items from repository');
 
-      expect(model.testInventory.coverage.getById).toContain('should get by id');
-      expect(model.testInventory.coverage.getById).toContain('should return item by id');
-      expect(model.testInventory.coverage.getById).toContain('should throw when item not found');
+      expect(model.testInventory.coverage['ItemService.getById']).toContain('should get by id');
+      expect(model.testInventory.coverage['ItemService.getById']).toContain('should return item by id');
+      expect(model.testInventory.coverage['ItemService.getById']).toContain('should throw when item not found');
 
-      expect(model.testInventory.coverage.create).toContain('should create');
-      expect(model.testInventory.coverage.create).toContain('should save item via repository');
+      expect(model.testInventory.coverage['ItemService.create']).toContain('should create');
+      expect(model.testInventory.coverage['ItemService.create']).toContain('should save item via repository');
     });
   });
 

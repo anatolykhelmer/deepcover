@@ -91,8 +91,8 @@ function extractDescribeBlocks(sourceFile: SourceFile): DescribeBlockNode[] {
     if (!block) continue;
 
     const mocks = extractMocksFromBlock(block);
-    const subjectVars = resolveSubjectVars(call, name, subjectBindings);
-    const tests = extractTestsFromBlock(block, subjectVars);
+    const { subjectVars, targetClass } = resolveTargetClass(call, name, subjectBindings);
+    const tests = extractTestsFromBlock(block, subjectVars, targetClass);
     for (const test of tests) {
       test.mocks = [...mocks];
     }
@@ -460,7 +460,11 @@ function findVariableNameForObjectLiteral(objLit: ObjectLiteralExpression): stri
  * Tests                                                               *
  * ------------------------------------------------------------------ */
 
-function extractTestsFromBlock(block: Block, subjectVars: Set<string>): TestNode[] {
+function extractTestsFromBlock(
+  block: Block,
+  subjectVars: Set<string>,
+  targetClass: string | null
+): TestNode[] {
   const tests: TestNode[] = [];
 
   for (const stmt of block.getStatements()) {
@@ -480,7 +484,7 @@ function extractTestsFromBlock(block: Block, subjectVars: Set<string>): TestNode
     if (!isTestCallback(callback)) continue;
 
     if (!callee.each) {
-      tests.push(analyzeTest(title, title, callback, subjectVars));
+      tests.push(analyzeTest(title, title, callback, subjectVars, targetClass));
       continue;
     }
 
@@ -489,7 +493,7 @@ function extractTestsFromBlock(block: Block, subjectVars: Set<string>): TestNode
       // Table could not be read statically (or is very large): keep one entry that
       // carries the raw title template, so the assertions still reach the inventory.
       tests.push({
-        ...analyzeTest(title, title, callback, subjectVars),
+        ...analyzeTest(title, title, callback, subjectVars, targetClass),
         parameterized: info,
       });
       continue;
@@ -498,7 +502,7 @@ function extractTestsFromBlock(block: Block, subjectVars: Set<string>): TestNode
     callee.each.rows.forEach((row, index) => {
       const caseName = interpolateEachTitle(title, row, index);
       tests.push({
-        ...analyzeTest(caseName, title, callback, subjectVars),
+        ...analyzeTest(caseName, title, callback, subjectVars, targetClass),
         parameterized: { ...info, caseIndex: index },
       });
     });
@@ -516,7 +520,8 @@ function analyzeTest(
   name: string,
   titleForHint: string,
   callback: TestCallback,
-  subjectVars: Set<string>
+  subjectVars: Set<string>,
+  targetClass: string | null
 ): TestNode {
   const body = callback.getBody();
   // Concise arrow bodies (`it('x', () => expect(...).toBe(1))`) carry assertions too.
@@ -532,6 +537,7 @@ function analyzeTest(
     assertions,
     mocks,
     isAsync,
+    targetClass,
   };
 }
 
@@ -978,28 +984,51 @@ function stripAwait(node: Node): Node {
   return Node.isAwaitExpression(node) ? node.getExpression() : node;
 }
 
+interface TargetClassResolution {
+  subjectVars: Set<string>;
+  targetClass: string | null;
+}
+
 /**
  * Matches a describe block (or its ancestors, for nested blocks) against the
- * classes constructed in the file.
+ * classes constructed in the file, and resolves which class the block's tests
+ * target — used downstream to stop same-named methods on unrelated classes from
+ * getting credit for each other's tests.
+ *
+ * A `new ClassName()` / `TestBed.inject(ClassName)` binding is the strongest
+ * signal (verified by actual construction) and is tried first. When no binding
+ * matches — e.g. a `beforeEach(() => { service = createService() })` factory
+ * that never names the class directly — this falls back to the outermost
+ * `describe` block's title, the idiomatic `describe('ClassName', () => {
+ * describe('#method', ...) })` convention. A file with multiple un-bound
+ * subjects sharing one outer `describe` can still resolve to the wrong class;
+ * that is an accepted trade-off, still strictly tighter than no check at all.
  */
-function resolveSubjectVars(
+function resolveTargetClass(
   describeCall: CallExpression,
   describeName: string,
   bindings: SubjectBinding[]
-): Set<string> {
+): TargetClassResolution {
   const names = [describeName, ...getAncestorDescribeNames(describeCall)];
   const subjectVars = new Set<string>();
+  let targetClass: string | null = null;
 
   for (const name of names) {
     for (const binding of bindings) {
       if (binding.className.toLowerCase() === name.trim().toLowerCase()) {
         subjectVars.add(binding.varName);
+        if (!targetClass) targetClass = binding.className;
       }
     }
     if (subjectVars.size > 0) break;
   }
 
-  return subjectVars;
+  if (!targetClass) {
+    const outermost = names[names.length - 1]?.trim();
+    targetClass = outermost || null;
+  }
+
+  return { subjectVars, targetClass };
 }
 
 function getAncestorDescribeNames(describeCall: CallExpression): string[] {

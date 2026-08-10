@@ -1,6 +1,7 @@
 import { matchRuntimeTests } from '../runtime-matcher';
 import type { JestRuntimeData } from '../types';
 import type { TestFileNode } from '../../types/code-model';
+import { buildClassMethodOwners } from '../../types/method-owner';
 
 describe('matchRuntimeTests', () => {
   const runtime: JestRuntimeData = {
@@ -36,5 +37,47 @@ describe('matchRuntimeTests', () => {
   it('returns empty map when no runtime data provided', () => {
     const result = matchRuntimeTests(undefined, testFiles, '/project');
     expect(result.size).toBe(0);
+  });
+
+  describe('class-owned methods (cross-class leak regression)', () => {
+    const crossClassRuntime: JestRuntimeData = {
+      testResults: [
+        { testFilePath: '/project/src/a.spec.ts', testName: 'AService > adds one', status: 'passed', duration: 5, assertionCount: 1 },
+      ],
+      timestamp: '2026-01-01',
+    };
+
+    const aTestFile: TestFileNode = {
+      filePath: 'src/a.spec.ts',
+      describes: [{
+        name: 'AService',
+        tests: [
+          { name: 'adds one', targetMethod: 'doThing', targetClass: 'AService', assertions: [], mocks: [], isAsync: false },
+        ],
+      }],
+    };
+
+    const classMethodOwners = buildClassMethodOwners([
+      {
+        filePath: 'src/a.service.ts',
+        classes: [{ name: 'AService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+      },
+      {
+        filePath: 'src/b.service.ts',
+        classes: [{ name: 'BService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+      },
+    ]);
+
+    it('keys a class-owned method by ClassName.methodName, not the bare name', () => {
+      const result = matchRuntimeTests(crossClassRuntime, [aTestFile], '/project', classMethodOwners);
+      expect(result.get('AService.doThing')?.passed).toContain('adds one');
+      expect(result.has('doThing')).toBe(false);
+    });
+
+    it('does not let an unrelated class share the bare method name key', () => {
+      const result = matchRuntimeTests(crossClassRuntime, [aTestFile], '/project', classMethodOwners);
+      // A same-named BService.doThing must not pick up AService's runtime result.
+      expect(result.get('BService.doThing')).toBeUndefined();
+    });
   });
 });
