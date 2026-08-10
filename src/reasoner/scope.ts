@@ -4,9 +4,10 @@ import { buildClassMethodOwners, type ClassMethodOwners } from '../types/method-
 
 /**
  * The extractor always globs every spec file in the project, regardless of the
- * `include` patterns used for source files. Commands that operate on a single
- * module must therefore narrow the test inventory themselves before feeding it
- * to prompts — otherwise the Reasoner sees the whole repository's tests.
+ * `include` patterns used for source files. A module-scoped CodeModel therefore
+ * carries the whole repository's tests, and anything that turns one into prompts
+ * must narrow it first. `runReasoner` does this for every caller; the `extract`
+ * command, which builds its prompts by hand, uses these helpers directly.
  */
 
 export interface SourceMethodNames {
@@ -99,16 +100,38 @@ export function filterClassesForPrompts(classes: ClassNode[]): ClassNode[] {
 }
 
 /**
+ * How far the run under way was narrowed. Anything that feeds a CodeModel to the
+ * Reasoner must say so, because the extractor's test inventory is always
+ * repository-wide (see the note at the top of this file).
+ */
+export interface ReasonerScope {
+  /** The `--module` path this run was narrowed to, if any. */
+  module?: string;
+  /**
+   * Set only when the CodeModel already covers the whole repository (no
+   * `--module`/`--file`), where every test file is legitimately in scope.
+   * Omitting it fails closed: tests get scoped to the model's own source files.
+   */
+  wholeRepo?: boolean;
+}
+
+/**
  * Narrow a CodeModel to what the Reasoner should actually see: tests belonging
  * to the module under analysis, and classes worth putting in a prompt. This
- * mirrors what the `extract` command feeds into prompts.json, so both entry
+ * mirrors what the `extract` command feeds into prompts.json, so all entry
  * points reason over the same material.
+ *
+ * Applying this twice is a no-op — both filters are plain predicates over the
+ * same inputs — so callers that need the scoped model themselves may scope it
+ * before handing it on.
  */
-export function scopeModelForReasoner(codeModel: CodeModel, modulePath?: string): CodeModel {
+export function scopeModelForReasoner(codeModel: CodeModel, scope: ReasonerScope = {}): CodeModel {
   const sourceMethodNames = collectSourceMethodNames(codeModel.modules);
-  const testFiles = modulePath
-    ? filterTestFilesByModule(codeModel.testInventory.testFiles, modulePath, sourceMethodNames)
-    : scopeTestFilesToModel(codeModel.testInventory.testFiles, codeModel.modules, sourceMethodNames);
+  const testFiles = scope.module
+    ? filterTestFilesByModule(codeModel.testInventory.testFiles, scope.module, sourceMethodNames)
+    : scope.wholeRepo
+      ? codeModel.testInventory.testFiles
+      : scopeTestFilesToModel(codeModel.testInventory.testFiles, codeModel.modules, sourceMethodNames);
 
   return {
     ...codeModel,

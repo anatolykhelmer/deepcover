@@ -15,6 +15,7 @@ import { buildAssertionQualityPrompt } from './prompts/assertion-quality';
 import { buildCriticalityPrompt } from './prompts/criticality';
 import { buildTransitiveCoveragePrompt } from './prompts/transitive-coverage';
 import { buildBugFindingPrompt } from './prompts/bug-finding';
+import { scopeModelForReasoner, type ReasonerScope } from './scope';
 
 function extractJsonFromResponse(text: string): string {
   const trimmed = text.trim();
@@ -59,17 +60,25 @@ async function runJob<T>(
   }
 }
 
+/**
+ * `scope` is not optional in spirit: the extractor's test inventory is always
+ * repository-wide, so scoping happens here rather than at each call site — a
+ * caller that forgets it gets the fail-closed default instead of the whole
+ * repository's tests in every prompt.
+ */
 export async function runReasoner(
   codeModel: CodeModel,
   provider: LLMProvider,
-  bugSignals?: BugSignal[]
+  bugSignals?: BugSignal[],
+  scope: ReasonerScope = {}
 ): Promise<ReasonerOutput> {
-  const classes = codeModel.modules.flatMap((m) => m.classes);
-  const standaloneFunctions = codeModel.modules
+  const scopedModel = scopeModelForReasoner(codeModel, scope);
+  const classes = scopedModel.modules.flatMap((m) => m.classes);
+  const standaloneFunctions = scopedModel.modules
     .map((m) => ({ filePath: m.filePath, functions: m.functions ?? [] }))
     .filter((entry) => entry.functions.length > 0);
-  const { testFiles } = codeModel.testInventory;
-  const edges = codeModel.dependencyGraph;
+  const { testFiles } = scopedModel.testInventory;
+  const edges = scopedModel.dependencyGraph;
 
   const domainP = runJob('Domain states', async () => {
     const { system, user } = buildDomainStatesPrompt({ classes, standaloneFunctions });
@@ -100,7 +109,7 @@ export async function runReasoner(
       edges,
       classes,
       standaloneFunctions,
-      testInventory: codeModel.testInventory,
+      testInventory: scopedModel.testInventory,
     });
     const raw = await provider.analyze(system, user);
     const parsed = JSON.parse(extractJsonFromResponse(raw)) as unknown;

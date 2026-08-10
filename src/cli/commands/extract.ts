@@ -17,7 +17,7 @@ import {
   collectSourceMethodNames,
   filterClassesForPrompts,
   filterTestFilesByModule,
-} from '../module-scope';
+} from '../../reasoner/scope';
 
 function buildTestsByMethod(
   testInventory: TestInventory,

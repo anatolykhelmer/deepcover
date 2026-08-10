@@ -5,7 +5,7 @@ import {
   scopeModelForReasoner,
   scopeTestFilesToModel,
   type SourceMethodNames,
-} from '../module-scope';
+} from '../scope';
 import type { ClassNode, CodeModel, ModuleNode, TestFileNode } from '../../types/code-model';
 
 function makeTestFile(filePath: string, targetMethods: string[], targetClass?: string): TestFileNode {
@@ -317,13 +317,13 @@ describe('scopeModelForReasoner', () => {
   };
 
   it('drops tests outside the module', () => {
-    const scoped = scopeModelForReasoner(model, 'src/orders');
+    const scoped = scopeModelForReasoner(model, { module: 'src/orders' });
 
     expect(scoped.testInventory.testFiles).toEqual([ordersSpec]);
   });
 
   it('drops zero-method DTOs from the prompt classes', () => {
-    const scoped = scopeModelForReasoner(model, 'src/orders');
+    const scoped = scopeModelForReasoner(model, { module: 'src/orders' });
 
     expect(scoped.modules[0].classes.map((c) => c.name)).toEqual(['SomeService']);
   });
@@ -335,14 +335,14 @@ describe('scopeModelForReasoner', () => {
   });
 
   it('leaves the original model untouched', () => {
-    scopeModelForReasoner(model, 'src/orders');
+    scopeModelForReasoner(model, { module: 'src/orders' });
 
     expect(model.testInventory.testFiles).toHaveLength(2);
     expect(model.modules[0].classes).toHaveLength(2);
   });
 
   it('preserves the dependency graph and coverage map', () => {
-    const scoped = scopeModelForReasoner(model, 'src/orders');
+    const scoped = scopeModelForReasoner(model, { module: 'src/orders' });
 
     expect(scoped.dependencyGraph).toBe(model.dependencyGraph);
     expect(scoped.testInventory.coverage).toBe(model.testInventory.coverage);
@@ -362,7 +362,7 @@ describe('scopeModelForReasoner', () => {
       testInventory: { ...model.testInventory, testFiles: [ordersSpec, unrelatedModuleTest] },
     };
 
-    const scoped = scopeModelForReasoner(modelWithUnrelatedTest, 'src/orders');
+    const scoped = scopeModelForReasoner(modelWithUnrelatedTest, { module: 'src/orders' });
 
     expect(scoped.testInventory.testFiles).toEqual([ordersSpec]);
   });

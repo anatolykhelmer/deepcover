@@ -28,7 +28,7 @@ const minimalCodeModel: CodeModel = {
   testInventory: {
     testFiles: [
       {
-        filePath: '/test/item.spec.ts',
+        filePath: '/src/item.service.spec.ts',
         describes: [
           {
             name: 'ItemService',
@@ -43,6 +43,78 @@ const minimalCodeModel: CodeModel = {
     coverage: { findAll: ['should return items'], create: ['should create item'] },
   },
 };
+
+function makeTest(name: string, targetMethod: string, targetClass: string) {
+  return {
+    name,
+    targetMethod,
+    targetClass,
+    assertions: [{ type: 'value_check' as const, target: 'result', matcherUsed: 'toBe' }],
+    mocks: [],
+    isAsync: false,
+  };
+}
+
+/**
+ * What `--module src/moduleB` actually produces: sources narrowed to moduleB,
+ * but a test inventory the extractor globbed across the whole repository.
+ */
+const twoModuleModel: CodeModel = {
+  modules: [
+    {
+      filePath: '/src/moduleB/b.service.ts',
+      classes: [
+        {
+          name: 'BService',
+          type: 'service',
+          methods: [
+            { name: 'processPayment', visibility: 'public', params: [], returnType: 'void', branches: [], branchCount: 1, throwsErrors: true, hasAsyncOps: false, externalCalls: [], internalCalls: [], startLine: 1, endLine: 5 },
+          ],
+          dependencies: [],
+          states: [],
+        },
+      ],
+    },
+  ],
+  dependencyGraph: [],
+  testInventory: {
+    testFiles: [
+      {
+        filePath: '/src/moduleA/a.service.spec.ts',
+        describes: [{ name: 'AService', tests: [makeTest('adds one, verified precisely', 'doWork', 'AService')] }],
+      },
+      {
+        filePath: '/src/moduleB/b.service.spec.ts',
+        describes: [{ name: 'BService', tests: [makeTest('rejects a zero amount', 'processPayment', 'BService')] }],
+      },
+    ],
+    coverage: { doWork: ['adds one, verified precisely'], processPayment: ['rejects a zero amount'] },
+  },
+};
+
+function capturingProvider() {
+  const prompts: Array<{ system: string; user: string }> = [];
+  const mock = new MockLLMProvider();
+  const provider: import('../providers/base').LLMProvider = {
+    analyze: async (system, user) => {
+      prompts.push({ system, user });
+      return mock.analyze(system, user);
+    },
+  };
+  return { prompts, provider };
+}
+
+/** Labels (first system-prompt line) of every job whose input mentions `needle`. */
+function jobsMentioning(prompts: Array<{ system: string; user: string }>, needle: string): string[] {
+  return prompts.filter((p) => p.user.includes(needle)).map((p) => p.system.split('\n')[0]);
+}
+
+function expectNoModuleALeak(prompts: Array<{ system: string; user: string }>) {
+  expect(jobsMentioning(prompts, '/src/moduleA/a.service.spec.ts')).toEqual([]);
+  expect(jobsMentioning(prompts, 'AService')).toEqual([]);
+  // …while the module under analysis still reaches the prompts that take tests.
+  expect(jobsMentioning(prompts, '/src/moduleB/b.service.spec.ts').length).toBeGreaterThan(0);
+}
 
 describe('runReasoner', () => {
   const provider = new MockLLMProvider();
@@ -105,6 +177,32 @@ describe('runReasoner', () => {
     const output = await runReasoner(minimalCodeModel, new MockLLMProvider(), []);
     expect(output.bugFindings).toBeDefined();
     expect(output.bugFindings!.findings.length + output.bugFindings!.signalValidations.length).toBeGreaterThan(0);
+  });
+
+  it('never puts out-of-scope test files in any prompt (regression)', async () => {
+    const { prompts, provider } = capturingProvider();
+
+    await runReasoner(twoModuleModel, provider, [], { module: 'src/moduleB' });
+
+    expectNoModuleALeak(prompts);
+  });
+
+  it('scopes prompts even when the caller passes no scope at all (regression)', async () => {
+    // Fails closed: a call site that forgets to declare its scope must not leak
+    // the whole repository's tests, which is how this bug shipped twice.
+    const { prompts, provider } = capturingProvider();
+
+    await runReasoner(twoModuleModel, provider, []);
+
+    expectNoModuleALeak(prompts);
+  });
+
+  it('keeps every test file when the model covers the whole repository', async () => {
+    const { prompts, provider } = capturingProvider();
+
+    await runReasoner(twoModuleModel, provider, [], { wholeRepo: true });
+
+    expect(jobsMentioning(prompts, '/src/moduleA/a.service.spec.ts').length).toBeGreaterThan(0);
   });
 
   it('runs bug-finding when bugSignals are provided', async () => {

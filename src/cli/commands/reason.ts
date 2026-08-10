@@ -10,7 +10,8 @@ import type { BugSignal } from '../../bug-detector/types';
 import { loadConfig } from '../config';
 import { resolveLLMProvider } from '../resolve-provider';
 import { loadIstanbulCoverage } from '../../resolver/istanbul-source';
-import { scopeModelForReasoner } from '../module-scope';
+import { scopeModelForReasoner } from '../../reasoner/scope';
+import { reasonerScope } from '../reasoner-scope';
 
 function resolvePaths(root: string, module?: string, file?: string) {
   const rootDir = path.resolve(root);
@@ -104,11 +105,15 @@ export const reasonCommand = new Command('reason')
       });
     }
 
-    const scopedModel = scopeModelForReasoner(codeModel, options.module);
+    // A `--code-model` file may itself be a narrowed extract, so it never counts
+    // as whole-repo. Scoped here as well as in runReasoner (a no-op the second
+    // time) because the bug detector must see the same material as the prompts.
+    const scope = options.codeModel ? {} : reasonerScope(options);
+    const scopedModel = scopeModelForReasoner(codeModel, scope);
 
     const provider = resolveLLMProvider(config);
     const bugSignals = options.bugs ? loadBugSignals(rootDir, scopedModel) : undefined;
-    const reasonerOutput = await runReasoner(scopedModel, provider, bugSignals);
+    const reasonerOutput = await runReasoner(scopedModel, provider, bugSignals, scope);
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(reasonerOutput, null, 2));

@@ -12,6 +12,8 @@ export type { ScoreResult, ScoreWeights } from './scorer';
 export type { SubScore, FunctionScore, PrioritizedGap } from './scorer';
 
 export { runReasoner } from './reasoner';
+export { scopeModelForReasoner } from './reasoner/scope';
+export type { ReasonerScope } from './reasoner/scope';
 export type { LLMProvider } from './reasoner/providers/base';
 
 export { DeepCoverReporter } from './reporter/jest-reporter';

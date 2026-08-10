@@ -9,6 +9,7 @@ import type { IstanbulCoverageData, JestRuntimeData } from '../../resolver/types
 import { loadIstanbulCoverage } from '../../resolver/istanbul-source';
 import { loadConfig } from '../config';
 import { resolveLLMProvider } from '../resolve-provider';
+import { reasonerScope } from '../reasoner-scope';
 import { ReasonerOutputSchema } from '../../reasoner/types';
 import type { ReasonerOutput } from '../../reasoner/types';
 
@@ -92,7 +93,7 @@ export const scoreCommand = new Command('score')
       reasonerOutput = loadReasonerInput(options.reasonerInput) ?? EMPTY_REASONER_OUTPUT;
     } else if (options.llm) {
       const provider = resolveLLMProvider(config);
-      reasonerOutput = await runReasoner(codeModel, provider);
+      reasonerOutput = await runReasoner(codeModel, provider, undefined, reasonerScope(options));
     } else {
       reasonerOutput = EMPTY_REASONER_OUTPUT;
     }
