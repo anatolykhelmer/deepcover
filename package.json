@@ -1,6 +1,6 @@
 {
   "name": "@anatolykhelmer/deep-cover",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,7 +36,11 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "testRegex": ".*\\.spec\\.ts$",
-    "testPathIgnorePatterns": ["/node_modules/", "paradigm-e2e", "/docs/"],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "paradigm-e2e",
+      "/docs/"
+    ],
     "collectCoverageFrom": [
       "src/**/*.ts",
       "!src/**/*.spec.ts",
