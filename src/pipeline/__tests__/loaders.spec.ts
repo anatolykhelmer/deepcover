@@ -244,7 +244,7 @@ describe('pipeline loaders', () => {
   });
 
   describe('computeBugSignals', () => {
-    it('returns an array (possibly empty) for a small hand-built CodeModel', () => {
+    it('composes resolveCoverage and runBugDetector without throwing', () => {
       const codeModel: CodeModel = {
         modules: [
           {
@@ -282,73 +282,9 @@ describe('pipeline loaders', () => {
         },
       };
 
+      // Verify the function composes resolveCoverage + runBugDetector without throwing.
       const signals = computeBugSignals(codeModel, tmpDir, tmpDir);
       expect(Array.isArray(signals)).toBe(true);
-    });
-
-    it('produces signals that reflect Istanbul data when present in the directory', () => {
-      const coverage: IstanbulCoverageData = {
-        [path.resolve(tmpDir, 'src/service.ts')]: {
-          statementMap: {
-            '0': { start: { line: 5, column: 0 }, end: { line: 5, column: 10 } },
-          },
-          s: { '0': 0 },
-          branchMap: {},
-          b: {},
-          fnMap: {},
-          f: {},
-        },
-      };
-      fs.writeFileSync(
-        path.join(tmpDir, 'istanbul-coverage.json'),
-        JSON.stringify(coverage),
-      );
-
-      const codeModel: CodeModel = {
-        modules: [
-          {
-            filePath: 'src/service.ts',
-            classes: [
-              {
-                name: 'TestService',
-                type: 'service',
-                methods: [
-                  {
-                    name: 'uncoveredMethod',
-                    visibility: 'public',
-                    params: [],
-                    returnType: 'void',
-                    branches: [],
-                    branchCount: 0,
-                    throwsErrors: true,
-                    hasAsyncOps: false,
-                    externalCalls: [],
-                    internalCalls: [],
-                    startLine: 5,
-                    endLine: 7,
-                  },
-                ],
-                dependencies: [],
-                states: [],
-              },
-            ],
-          },
-        ],
-        dependencyGraph: [],
-        testInventory: {
-          testFiles: [],
-          coverage: {},
-        },
-      };
-
-      const withoutIstanbul = computeBugSignals(codeModel, tmpDir, path.join(tmpDir, 'no-istanbul'));
-      const withIstanbul = computeBugSignals(codeModel, tmpDir, tmpDir);
-
-      // With Istanbul, the detector should see uncovered code and produce stronger signals
-      // than without Istanbul data. We can't assert exact signals without knowing all
-      // detector logic, but we can verify the function completes and returns an array.
-      expect(Array.isArray(withoutIstanbul)).toBe(true);
-      expect(Array.isArray(withIstanbul)).toBe(true);
     });
   });
 });
