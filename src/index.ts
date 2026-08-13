@@ -24,3 +24,24 @@ export type { BugSignal } from './bug-detector';
 
 export { mergeBugFindings } from './bug-merger';
 export type { PotentialBug } from './bug-merger';
+
+export {
+  runExtractStage,
+  runReasonStage,
+  runAnalyzeStage,
+  runPipeline,
+  resolvePaths,
+  buildPrompts,
+} from './pipeline';
+export type {
+  ExtractStageOptions,
+  ExtractStageResult,
+  ReasonStageOptions,
+  ReasonStageResult,
+  AnalyzeStageOptions,
+  AnalyzeStageResult,
+  RunPipelineOptions,
+  RunPipelineResult,
+  PromptSet,
+  PromptPair,
+} from './pipeline';

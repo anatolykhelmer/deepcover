@@ -87,29 +87,45 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 ```bash
 npm install -g @anatolykhelmer/deep-cover
 
-# Deterministic analysis — no API key
-npx @anatolykhelmer/deep-cover analyze --root /path/to/your/project --module src/your-module --no-llm
+# One-shot, deterministic — no API key
+npx @anatolykhelmer/deep-cover run --root /path/to/project --module src/your-module --no-llm
 
-# CI gating — fail if score below threshold
-npx @anatolykhelmer/deep-cover score --root /path/to/your/project --module src/your-module --no-llm --min-score 60
+# CI gating — fail if the score is below the threshold
+npx @anatolykhelmer/deep-cover run --root /path/to/project --module src/your-module \
+  --no-llm --format score --min-score 60
 ```
 
-From a source checkout without installing the package:
+DeepCover runs as three stages that always execute in the same order and always
+communicate through files in `<root>/.deepcover/`:
 
-```bash
-npm install && npm run build
-npm run deepcover -- analyze --root . --module src --no-llm
-```
+| Stage | Command | Writes | LLM? |
+|---|---|---|---|
+| 1 | `deepcover extract --module <path>` | `code-model.json`, `prompts.json` | no |
+| 2 | `deepcover reason` | `reasoner-output.json` | yes — or a template for your agent |
+| 3 | `deepcover analyze` | nothing (prints the report) | no |
 
-**Strongly recommended:** wire up the [Jest reporter](#jest-integration) and run tests with `--coverage` before analyzing. Without it, DeepCover falls back to static heuristics only — with it, scoring uses real pass/fail and Istanbul line/branch data, which is significantly more accurate.
+`deepcover run` performs all three in one command. Stage 2 is the only stage that
+involves an LLM, and it always says which Reasoner it used.
 
-**For Cursor (agent as Reasoner, no API key):** see [Install for Cursor](#install-for-cursor-recommended).
+**Strongly recommended:** wire up the [Jest reporter](#jest-integration) and run tests with `--coverage` before analyzing.
 
-**For Claude Code (agent as Reasoner):** see [Install for Claude Code](#install-for-claude-code).
+**Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-**For Anthropic API (CLI as Reasoner):** see [Install for Anthropic](#install-for-anthropic).
+## Migrating from 0.2.x
 
-**Limitations (honest):** DeepCover currently targets **TypeScript** sources and **Jest** tests. Other languages and runners are not supported yet.
+`analyze` and `score` no longer extract or call an LLM — they score the artifacts
+on disk. The removed flags fail with the replacement command rather than being
+ignored.
+
+| 0.2.x | 0.3.0 |
+|---|---|
+| `analyze --module X --no-llm` | `run --no-llm --module X` |
+| `analyze --module X` (API provider) | `run --module X` |
+| `analyze --reasoner-input f.json` | `analyze` — `.deepcover/reasoner-output.json` is the default input |
+| `score --module X --no-llm --min-score 60` | `run --no-llm --module X --format score --min-score 60` |
+
+`--min-score` and `--bug-threshold` now work with every `--format`, so
+`analyze --format json --min-score 60` prints the full report *and* gates on it.
 
 ## Install for Cursor (recommended)
 
@@ -154,7 +170,15 @@ Open the project in Cursor → **Agent** chat (not Ask) → ask:
 
 > run deepcover on src/your-module
 
-The skill runs extract → reason → analyze. You do not need to fill JSON by hand.
+The skill runs the equivalent of:
+
+```bash
+npx deepcover extract --root <PROJECT_ROOT> --module <MODULE_PATH> --bugs
+# agent fills .deepcover/reasoner-output.json
+npx deepcover analyze --root <PROJECT_ROOT> --bugs
+```
+
+You do not need to fill JSON by hand — the agent does that step for you.
 
 **Check it worked:** after `deepcover init`, the skill file above should exist. If the agent ignores the skill, start a new Agent chat or reload Cursor so skills are picked up.
 
@@ -193,6 +217,14 @@ deepcover init --agent claude --project
 In a Claude Code session on the project, ask:
 
 > run deepcover on src/your-module
+
+The skill runs the equivalent of:
+
+```bash
+npx deepcover extract --root <PROJECT_ROOT> --module <MODULE_PATH> --bugs
+# agent fills .deepcover/reasoner-output.json
+npx deepcover analyze --root <PROJECT_ROOT> --bugs
+```
 
 **Check it worked:** the skill file above should exist. If Claude ignores it, restart Claude Code or run `/reload-skills`.
 
@@ -235,27 +267,35 @@ export default {
 ### 4. Run (do not pass `--no-llm`)
 
 ```bash
-npx @anatolykhelmer/deep-cover analyze \
-  --root /path/to/your/project \
-  --module src/your-module
-
-# CI gating
-npx @anatolykhelmer/deep-cover score \
-  --root /path/to/your/project \
-  --module src/your-module \
-  --min-score 60
+npx deepcover run --root <PROJECT_ROOT> --module <MODULE_PATH> --bugs
 ```
 
-The CLI runs extract → Anthropic Messages API → score in one command. Do not pass `--reasoner-input` unless you already have a filled reasoner JSON.
+`run` performs extract → reason (Anthropic Messages API) → analyze in one command.
 
 | | Cursor / Claude Code | Anthropic API |
 |---|---|---|
 | Skill / Agent | yes (`init --agent …`) | no |
 | API key | not needed for agent path | `ANTHROPIC_API_KEY` |
-| How to run | Agent: «run deepcover…» | `analyze` / `score` in the terminal |
+| How to run | Agent: «run deepcover…» | `run` in the terminal |
 | `--no-llm` | skips LLM | skips LLM (no API calls) |
 
 ## CLI
+
+### `deepcover run`
+
+One-shot: extract, reason, and analyze in sequence. Equivalent to running the three stages below back to back.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--root <path>` | Project root directory | Current directory |
+| `--module <path>` | Module to analyze (relative to root) | — |
+| `--file <path>` | Single file to analyze | — |
+| `--output <dir>` | Artifact directory | `.deepcover` |
+| `--no-llm` | Skip the reason stage (deterministic only) | false |
+| `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
+| `--min-score <n>` | Exit `1` if the composite score is below this | — |
+| `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
+| `--bugs` | Enable bug analysis across all three stages | off |
 
 ### `deepcover extract`
 
@@ -293,38 +333,33 @@ Staged CI example:
 ```bash
 npx @anatolykhelmer/deep-cover extract --module src/orders
 npx @anatolykhelmer/deep-cover reason  --module src/orders --bugs
-npx @anatolykhelmer/deep-cover score   --module src/orders \
-  --reasoner-input .deepcover/reasoner-output.json --min-score 60 --bugs
+npx @anatolykhelmer/deep-cover score   --min-score 60 --bugs
 ```
 
 `--code-model .deepcover/code-model.json` can replace `--module` on `reason` if `extract` already ran.
 
 ### `deepcover analyze`
 
-Run the full analysis pipeline and produce a report.
+Score the artifacts already on disk in `.deepcover/` and produce a report. Does not extract
+or call an LLM — run `extract` (and `reason`, or fill `reasoner-output.json` yourself) first,
+or use `deepcover run` for one-shot.
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
-| `--module <path>` | Module to analyze (relative to root) | — |
-| `--file <path>` | Single file to analyze | — |
-| `--no-llm` | Skip LLM reasoning (deterministic only) | false |
-| `--reasoner-input <file>` | Pre-computed ReasonerOutput JSON (from Cursor agent) | — |
-| `--format <fmt>` | Output: `terminal` or `json` | `terminal` |
+| `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
+| `--min-score <n>` | Exit `1` if the composite score is below this | — |
 | `--bugs` | Enable bug-finding (detectors + optional reasoner bugs) | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 
 ### `deepcover score`
 
-Output only the composite score. Exits with code 1 if below threshold.
+Output only the composite score — alias for `analyze --format score`. Exits with code 1 if
+below threshold. Same requirement as `analyze`: it reads artifacts already in `.deepcover/`.
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
-| `--module <path>` | Module to analyze (relative to root) | — |
-| `--file <path>` | Single file to analyze | — |
-| `--no-llm` | Skip LLM reasoning | false |
-| `--reasoner-input <file>` | Pre-computed ReasonerOutput JSON | — |
 | `--min-score <n>` | Minimum passing score (0-100) | 0 |
 | `--bugs` | Enable bug-finding analysis | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
@@ -485,9 +520,7 @@ npx @anatolykhelmer/deep-cover extract \
 # Step 2: Cursor agent fills .deepcover/reasoner-output.json
 
 # Step 3: Score with insights
-npx @anatolykhelmer/deep-cover analyze \
-  --root . --module src/webhooks \
-  --reasoner-input .deepcover/reasoner-output.json
+npx @anatolykhelmer/deep-cover analyze --root .
 ```
 
 ### Why Cursor over an API?
@@ -553,7 +586,7 @@ If you'd rather not turn on coverage by default, keep `collectCoverage` out of t
 
 ```bash
 npm test -- --coverage
-npx @anatolykhelmer/deep-cover analyze --root . --module src/your-module
+npx @anatolykhelmer/deep-cover run --root . --module src/your-module
 ```
 
 **Both pieces matter independently:**

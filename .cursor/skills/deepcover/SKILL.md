@@ -50,17 +50,16 @@ Outputs under `.deepcover/`:
 ### 3. Score
 
 ```bash
-npx deepcover analyze --root <PROJECT_ROOT> --module <MODULE_PATH> \
-  --reasoner-input .deepcover/reasoner-output.json --bugs
+npx deepcover analyze --root <PROJECT_ROOT> --bugs
 ```
 
 Use `--format json` for machine-readable output. Add `--bug-threshold <n>` when the user wants CI-style gating on high-risk bugs.
 
 ## Notes
 
-- Deterministic-only (no LLM): `npx deepcover analyze --root ... --no-llm`
+- Deterministic-only (no LLM): `npx deepcover run --root ... --module ... --no-llm`
 - Coverage-only (skip bug-finding): omit `--bugs` on extract/analyze
 - Jest runtime data: `analyze` auto-reads `.deepcover/jest-runtime.json` and `istanbul-coverage.json` when present (see step 0). Report which files were found — if either is missing, say so rather than presenting heuristic numbers as ground truth
 - Install for Cursor: `deepcover init --agent cursor` (default). For Claude Code: `deepcover init --agent claude`
-- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner. If Anthropic is configured, you may run `npx deepcover reason --root … --module … --bugs` instead of filling `reasoner-output.json` yourself, then `analyze --reasoner-input … --bugs`
+- Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner. If Anthropic is configured, you may run `npx deepcover reason --root … --module … --bugs` instead of filling `reasoner-output.json` yourself, then `analyze --root … --bugs`. Or run `deepcover run --bugs` to do all three stages at once.
 - Do not invent coverage numbers — ground claims in the CodeModel and reasoner output
