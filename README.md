@@ -306,8 +306,15 @@ Extract the CodeModel and LLM prompts for Cursor-driven analysis.
 | `--root <path>` | Project root directory | Current directory |
 | `--module <path>` | Module to analyze (relative to root) | — |
 | `--file <path>` | Single file to analyze | — |
-| `--output <dir>` | Output directory | `.deepcover` |
+| `--output <dir>` | Artifact directory — see the note below | `<root>/.deepcover` |
 | `--bugs` | Include 5th bug-finding prompt + write deterministic `bug-signals.json` | off |
+
+**`--output` is for tooling that reads the artifacts itself.** `analyze` and
+`score` always read `<root>/.deepcover` and have no counterpart flag, so
+artifacts written elsewhere cannot be scored by DeepCover. (`reason` can be
+pointed at a relocated model with `--code-model`, but it still writes and reads
+the rest of `<root>/.deepcover`.) Omit `--output` for the normal
+`extract → reason → analyze` flow.
 
 Produces:
 - `code-model.json` — structured code model (classes, methods, branches, tests)

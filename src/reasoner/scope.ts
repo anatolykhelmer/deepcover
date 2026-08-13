@@ -6,8 +6,9 @@ import { buildClassMethodOwners, type ClassMethodOwners } from '../types/method-
  * The extractor always globs every spec file in the project, regardless of the
  * `include` patterns used for source files. A module-scoped CodeModel therefore
  * carries the whole repository's tests, and anything that turns one into prompts
- * must narrow it first. `runReasoner` does this for every caller; the `extract`
- * command, which builds its prompts by hand, uses these helpers directly.
+ * must narrow it first. The stages narrow with `scopeModelForReasoner` before
+ * handing a model to `buildPrompts`; `runReasoner` narrows again for callers
+ * that reach it directly.
  */
 
 export interface SourceMethodNames {

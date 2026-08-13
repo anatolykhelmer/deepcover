@@ -1,10 +1,23 @@
-import type { LLMProvider } from '../reasoner/providers/base';
 import { AnthropicProvider } from '../reasoner/providers/anthropic';
 import { MockLLMProvider } from '../reasoner/providers/mock';
 import type { ResolvedReasoner } from '../pipeline/reasoner-mode';
 import type { DeepCoverConfig } from './config';
 
 export type { ResolvedReasoner };
+
+type ProviderName = NonNullable<DeepCoverConfig['reasoner']>['provider'];
+
+const DEFAULT_PROVIDER: ProviderName = 'cursor';
+
+/**
+ * True when `reason` will only write a template and hand off to an external
+ * agent. Answers the question without constructing a provider, so callers that
+ * merely want to word a hint cannot trip the missing-API-key error.
+ */
+export function isAgentReasoner(config: DeepCoverConfig): boolean {
+  const provider = config.reasoner?.provider ?? DEFAULT_PROVIDER;
+  return provider === 'cursor' || provider === 'none';
+}
 
 /**
  * Decide who plays the Reasoner for this run, and say so out loud.
@@ -15,7 +28,7 @@ export type { ResolvedReasoner };
  * see was fake.
  */
 export function resolveReasoner(config: DeepCoverConfig): ResolvedReasoner {
-  const provider = config.reasoner?.provider ?? 'cursor';
+  const provider = config.reasoner?.provider ?? DEFAULT_PROVIDER;
 
   if (provider === 'anthropic') {
     const apiKey = config.reasoner?.apiKey ?? process.env.ANTHROPIC_API_KEY;
@@ -37,10 +50,4 @@ export function resolveReasoner(config: DeepCoverConfig): ResolvedReasoner {
   }
 
   return { mode: 'agent-template', providerName: provider };
-}
-
-/** @deprecated Use `resolveReasoner` — this cannot express agent-template mode. */
-export function resolveLLMProvider(config: DeepCoverConfig): LLMProvider {
-  const resolved = resolveReasoner(config);
-  return resolved.mode === 'provider' ? resolved.provider : new MockLLMProvider();
 }

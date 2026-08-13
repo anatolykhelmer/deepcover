@@ -79,6 +79,42 @@ describe('reason command', () => {
     expect(stdout).toContain('reasoner-output.json');
   });
 
+  /**
+   * `--code-model` forces `scope = {}` — it cannot know whether the supplied
+   * model is whole-repo — which silently overrides `--module`/`--file`. The
+   * warning is the only thing telling the user those flags did nothing.
+   */
+  it('reasons from an explicit --code-model and warns that --module is ignored', () => {
+    const modelPath = path.join(tmpDir, 'moved-code-model.json');
+    fs.copyFileSync(path.join(tmpDir, '.deepcover', 'code-model.json'), modelPath);
+
+    const stderr = execSync(
+      `${CLI} reason --root ${tmpDir} --module ${FIXTURE} --code-model ${modelPath} 2>&1 >/dev/null`,
+      { encoding: 'utf-8', cwd: PROJECT_ROOT, shell: '/bin/bash' },
+    );
+
+    expect(stderr).toContain('`--code-model` set; ignoring `--module`/`--file`');
+
+    const parsed = ReasonerOutputSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.deepcover', 'reasoner-output.json'), 'utf-8')),
+    );
+    expect(parsed.discoveredStates.length).toBeGreaterThan(0);
+    expect(parsed.assertionJudgments.length).toBeGreaterThan(0);
+  });
+
+  it('does not warn about --module/--file when --code-model is used alone', () => {
+    const modelPath = path.join(tmpDir, 'moved-code-model.json');
+    fs.copyFileSync(path.join(tmpDir, '.deepcover', 'code-model.json'), modelPath);
+
+    const stderr = execSync(`${CLI} reason --root ${tmpDir} --code-model ${modelPath} 2>&1 >/dev/null`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+      shell: '/bin/bash',
+    });
+
+    expect(stderr).not.toContain('ignoring');
+  });
+
   it('exits non-zero when the code model is missing', () => {
     fs.rmSync(path.join(tmpDir, '.deepcover', 'code-model.json'));
     expect(() =>

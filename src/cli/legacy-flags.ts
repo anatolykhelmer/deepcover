@@ -17,29 +17,38 @@ export interface LegacyFlagCarrier {
   file?: string;
 }
 
+/**
+ * `score` prints the bare number a CI gate parses; `analyze` prints a report.
+ * A hint that swaps one for the other silently changes what the user's pipeline
+ * reads, so every replacement is built from the command that was actually run.
+ */
 const REMOVED_FLAGS: Array<{
   flag: string;
-  replacement: string;
+  replacement: (commandName: string) => string;
   present: (options: LegacyFlagCarrier) => boolean;
 }> = [
   {
     flag: '--no-llm',
-    replacement: 'deepcover run --no-llm --module <path>   (or run `extract` and skip `reason`)',
+    replacement: (commandName) =>
+      commandName === 'score'
+        ? 'deepcover run --no-llm --module <path> --format score --min-score <n>   (or run `extract`, skip `reason`, then `score`)'
+        : 'deepcover run --no-llm --module <path>   (or run `extract` and skip `reason`)',
     present: (options) => options.llm === false,
   },
   {
     flag: '--reasoner-input',
-    replacement: 'deepcover analyze   — reasoner-output.json is read from .deepcover by default',
+    replacement: (commandName) =>
+      `deepcover ${commandName}   — reasoner-output.json is read from .deepcover by default`,
     present: (options) => options.reasonerInput !== undefined,
   },
   {
     flag: '--module',
-    replacement: 'deepcover extract --module <path>   then   deepcover analyze',
+    replacement: (commandName) => `deepcover extract --module <path>   then   deepcover ${commandName}`,
     present: (options) => options.module !== undefined,
   },
   {
     flag: '--file',
-    replacement: 'deepcover extract --file <path>   then   deepcover analyze',
+    replacement: (commandName) => `deepcover extract --file <path>   then   deepcover ${commandName}`,
     present: (options) => options.file !== undefined,
   },
 ];
@@ -50,7 +59,7 @@ export function assertNoLegacyFlags(options: LegacyFlagCarrier, commandName: str
 
     throw new Error(
       `\`${flag}\` was removed in DeepCover 0.3.0 — \`${commandName}\` no longer extracts or calls an LLM.\n` +
-        `  Use: ${replacement}\n` +
+        `  Use: ${replacement(commandName)}\n` +
         `  See the migration table in README.md.`,
     );
   }

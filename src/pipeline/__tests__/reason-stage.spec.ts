@@ -58,6 +58,81 @@ describe('runReasonStage', () => {
     expect(fs.existsSync(result.outputPath)).toBe(true);
   });
 
+  /**
+   * The agent, not this process, fills the file in agent-template mode, so a
+   * re-run of `reason` (or of `run`, which composes it) after the agent has
+   * worked must not overwrite it — `extract` already refuses to, and the two
+   * stages disagreeing inside one command is how the work got destroyed.
+   */
+  it('keeps a filled reasoner-output.json instead of overwriting it with a template', async () => {
+    const outputPath = path.join(deepcoverDir, 'reasoner-output.json');
+    const filled = {
+      discoveredStates: [
+        {
+          className: 'ItemService',
+          methodName: 'getById',
+          state: 'id not present in the store',
+          isTested: false,
+          riskIfUntested: 'high',
+          confidence: 0.9,
+        },
+      ],
+      assertionJudgments: [],
+      criticalityRatings: [],
+      transitiveInferences: [],
+    };
+    fs.writeFileSync(outputPath, JSON.stringify(filled, null, 2));
+
+    const result = await runReasonStage({
+      rootDir: PROJECT_ROOT,
+      deepcoverDir,
+      bugs: false,
+      reasoner: { mode: 'agent-template', providerName: 'cursor' },
+      scope: { module: FIXTURE },
+    });
+
+    expect(JSON.parse(fs.readFileSync(outputPath, 'utf-8'))).toEqual(filled);
+    expect(result.wrote).toBe(false);
+    expect(result.output.discoveredStates).toHaveLength(1);
+    expect(result.notes.join('\n')).toContain('Kept the existing reasoner-output.json');
+    expect(result.notes.join('\n')).not.toContain('Wrote an empty template');
+  });
+
+  it('still writes the template when the existing file is only the untouched skeleton', async () => {
+    const outputPath = path.join(deepcoverDir, 'reasoner-output.json');
+    const result = await runReasonStage({
+      rootDir: PROJECT_ROOT,
+      deepcoverDir,
+      bugs: true,
+      reasoner: { mode: 'agent-template', providerName: 'cursor' },
+      scope: { module: FIXTURE },
+    });
+
+    expect(result.notes.join('\n')).toContain('Wrote an empty template');
+    expect(JSON.parse(fs.readFileSync(outputPath, 'utf-8')).bugFindings).toEqual({
+      findings: [],
+      signalValidations: [],
+    });
+  });
+
+  it('replaces an unparseable reasoner-output.json and says so', async () => {
+    const outputPath = path.join(deepcoverDir, 'reasoner-output.json');
+    fs.writeFileSync(outputPath, '{ not json');
+
+    const result = await runReasonStage({
+      rootDir: PROJECT_ROOT,
+      deepcoverDir,
+      bugs: false,
+      reasoner: { mode: 'agent-template', providerName: 'cursor' },
+      scope: { module: FIXTURE },
+    });
+
+    expect(result.notes.join('\n')).toContain('could not be parsed as JSON');
+    expect(ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(outputPath, 'utf-8')))).toEqual(
+      result.output,
+    );
+  });
+
   it('adds a bugFindings slot to the agent template when bugs are enabled', async () => {
     const result = await runReasonStage({
       rootDir: PROJECT_ROOT,

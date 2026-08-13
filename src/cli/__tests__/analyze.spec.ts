@@ -47,6 +47,36 @@ describe('analyze command', () => {
     expect(Array.isArray(parsed.potentialBugs)).toBe(true);
   });
 
+  /**
+   * `--min-score` used to be reachable only from `score`. 0.3.0 advertises it on
+   * every `--format`, which means the gate must fire *and* the report must still
+   * reach stdout — a gate that suppressed its own output would be useless in CI.
+   */
+  it('gates on --min-score while still printing JSON', () => {
+    let failing: { status: number; stdout: string };
+    try {
+      const stdout = execSync(`${CLI} analyze --root ${tmpDir} --format json --min-score 100`, {
+        encoding: 'utf-8',
+        cwd: PROJECT_ROOT,
+        stdio: 'pipe',
+      });
+      failing = { status: 0, stdout };
+    } catch (err) {
+      const e = err as { status: number; stdout: string };
+      failing = { status: e.status, stdout: e.stdout };
+    }
+
+    expect(failing.status).toBe(1);
+    expect((JSON.parse(failing.stdout) as ScoreResult).composite).toBeLessThan(100);
+
+    const passing = execSync(`${CLI} analyze --root ${tmpDir} --format json --min-score 0`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+      stdio: 'pipe',
+    });
+    expect(typeof (JSON.parse(passing) as ScoreResult).composite).toBe('number');
+  });
+
   it('never calls an LLM — no API key required', () => {
     const env = { ...process.env };
     delete env.ANTHROPIC_API_KEY;

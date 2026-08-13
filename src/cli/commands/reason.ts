@@ -31,6 +31,9 @@ export const reasonCommand = new Command('reason')
       // A `--code-model` file may itself be a narrowed extract, so it never counts
       // as whole-repo; fail closed by scoping tests to the model's own sources.
       const scope = options.codeModel ? {} : reasonerScope(options);
+      if (options.codeModel && (options.module || options.file)) {
+        console.error('`--code-model` set; ignoring `--module`/`--file` — scope comes from the supplied model.');
+      }
 
       const result = await runReasonStage({
         rootDir: paths.rootDir,
@@ -44,7 +47,7 @@ export const reasonCommand = new Command('reason')
 
       for (const note of result.notes) console.error(note);
 
-      console.log(`Wrote ${result.outputPath}`);
+      console.log(`${result.wrote ? 'Wrote' : 'Kept'} ${result.outputPath}`);
       console.log(`  discoveredStates:      ${result.output.discoveredStates.length}`);
       console.log(`  assertionJudgments:    ${result.output.assertionJudgments.length}`);
       console.log(`  criticalityRatings:    ${result.output.criticalityRatings.length}`);

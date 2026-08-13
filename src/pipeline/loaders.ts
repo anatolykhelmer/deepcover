@@ -131,6 +131,54 @@ export function loadIstanbulByMethod(
   return result.size > 0 ? result : undefined;
 }
 
+export type ReasonerOutputStatus = 'untouched' | 'filled' | 'corrupt';
+
+/** Emitted by every stage that would otherwise overwrite a filled file. */
+export const KEPT_REASONER_OUTPUT_NOTE =
+  'Kept the existing reasoner-output.json (it has content) — delete it to start from a fresh template.';
+
+/** Emitted when an unparseable file is replaced, so the loss is never silent. */
+export const REPLACED_REASONER_OUTPUT_NOTE =
+  'Replaced reasoner-output.json — the existing file could not be parsed as JSON.';
+
+/**
+ * `untouched` (safe to rewrite silently), `filled` (the agent's work — keep it
+ * and say why), or `corrupt` (unparseable — replaced, but the caller is told).
+ *
+ * `bugFindings` is checked alongside the four base arrays: an agent can run
+ * `--bugs`, fill in `bugFindings.findings`/`signalValidations`, and leave the
+ * base arrays empty — a realistic incremental workflow — and that content must
+ * not look "untouched" just because the base arrays are.
+ *
+ * Lives here rather than in a stage because `extract` and `reason` both write
+ * this file and must agree on when overwriting it destroys someone's work.
+ */
+export function classifyReasonerOutput(filePath: string): ReasonerOutputStatus {
+  if (!fs.existsSync(filePath)) return 'untouched';
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return 'corrupt';
+  }
+
+  const baseArraysEmpty = (
+    ['discoveredStates', 'assertionJudgments', 'criticalityRatings', 'transitiveInferences'] as const
+  ).every((key) => Array.isArray(parsed[key]) && (parsed[key] as unknown[]).length === 0);
+  if (!baseArraysEmpty) return 'filled';
+
+  const bugFindings = parsed.bugFindings as { findings?: unknown; signalValidations?: unknown } | undefined;
+  if (bugFindings === undefined) return 'untouched';
+
+  const bugFindingsEmpty =
+    Array.isArray(bugFindings.findings) &&
+    bugFindings.findings.length === 0 &&
+    Array.isArray(bugFindings.signalValidations) &&
+    bugFindings.signalValidations.length === 0;
+  return bugFindingsEmpty ? 'untouched' : 'filled';
+}
+
 export type ReasonerOutputLoad =
   | { status: 'ok'; output: ReasonerOutput }
   | { status: 'missing' }

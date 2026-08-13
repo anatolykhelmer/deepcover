@@ -1,5 +1,6 @@
-import path from 'path';
 import { Command } from 'commander';
+import { loadConfig } from '../config';
+import { isAgentReasoner } from '../resolve-provider';
 import { resolvePaths } from '../../pipeline/loaders';
 import { runExtractStage } from '../../pipeline/extract-stage';
 
@@ -8,7 +9,7 @@ export const extractCommand = new Command('extract')
   .option('--root <path>', 'project root', process.cwd())
   .option('--module <path>', 'module to analyze (relative to root)')
   .option('--file <path>', 'single file to analyze')
-  .option('--output <dir>', 'output directory (default: <root>/.deepcover)')
+  .option('--output <dir>', 'artifact directory for external tooling (analyze/score always read <root>/.deepcover)')
   .option('--bugs', 'include deterministic bug signals and the bug-finding prompt')
   .action((options: { root: string; module?: string; file?: string; output?: string; bugs?: boolean }) => {
     const paths = resolvePaths({
@@ -42,7 +43,16 @@ export const extractCommand = new Command('extract')
     }
     console.log(`  reasoner-output.json — template for the Reasoner to fill`);
     console.log(`  README.md            — instructions for the Reasoner agent`);
+    const bugsFlag = options.bugs ? ' --bugs' : '';
     console.log('');
-    console.log(`Next: \`deepcover reason --root ${paths.rootDir}${options.bugs ? ' --bugs' : ''}\``);
-    console.log(`  then \`deepcover analyze --root ${paths.rootDir}${options.bugs ? ' --bugs' : ''}\``);
+    // `reason` in agent-template mode writes a template. Telling an agent that
+    // has already filled reasoner-output.json to run it invites it to overwrite
+    // its own work, so agent providers are pointed straight at `analyze`.
+    if (isAgentReasoner(loadConfig(paths.rootDir))) {
+      console.log(`Next: have your agent read ${paths.deepcoverDir}/prompts.json and fill reasoner-output.json`);
+      console.log(`  then \`deepcover analyze --root ${paths.rootDir}${bugsFlag}\``);
+    } else {
+      console.log(`Next: \`deepcover reason --root ${paths.rootDir}${bugsFlag}\``);
+      console.log(`  then \`deepcover analyze --root ${paths.rootDir}${bugsFlag}\``);
+    }
   });

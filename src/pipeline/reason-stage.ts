@@ -9,10 +9,14 @@ import { runReasoner } from '../reasoner';
 import { scopeModelForReasoner } from '../reasoner/scope';
 import {
   loadCodeModelFile,
+  loadReasonerOutputFile,
+  classifyReasonerOutput,
   computeBugSignals,
   loadIstanbulByMethod,
   loadJestArtifacts,
   EMPTY_REASONER_OUTPUT,
+  KEPT_REASONER_OUTPUT_NOTE,
+  REPLACED_REASONER_OUTPUT_NOTE,
 } from './loaders';
 
 export interface ReasonStageOptions {
@@ -31,6 +35,8 @@ export interface ReasonStageResult {
   output: ReasonerOutput;
   outputPath: string;
   mode: 'provider' | 'agent-template';
+  /** False when an already-filled file at `outputPath` was left untouched. */
+  wrote: boolean;
   notes: string[];
 }
 
@@ -71,17 +77,40 @@ export async function runReasonStage(opts: ReasonStageOptions): Promise<ReasonSt
   };
 
   if (opts.reasoner.mode === 'agent-template') {
+    notes.push(`Reasoner: ${opts.reasoner.providerName} (your coding agent).`);
+
+    // In this mode the agent — not this process — is the thing that fills the
+    // file, so a re-run must never overwrite what it already wrote. `extract`
+    // makes the same judgement call; both go through classifyReasonerOutput.
+    const status = classifyReasonerOutput(outputPath);
+    if (status === 'filled') {
+      const existing = loadReasonerOutputFile(outputPath);
+      notes.push(KEPT_REASONER_OUTPUT_NOTE);
+      if (existing.status === 'ok') {
+        notes.push(`Next: \`deepcover analyze --root ${opts.rootDir}\` to score it.`);
+        return { output: existing.output, outputPath, mode: 'agent-template', wrote: false, notes };
+      }
+      // Kept on disk regardless: it is the agent's work, and `analyze` reports
+      // the schema error against the real file rather than a silent stand-in.
+      notes.push(
+        `The file does not validate against the ReasonerOutput schema — fix it before analyzing (${
+          existing.status === 'invalid' ? existing.error : 'file disappeared'
+        }).`,
+      );
+      return { output: EMPTY_REASONER_OUTPUT, outputPath, mode: 'agent-template', wrote: false, notes };
+    }
+
     const output: ReasonerOutput = {
       ...EMPTY_REASONER_OUTPUT,
       ...(opts.bugs && { bugFindings: { findings: [], signalValidations: [] } }),
     };
+    if (status === 'corrupt') notes.push(REPLACED_REASONER_OUTPUT_NOTE);
     write(output);
     notes.push(
-      `Reasoner: ${opts.reasoner.providerName} (your coding agent).`,
       `Wrote an empty template to ${outputPath}.`,
       `Next: have the agent read ${path.join(opts.deepcoverDir, 'prompts.json')}, fill that file, then run \`deepcover analyze --root ${opts.rootDir}\`.`,
     );
-    return { output, outputPath, mode: 'agent-template', notes };
+    return { output, outputPath, mode: 'agent-template', wrote: true, notes };
   }
 
   const bugSignals = opts.bugs
@@ -104,5 +133,5 @@ export async function runReasonStage(opts: ReasonStageOptions): Promise<ReasonSt
     notes.push('Bug job returned nothing usable — scoring will fall back to deterministic signals.');
   }
 
-  return { output, outputPath, mode: 'provider', notes };
+  return { output, outputPath, mode: 'provider', wrote: true, notes };
 }

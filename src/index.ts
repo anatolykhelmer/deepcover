@@ -45,3 +45,10 @@ export type {
   PromptSet,
   PromptPair,
 } from './pipeline';
+
+// Reachability closure of the exports above: a consumer that writes its own
+// wrapper around any of them has to be able to name these in its signatures.
+export type { ResolvedReasoner, ResolvedPaths, BuildPromptsInput, PromptContext } from './pipeline';
+export type { ReasonerOutput } from './reasoner/types';
+export type { MethodCoverageInfo } from './reasoner/prompts/criticality';
+export type { JestRuntimeData } from './resolver/types';
