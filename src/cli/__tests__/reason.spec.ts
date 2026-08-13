@@ -13,39 +13,45 @@ describe('reason command', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-reason-'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'deepcover.config.json'),
+      JSON.stringify({ reasoner: { provider: 'mock' } }),
+    );
+    execSync(
+      `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${path.join(tmpDir, '.deepcover')}`,
+      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    );
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('writes Zod-valid reasoner-output from --module extract path', () => {
-    const out = path.join(tmpDir, 'reasoner-output.json');
-    execSync(
-      `${CLI} reason --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${out}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+  it('writes a Zod-valid reasoner-output from the extracted model', () => {
+    execSync(`${CLI} reason --root ${tmpDir} --module ${FIXTURE}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+    const parsed = ReasonerOutputSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.deepcover', 'reasoner-output.json'), 'utf-8')),
     );
-    const parsed = ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(out, 'utf-8')));
     expect(parsed.discoveredStates.length).toBeGreaterThan(0);
     expect(parsed.assertionJudgments.length).toBeGreaterThan(0);
     expect(parsed.criticalityRatings.length).toBeGreaterThan(0);
     expect(parsed.transitiveInferences.length).toBeGreaterThan(0);
   });
 
-  it('judges only tests inside --module, not the whole project', () => {
-    const out = path.join(tmpDir, 'reasoner-output.json');
-    execSync(
-      `${CLI} reason --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${out}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+  it('judges only tests inside the module the extract was scoped to', () => {
+    execSync(`${CLI} reason --root ${tmpDir} --module ${FIXTURE}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+    const parsed = ReasonerOutputSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.deepcover', 'reasoner-output.json'), 'utf-8')),
     );
-    const parsed = ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(out, 'utf-8')));
-
-    // extract already scopes prompts to the module — reason must agree with it.
-    execSync(
-      `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${tmpDir}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    const prompts = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.deepcover', 'prompts.json'), 'utf-8'),
     );
-    const prompts = JSON.parse(fs.readFileSync(path.join(tmpDir, 'prompts.json'), 'utf-8'));
     const promptTestFiles = JSON.parse(prompts.assertionQuality.user).testFiles as Array<{
       describes: Array<{ tests: Array<{ name: string }> }>;
     }>;
@@ -57,57 +63,45 @@ describe('reason command', () => {
     expect(new Set(parsed.assertionJudgments.map((j) => j.testName))).toEqual(expected);
   });
 
-  it('loads --code-model without needing --module', () => {
-    execSync(
-      `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${tmpDir}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+  it('writes a template instead of calling an LLM when the agent is the Reasoner', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'deepcover.config.json'),
+      JSON.stringify({ reasoner: { provider: 'cursor' } }),
     );
-    const codeModelPath = path.join(tmpDir, 'code-model.json');
-    const out = path.join(tmpDir, 'from-model.json');
-    execSync(
-      `${CLI} reason --root ${PROJECT_ROOT} --code-model ${codeModelPath} --output ${out}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    const stdout = execSync(`${CLI} reason --root ${tmpDir} --module ${FIXTURE}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.deepcover', 'reasoner-output.json'), 'utf-8'),
     );
-    expect(() => ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(out, 'utf-8')))).not.toThrow();
+    expect(parsed.discoveredStates).toEqual([]);
+    expect(stdout).toContain('reasoner-output.json');
   });
 
-  it('exits non-zero when --code-model path is missing', () => {
-    const missing = path.join(tmpDir, 'nope.json');
+  it('exits non-zero when the code model is missing', () => {
+    fs.rmSync(path.join(tmpDir, '.deepcover', 'code-model.json'));
     expect(() =>
-      execSync(
-        `${CLI} reason --root ${PROJECT_ROOT} --code-model ${missing} --output ${path.join(tmpDir, 'o.json')}`,
-        { encoding: 'utf-8', cwd: PROJECT_ROOT, stdio: 'pipe' },
-      ),
+      execSync(`${CLI} reason --root ${tmpDir}`, {
+        encoding: 'utf-8',
+        cwd: PROJECT_ROOT,
+        stdio: 'pipe',
+      }),
     ).toThrow();
   });
 
   it('--bugs populates bugFindings', () => {
-    execSync(
-      `${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${tmpDir}`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
+    execSync(`${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --bugs --output ${path.join(tmpDir, '.deepcover')}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+    execSync(`${CLI} reason --root ${tmpDir} --module ${FIXTURE} --bugs`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+    const parsed = ReasonerOutputSchema.parse(
+      JSON.parse(fs.readFileSync(path.join(tmpDir, '.deepcover', 'reasoner-output.json'), 'utf-8')),
     );
-    const codeModelPath = path.join(tmpDir, 'code-model.json');
-    const deepcoverDir = path.join(tmpDir, '.deepcover');
-    fs.mkdirSync(deepcoverDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(deepcoverDir, 'bug-signals.json'),
-      JSON.stringify([
-        {
-          pattern: 'unhandled-error-path',
-          className: 'ItemService',
-          methodName: 'create',
-          evidence: 'throws without test',
-          sourceLocation: { file: '/src/item.service.ts', line: 1 },
-          confidence: 0.7,
-        },
-      ]),
-    );
-    const out = path.join(tmpDir, 'with-bugs.json');
-    execSync(
-      `${CLI} reason --root ${tmpDir} --code-model ${codeModelPath} --output ${out} --bugs`,
-      { encoding: 'utf-8', cwd: PROJECT_ROOT },
-    );
-    const parsed = ReasonerOutputSchema.parse(JSON.parse(fs.readFileSync(out, 'utf-8')));
     expect(parsed.bugFindings).toBeDefined();
   });
 });

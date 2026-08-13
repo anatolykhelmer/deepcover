@@ -21,7 +21,7 @@ npm run build
 From a checkout you can also run the CLI without building:
 
 ```bash
-npm run deepcover -- analyze --root . --module src --no-llm
+npm run deepcover -- run --root . --module src --no-llm
 ```
 
 After `npm run build` / install from npm:

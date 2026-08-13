@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { formatTerminalReport } from '../formatters/terminal';
 import type { ScoreResult } from '../../scorer/types';
@@ -8,35 +9,75 @@ const CLI = 'npx tsx src/cli/index.ts';
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 const FIXTURE = 'fixtures/assertion-quality';
 
-function runAnalyze(args: string[]): string {
-  const cmd = `${CLI} analyze --root ${PROJECT_ROOT} --module ${FIXTURE} ${args.join(' ')}`;
-  return execSync(cmd, { encoding: 'utf-8', cwd: PROJECT_ROOT });
-}
-
 describe('analyze command', () => {
-  it('produces valid terminal output containing "Composite Score" with --no-llm', () => {
-    const output = runAnalyze(['--no-llm']);
-    expect(output).toContain('Composite Score');
-    expect(output).toContain('DeepCover Report');
-    expect(output).toContain('════════════════');
+  let tmpDir: string;
+  let outDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-analyze-cli-'));
+    outDir = path.join(tmpDir, '.deepcover');
+    execSync(`${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${outDir}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
   });
 
-  it('produces valid JSON parseable as ScoreResult with --format json', () => {
-    const output = runAnalyze(['--no-llm', '--format', 'json']);
-    const parsed = JSON.parse(output) as ScoreResult;
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function runAnalyze(args: string[]): string {
+    return execSync(`${CLI} analyze --root ${tmpDir} ${args.join(' ')}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+  }
+
+  it('produces a terminal report from artifacts alone', () => {
+    const output = runAnalyze([]);
+    expect(output).toContain('Composite Score');
+    expect(output).toContain('DeepCover Report');
+  });
+
+  it('produces JSON parseable as ScoreResult with --format json', () => {
+    const parsed = JSON.parse(runAnalyze(['--format', 'json'])) as ScoreResult;
     expect(typeof parsed.composite).toBe('number');
-    expect(parsed.subScores).toBeDefined();
     expect(parsed.subScores.assertionQuality).toBeDefined();
-    expect(parsed.subScores.stateCoverage).toBeDefined();
-    expect(parsed.subScores.mutationResilience).toBeDefined();
-    expect(parsed.subScores.criticalityWeighting).toBeDefined();
     expect(Array.isArray(parsed.perFunction)).toBe(true);
-    expect(Array.isArray(parsed.gaps)).toBe(true);
     expect(Array.isArray(parsed.potentialBugs)).toBe(true);
   });
 
-  it('--no-llm mode works without API key', () => {
-    expect(() => runAnalyze(['--no-llm'])).not.toThrow();
+  it('never calls an LLM — no API key required', () => {
+    const env = { ...process.env };
+    delete env.ANTHROPIC_API_KEY;
+    expect(() =>
+      execSync(`${CLI} analyze --root ${tmpDir}`, { encoding: 'utf-8', cwd: PROJECT_ROOT, env }),
+    ).not.toThrow();
+  });
+
+  it('fails with a hint when nothing has been extracted', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-empty-'));
+    try {
+      execSync(`${CLI} analyze --root ${empty}`, { encoding: 'utf-8', cwd: PROJECT_ROOT, stdio: 'pipe' });
+      throw new Error('expected a non-zero exit');
+    } catch (err) {
+      expect(String((err as { stderr?: Buffer }).stderr ?? err)).toContain('deepcover extract');
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects removed flags with a migration hint', () => {
+    try {
+      execSync(`${CLI} analyze --root ${tmpDir} --no-llm`, {
+        encoding: 'utf-8',
+        cwd: PROJECT_ROOT,
+        stdio: 'pipe',
+      });
+      throw new Error('expected a non-zero exit');
+    } catch (err) {
+      expect(String((err as { stderr?: Buffer }).stderr ?? err)).toContain('deepcover run --no-llm');
+    }
   });
 
   it('terminal formatter produces bar charts and gap list', () => {
@@ -72,13 +113,28 @@ describe('analyze command', () => {
   });
 });
 
+/**
+ * These used to write straight into `fixtures/assertion-quality/.deepcover` and call
+ * `analyze --no-llm`. Under the new contract analyze only reads `.deepcover` — it never
+ * extracts and `--no-llm` is a removed flag — so this now extracts into a temp dir first
+ * (real `code-model.json`, from the real fixture source) and layers the synthetic Istanbul
+ * / Jest-runtime artifacts on top before calling `analyze`, keeping the repo's fixture
+ * directory untouched.
+ */
 describe('analyze command loads Jest data from .deepcover/', () => {
-  const fixtureDir = path.resolve(PROJECT_ROOT, FIXTURE);
-  const deepcoverDir = path.join(fixtureDir, '.deepcover');
-  const sourceAbsPath = path.resolve(fixtureDir, 'source.ts');
+  let tmpDir: string;
+  let deepcoverDir: string;
 
   beforeAll(() => {
-    fs.mkdirSync(deepcoverDir, { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-analyze-istanbul-'));
+    deepcoverDir = path.join(tmpDir, '.deepcover');
+    execSync(`${CLI} extract --root ${PROJECT_ROOT} --module ${FIXTURE} --output ${deepcoverDir}`, {
+      encoding: 'utf-8',
+      cwd: PROJECT_ROOT,
+    });
+
+    const fixtureDir = path.resolve(PROJECT_ROOT, FIXTURE);
+    const sourceAbsPath = path.resolve(fixtureDir, 'source.ts');
 
     // Istanbul coverage for source.ts — getAll (13-15), getById (17-21), create (23-25)
     const istanbul = {
@@ -118,11 +174,11 @@ describe('analyze command loads Jest data from .deepcover/', () => {
   });
 
   afterAll(() => {
-    fs.rmSync(deepcoverDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('uses Istanbul coverage data when .deepcover/istanbul-coverage.json exists', () => {
-    const cmd = `${CLI} analyze --root ${fixtureDir} --no-llm --format json`;
+    const cmd = `${CLI} analyze --root ${tmpDir} --format json`;
     const output = execSync(cmd, { encoding: 'utf-8', cwd: PROJECT_ROOT });
     const parsed = JSON.parse(output) as ScoreResult;
 
@@ -133,7 +189,7 @@ describe('analyze command loads Jest data from .deepcover/', () => {
   });
 
   it('includes lineCoveragePercent in per-method breakdown', () => {
-    const cmd = `${CLI} analyze --root ${fixtureDir} --no-llm --format json`;
+    const cmd = `${CLI} analyze --root ${tmpDir} --format json`;
     const output = execSync(cmd, { encoding: 'utf-8', cwd: PROJECT_ROOT });
     const parsed = JSON.parse(output) as ScoreResult;
 
@@ -144,7 +200,7 @@ describe('analyze command loads Jest data from .deepcover/', () => {
   });
 
   it('terminal output shows "with Jest runtime data" header', () => {
-    const cmd = `${CLI} analyze --root ${fixtureDir} --no-llm`;
+    const cmd = `${CLI} analyze --root ${tmpDir}`;
     const output = execSync(cmd, { encoding: 'utf-8', cwd: PROJECT_ROOT });
 
     expect(output).toContain('with Jest runtime data');

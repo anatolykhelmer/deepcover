@@ -1,25 +1,10 @@
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
-
-/**
- * `analyze --module X` and `score --module X` run the Reasoner by default
- * (`--no-llm` opts out), building prompts from a CodeModel whose test inventory
- * is repository-wide — so both must scope it before the Reasoner sees it. Run
- * in-process against a provider that records what it was asked, since the
- * prompts never reach stdout.
- */
-const mockPrompts: Array<{ system: string; user: string }> = [];
-
-jest.mock('../resolve-provider', () => ({
-  resolveLLMProvider: () => ({
-    analyze: async (system: string, user: string) => {
-      mockPrompts.push({ system, user });
-      return '[]';
-    },
-  }),
-}));
-
-import { analyzeCommand } from '../commands/analyze';
-import { scoreCommand } from '../commands/score';
+import { resolvePaths } from '../../pipeline/loaders';
+import { runExtractStage } from '../../pipeline/extract-stage';
+import { runReasonStage } from '../../pipeline/reason-stage';
+import type { LLMProvider } from '../../reasoner/providers/base';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 const FIXTURE = 'fixtures/assertion-quality';
@@ -31,38 +16,59 @@ const OUT_OF_SCOPE = [
   'src/scorer/__tests__',
 ];
 
-/** Every test file path across all prompts the run sent, relative to the root. */
-function promptedFiles(): string[] {
-  return mockPrompts.flatMap((p) => {
-    let parsed: { testFiles?: Array<{ filePath: string }> };
-    try {
-      parsed = JSON.parse(p.user);
-    } catch {
-      return []; // a prompt that carries no JSON payload carries no test files
-    }
-    return (parsed.testFiles ?? []).map((tf) => path.relative(PROJECT_ROOT, tf.filePath));
-  });
-}
-
-describe('module-scoped --llm runs', () => {
-  let exitCode: typeof process.exitCode;
+describe('module-scoped reasoner runs', () => {
+  let tmpDir: string;
+  let prompts: Array<{ system: string; user: string }>;
+  let provider: LLMProvider;
 
   beforeEach(() => {
-    mockPrompts.length = 0;
-    exitCode = process.exitCode;
-    jest.spyOn(console, 'log').mockImplementation(() => {});
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-scope-'));
+    prompts = [];
+    provider = {
+      analyze: async (system: string, user: string) => {
+        prompts.push({ system, user });
+        return '[]';
+      },
+    };
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
-    process.exitCode = exitCode;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('analyze sends only the module under analysis to the Reasoner', async () => {
-    await analyzeCommand.parseAsync(
-      ['--root', PROJECT_ROOT, '--module', FIXTURE, '--format', 'json'],
-      { from: 'user' },
-    );
+  function promptedFiles(): string[] {
+    return prompts.flatMap((p) => {
+      let parsed: { testFiles?: Array<{ filePath: string }> };
+      try {
+        parsed = JSON.parse(p.user);
+      } catch {
+        return [];
+      }
+      return (parsed.testFiles ?? []).map((tf) => path.relative(PROJECT_ROOT, tf.filePath));
+    });
+  }
+
+  async function reasonOver(scopeFlags: { module?: string; file?: string }): Promise<void> {
+    const paths = resolvePaths({
+      root: PROJECT_ROOT,
+      ...scopeFlags,
+      output: path.join(tmpDir, '.deepcover'),
+    });
+    runExtractStage({ ...paths, ...scopeFlags, bugs: false });
+    await runReasonStage({
+      rootDir: PROJECT_ROOT,
+      deepcoverDir: paths.deepcoverDir,
+      bugs: false,
+      reasoner: { mode: 'provider', providerName: 'mock', provider },
+      scope: {
+        ...(scopeFlags.module && { module: scopeFlags.module }),
+        wholeRepo: !scopeFlags.module && !scopeFlags.file,
+      },
+    });
+  }
+
+  it('sends only the module under analysis to the Reasoner', async () => {
+    await reasonOver({ module: FIXTURE });
 
     const files = promptedFiles();
     expect(files.length).toBeGreaterThan(0);
@@ -72,24 +78,8 @@ describe('module-scoped --llm runs', () => {
     }
   });
 
-  it('score sends only the module under analysis to the Reasoner', async () => {
-    await scoreCommand.parseAsync(
-      ['--root', PROJECT_ROOT, '--module', FIXTURE],
-      { from: 'user' },
-    );
-
-    const files = promptedFiles();
-    expect(files.length).toBeGreaterThan(0);
-    expect(files.every((f) => f.startsWith(FIXTURE))).toBe(true);
-  });
-
-  it('analyze --file scopes the Reasoner to that file, not the repository', async () => {
-    await analyzeCommand.parseAsync(
-      ['--root', PROJECT_ROOT, '--file', `${FIXTURE}/source.ts`, '--format', 'json'],
-      { from: 'user' },
-    );
-
-    const files = promptedFiles();
-    expect(files.every((f) => f.startsWith(FIXTURE))).toBe(true);
+  it('scopes to a single file, not the repository', async () => {
+    await reasonOver({ file: `${FIXTURE}/source.ts` });
+    expect(promptedFiles().every((f) => f.startsWith(FIXTURE))).toBe(true);
   });
 });
