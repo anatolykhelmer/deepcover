@@ -57,7 +57,7 @@ export function buildTestsByMethod(
   }
 
   if (runtime?.testResults) {
-    const runtimeNames = runtime.testResults.map((t) => t.testName);
+    const runtimeNames = new Set(runtime.testResults.map((t) => t.testName));
     for (const method of Object.keys(result)) {
       const existing = new Set(result[method]);
       for (const name of runtimeNames) {

@@ -47,11 +47,27 @@ describe('buildPrompts', () => {
 
   it('feeds the dependency graph into the criticality prompt', () => {
     const scopedModel = scopedFixtureModel();
-    const prompts = buildPrompts({ scopedModel });
-    const payload = JSON.parse(prompts.criticality.user) as Record<string, unknown>;
 
-    expect(payload).toHaveProperty('classes');
-    expect(JSON.stringify(payload)).toContain('ItemService');
+    // ItemService injects and calls Repository, so buildDependedOnByMap should
+    // attach `dependedOnBy: ["ItemService"]` to the Repository class — verify
+    // that against a build with the graph stripped, not just against a
+    // substring of the JSON.
+    const withGraph = buildPrompts({ scopedModel });
+    const withoutGraph = buildPrompts({ scopedModel: { ...scopedModel, dependencyGraph: [] } });
+
+    expect(withGraph.criticality.user).not.toEqual(withoutGraph.criticality.user);
+
+    const payload = JSON.parse(withGraph.criticality.user) as {
+      classes: Array<{ name: string; dependedOnBy?: string[] }>;
+    };
+    const repository = payload.classes.find((c) => c.name === 'Repository');
+    expect(repository?.dependedOnBy).toEqual(['ItemService']);
+
+    const payloadWithoutGraph = JSON.parse(withoutGraph.criticality.user) as {
+      classes: Array<{ name: string; dependedOnBy?: string[] }>;
+    };
+    const repositoryWithoutGraph = payloadWithoutGraph.classes.find((c) => c.name === 'Repository');
+    expect(repositoryWithoutGraph?.dependedOnBy).toBeUndefined();
   });
 
   it('is deterministic — the same scoped model yields identical prompts', () => {
@@ -83,5 +99,25 @@ describe('buildTestsByMethod', () => {
 
     const enriched = buildTestsByMethod(model.testInventory, runtime);
     expect(enriched[firstMethod]).toContain(`${knownName} (variant b)`);
+  });
+
+  it('deduplicates repeated runtime test names before appending them', () => {
+    const model = scopedFixtureModel();
+    const staticMap = buildTestsByMethod(model.testInventory);
+    const firstMethod = Object.keys(staticMap)[0]!;
+    const knownName = staticMap[firstMethod]![0]!;
+    const runtimeName = `${knownName} (variant c)`;
+
+    // Two separate Jest test results can carry the identical testName (e.g.
+    // re-runs, retries). Runtime names are deduped via a Set before matching,
+    // so the method's list must gain exactly one appended entry, not one per
+    // occurrence.
+    const runtime = {
+      testResults: [{ testName: runtimeName }, { testName: runtimeName }],
+    } as unknown as JestRuntimeData;
+
+    const enriched = buildTestsByMethod(model.testInventory, runtime);
+    const occurrences = enriched[firstMethod]!.filter((name) => name === runtimeName);
+    expect(occurrences).toHaveLength(1);
   });
 });
