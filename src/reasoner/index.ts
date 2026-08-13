@@ -10,12 +10,8 @@ import {
   BugFindingOutputSchema,
 } from './types';
 import type { BugSignal } from '../bug-detector/types';
-import { buildDomainStatesPrompt } from './prompts/domain-states';
-import { buildAssertionQualityPrompt } from './prompts/assertion-quality';
-import { buildCriticalityPrompt } from './prompts/criticality';
-import { buildTransitiveCoveragePrompt } from './prompts/transitive-coverage';
-import { buildBugFindingPrompt } from './prompts/bug-finding';
 import { scopeModelForReasoner, type ReasonerScope } from './scope';
+import { buildPrompts, type PromptContext } from '../pipeline/prompts';
 
 function extractJsonFromResponse(text: string): string {
   const trimmed = text.trim();
@@ -70,72 +66,53 @@ export async function runReasoner(
   codeModel: CodeModel,
   provider: LLMProvider,
   bugSignals?: BugSignal[],
-  scope: ReasonerScope = {}
+  scope: ReasonerScope = {},
+  promptContext: PromptContext = {},
 ): Promise<ReasonerOutput> {
   const scopedModel = scopeModelForReasoner(codeModel, scope);
-  const classes = scopedModel.modules.flatMap((m) => m.classes);
-  const standaloneFunctions = scopedModel.modules
-    .map((m) => ({ filePath: m.filePath, functions: m.functions ?? [] }))
-    .filter((entry) => entry.functions.length > 0);
-  const { testFiles } = scopedModel.testInventory;
-  const edges = scopedModel.dependencyGraph;
+  const prompts = buildPrompts({ scopedModel, ...promptContext, ...(bugSignals && { bugSignals }) });
 
   const domainP = runJob('Domain states', async () => {
-    const { system, user } = buildDomainStatesPrompt({ classes, standaloneFunctions });
-    const raw = await provider.analyze(system, user);
+    const raw = await provider.analyze(prompts.domainStates.system, prompts.domainStates.user);
     const parsed = JSON.parse(extractJsonFromResponse(raw)) as unknown;
     const arr = Array.isArray(parsed) ? parsed : [];
     return arr.map((item) => DiscoveredStateSchema.parse(item));
   });
 
   const assertionP = runJob('Assertion quality', async () => {
-    const { system, user } = buildAssertionQualityPrompt({ testFiles, classes, standaloneFunctions });
-    const raw = await provider.analyze(system, user);
+    const raw = await provider.analyze(prompts.assertionQuality.system, prompts.assertionQuality.user);
     const parsed = JSON.parse(extractJsonFromResponse(raw)) as unknown;
     const arr = Array.isArray(parsed) ? parsed : [];
     return arr.map((item) => AssertionJudgmentSchema.parse(item));
   });
 
   const criticalityP = runJob('Criticality', async () => {
-    const { system, user } = buildCriticalityPrompt({ classes, standaloneFunctions });
-    const raw = await provider.analyze(system, user);
+    const raw = await provider.analyze(prompts.criticality.system, prompts.criticality.user);
     const parsed = JSON.parse(extractJsonFromResponse(raw)) as unknown;
     const arr = Array.isArray(parsed) ? parsed : [];
     return arr.map((item) => CriticalityRatingSchema.parse(item));
   });
 
   const transitiveP = runJob('Transitive coverage', async () => {
-    const { system, user } = buildTransitiveCoveragePrompt({
-      edges,
-      classes,
-      standaloneFunctions,
-      testInventory: scopedModel.testInventory,
-    });
-    const raw = await provider.analyze(system, user);
+    const raw = await provider.analyze(prompts.transitiveCoverage.system, prompts.transitiveCoverage.user);
     const parsed = JSON.parse(extractJsonFromResponse(raw)) as unknown;
     const arr = Array.isArray(parsed) ? parsed : [];
     return arr.map((item) => TransitiveInferenceSchema.parse(item));
   });
 
-  const bugP: Promise<BugFindingOutput | undefined> =
-    bugSignals !== undefined
-      ? (async () => {
-          try {
-            const { system, user } = buildBugFindingPrompt({
-              classes,
-              testFiles,
-              bugSignals,
-            });
-            const raw = await provider.analyze(system, user);
-            const json = extractJsonObjectFromResponse(raw);
-            if (!json) return undefined;
-            return BugFindingOutputSchema.parse(JSON.parse(json));
-          } catch (err) {
-            console.warn('[runReasoner] Bug finding validation failed:', err);
-            return undefined;
-          }
-        })()
-      : Promise.resolve(undefined);
+  const bugP: Promise<BugFindingOutput | undefined> = prompts.bugFinding
+    ? (async () => {
+        try {
+          const raw = await provider.analyze(prompts.bugFinding!.system, prompts.bugFinding!.user);
+          const json = extractJsonObjectFromResponse(raw);
+          if (!json) return undefined;
+          return BugFindingOutputSchema.parse(JSON.parse(json));
+        } catch (err) {
+          console.warn('[runReasoner] Bug finding validation failed:', err);
+          return undefined;
+        }
+      })()
+    : Promise.resolve(undefined);
 
   const [discoveredStates, assertionJudgments, criticalityRatings, transitiveInferences, bugFindings] =
     await Promise.all([domainP, assertionP, criticalityP, transitiveP, bugP]);
