@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { runCommand } from './commands/run';
 import { analyzeCommand } from './commands/analyze';
 import { scoreCommand } from './commands/score';
 import { extractCommand } from './commands/extract';
@@ -16,6 +17,7 @@ program
   .description('Agentic code coverage analyzer')
   .version(version);
 
+program.addCommand(runCommand);
 program.addCommand(analyzeCommand);
 program.addCommand(scoreCommand);
 program.addCommand(extractCommand);
