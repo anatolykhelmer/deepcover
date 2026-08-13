@@ -29,17 +29,41 @@ export interface ExtractStageResult {
   notes: string[];
 }
 
-/** An untouched template is safe to rewrite; a filled one is the agent's work. */
-function isUntouchedTemplate(filePath: string): boolean {
-  if (!fs.existsSync(filePath)) return true;
+type ReasonerOutputStatus = 'untouched' | 'filled' | 'corrupt';
+
+/**
+ * `untouched` (safe to rewrite silently), `filled` (the agent's work — keep it
+ * and say why), or `corrupt` (unparseable — replaced, but the caller is told).
+ *
+ * `bugFindings` is checked alongside the four base arrays: an agent can run
+ * `--bugs`, fill in `bugFindings.findings`/`signalValidations`, and leave the
+ * base arrays empty — a realistic incremental workflow — and that content must
+ * not look "untouched" just because the base arrays are.
+ */
+function classifyReasonerOutput(filePath: string): ReasonerOutputStatus {
+  if (!fs.existsSync(filePath)) return 'untouched';
+
+  let parsed: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown[]>;
-    return (['discoveredStates', 'assertionJudgments', 'criticalityRatings', 'transitiveInferences'] as const).every(
-      (key) => Array.isArray(parsed[key]) && parsed[key]!.length === 0,
-    );
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
   } catch {
-    return true;
+    return 'corrupt';
   }
+
+  const baseArraysEmpty = (
+    ['discoveredStates', 'assertionJudgments', 'criticalityRatings', 'transitiveInferences'] as const
+  ).every((key) => Array.isArray(parsed[key]) && (parsed[key] as unknown[]).length === 0);
+  if (!baseArraysEmpty) return 'filled';
+
+  const bugFindings = parsed.bugFindings as { findings?: unknown; signalValidations?: unknown } | undefined;
+  if (bugFindings === undefined) return 'untouched';
+
+  const bugFindingsEmpty =
+    Array.isArray(bugFindings.findings) &&
+    bugFindings.findings.length === 0 &&
+    Array.isArray(bugFindings.signalValidations) &&
+    bugFindings.signalValidations.length === 0;
+  return bugFindingsEmpty ? 'untouched' : 'filled';
 }
 
 export function runExtractStage(opts: ExtractStageOptions): ExtractStageResult {
@@ -85,14 +109,18 @@ export function runExtractStage(opts: ExtractStageOptions): ExtractStageResult {
   }
 
   const templatePath = path.join(opts.deepcoverDir, 'reasoner-output.json');
-  if (isUntouchedTemplate(templatePath)) {
-    const template: Record<string, unknown> = { ...EMPTY_REASONER_OUTPUT };
-    if (opts.bugs) template.bugFindings = { findings: [], signalValidations: [] };
-    write('reasoner-output.json', JSON.stringify(template, null, 2));
-  } else {
+  const templateStatus = classifyReasonerOutput(templatePath);
+  if (templateStatus === 'filled') {
     notes.push(
       `Kept the existing reasoner-output.json (it has content) — delete it to start from a fresh template.`,
     );
+  } else {
+    if (templateStatus === 'corrupt') {
+      notes.push(`Replaced reasoner-output.json — the existing file could not be parsed as JSON.`);
+    }
+    const template: Record<string, unknown> = { ...EMPTY_REASONER_OUTPUT };
+    if (opts.bugs) template.bugFindings = { findings: [], signalValidations: [] };
+    write('reasoner-output.json', JSON.stringify(template, null, 2));
   }
 
   const allClasses = codeModel.modules.flatMap((m) => m.classes);
