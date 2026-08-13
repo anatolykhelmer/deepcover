@@ -1,13 +1,20 @@
 import fs from 'fs';
 import { Command, Option } from 'commander';
 import { loadConfig } from '../config';
-import { assertNoLegacyFlags } from '../legacy-flags';
+import { assertNoLegacyFlags, type LegacyFlagCarrier } from '../legacy-flags';
 import { formatTerminalReport, formatScore } from '../formatters/terminal';
 import { resolvePaths } from '../../pipeline/loaders';
 import { runAnalyzeStage } from '../../pipeline/analyze-stage';
 import type { ScoreWeights } from '../../scorer/composer';
 
-export interface AnalyzeCommandOptions {
+const VALID_FORMATS = ['terminal', 'json', 'score'] as const;
+type Format = (typeof VALID_FORMATS)[number];
+
+function isValidFormat(format: string): format is Format {
+  return (VALID_FORMATS as readonly string[]).includes(format);
+}
+
+export interface AnalyzeCommandOptions extends LegacyFlagCarrier {
   root: string;
   format: string;
   minScore?: string;
@@ -18,7 +25,11 @@ export interface AnalyzeCommandOptions {
 /** Shared by `analyze` and its `score` alias. */
 export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: string): void {
   try {
-    assertNoLegacyFlags(process.argv, commandName);
+    assertNoLegacyFlags(options, commandName);
+
+    if (!isValidFormat(options.format)) {
+      throw new Error(`Unknown --format '${options.format}' — expected one of: ${VALID_FORMATS.join(', ')}`);
+    }
 
     const paths = resolvePaths({ root: options.root });
     const config = loadConfig(paths.rootDir);
