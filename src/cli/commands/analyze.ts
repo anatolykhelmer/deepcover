@@ -1,136 +1,83 @@
-import path from 'path';
 import fs from 'fs';
-import { Command } from 'commander';
-import { extractCodeModel } from '../../extractor';
-import { runReasoner } from '../../reasoner';
-import { runScorer } from '../../scorer';
-import { resolveCoverage } from '../../resolver';
-import type { IstanbulCoverageData, JestRuntimeData } from '../../resolver/types';
-import { loadIstanbulCoverage } from '../../resolver/istanbul-source';
-import { formatTerminalReport } from '../formatters/terminal';
+import { Command, Option } from 'commander';
 import { loadConfig } from '../config';
-import { resolveLLMProvider } from '../resolve-provider';
-import { reasonerScope } from '../reasoner-scope';
-import { ReasonerOutputSchema } from '../../reasoner/types';
-import type { ReasonerOutput } from '../../reasoner/types';
+import { assertNoLegacyFlags } from '../legacy-flags';
+import { formatTerminalReport, formatScore } from '../formatters/terminal';
+import { resolvePaths } from '../../pipeline/loaders';
+import { runAnalyzeStage } from '../../pipeline/analyze-stage';
+import type { ScoreWeights } from '../../scorer/composer';
 
-const EMPTY_REASONER_OUTPUT: ReasonerOutput = {
-  discoveredStates: [],
-  assertionJudgments: [],
-  criticalityRatings: [],
-  transitiveInferences: [],
-};
-
-function resolvePaths(root: string, module?: string, file?: string) {
-  const rootDir = path.resolve(root);
-  let include: string[] | undefined;
-  if (file) {
-    include = [file];
-  } else if (module) {
-    const base = module.replace(/\/$/, '');
-    include = [`${base}/**/*.ts`];
-  }
-  return { rootDir, include };
+export interface AnalyzeCommandOptions {
+  root: string;
+  format: string;
+  minScore?: string;
+  bugThreshold?: string;
+  bugs?: boolean;
 }
 
-function loadReasonerInput(filePath: string): ReasonerOutput | null {
+/** Shared by `analyze` and its `score` alias. */
+export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: string): void {
   try {
-    const raw = fs.readFileSync(path.resolve(filePath), 'utf-8');
-    const parsed = JSON.parse(raw);
-    return ReasonerOutputSchema.parse(parsed);
-  } catch (err) {
-    console.error(`Warning: could not load reasoner input from ${filePath}: ${err}`);
-    return null;
-  }
-}
+    assertNoLegacyFlags(process.argv, commandName);
 
-function loadJestData(rootDir: string): { istanbul?: IstanbulCoverageData; runtime?: JestRuntimeData } | undefined {
-  const deepcoverDir = path.resolve(rootDir, '.deepcover');
-  const jestData: { istanbul?: IstanbulCoverageData; runtime?: JestRuntimeData } = {};
+    const paths = resolvePaths({ root: options.root });
+    const config = loadConfig(paths.rootDir);
 
-  jestData.istanbul = loadIstanbulCoverage(deepcoverDir);
-
-  const runtimePath = path.join(deepcoverDir, 'jest-runtime.json');
-  if (fs.existsSync(runtimePath)) {
-    try {
-      jestData.runtime = JSON.parse(fs.readFileSync(runtimePath, 'utf-8'));
-    } catch { /* ignore malformed file */ }
-  }
-
-  return jestData.istanbul || jestData.runtime ? jestData : undefined;
-}
-
-export const analyzeCommand = new Command('analyze')
-  .description('Analyze code coverage with optional LLM reasoning')
-  .option('--root <path>', 'project root', process.cwd())
-  .option('--module <path>', 'module to analyze (relative to root)')
-  .option('--file <path>', 'single file to analyze')
-  .option('--no-llm', 'skip LLM reasoning (deterministic only)')
-  .option('--reasoner-input <file>', 'path to pre-computed ReasonerOutput JSON (from Cursor agent)')
-  .option('--format <format>', 'output format: terminal or json', 'terminal')
-  .option('--bugs', 'enable bug-finding analysis')
-  .option('--bug-threshold <number>', 'exit 1 if high-risk bugs >= threshold')
-  .action(async (options: {
-    root: string;
-    module?: string;
-    file?: string;
-    llm: boolean;
-    reasonerInput?: string;
-    format: string;
-    bugs?: boolean;
-    bugThreshold?: string;
-  }) => {
-    const { rootDir, include } = resolvePaths(options.root, options.module, options.file);
-    const config = loadConfig(rootDir);
-
-    const codeModel = extractCodeModel({
-      rootDir,
-      ...(include && { include }),
+    const { result, notes } = runAnalyzeStage({
+      rootDir: paths.rootDir,
+      deepcoverDir: paths.deepcoverDir,
+      bugs: !!options.bugs,
+      ...(config.weights && { weights: config.weights as ScoreWeights }),
     });
 
-    let reasonerOutput: ReasonerOutput;
-
-    if (options.reasonerInput) {
-      reasonerOutput = loadReasonerInput(options.reasonerInput) ?? EMPTY_REASONER_OUTPUT;
-      const sections = [
-        { key: 'discoveredStates', label: 'Domain States', impact: 'State Coverage' },
-        { key: 'assertionJudgments', label: 'Assertion Quality Judgments', impact: 'Assertion Quality' },
-        { key: 'criticalityRatings', label: 'Criticality Ratings', impact: 'Criticality Weight' },
-        { key: 'transitiveInferences', label: 'Transitive Inferences', impact: 'Mutation Resilience' },
-      ] as const;
-      const empty = sections.filter((s) => (reasonerOutput[s.key] as unknown[]).length === 0);
-      if (empty.length > 0) {
-        console.warn(`\n⚠  Reasoner output has ${empty.length} empty section(s) — LLM adjustment will be 0 for affected sub-scores:`);
-        for (const s of empty) {
-          console.warn(`   • ${s.label} → ${s.impact} will use base score only`);
-        }
-        console.warn('   Fill all 4 sections in reasoner-output.json for full scoring accuracy.\n');
-      }
-    } else if (options.llm) {
-      const provider = resolveLLMProvider(config);
-      reasonerOutput = await runReasoner(codeModel, provider, undefined, reasonerScope(options));
-    } else {
-      reasonerOutput = EMPTY_REASONER_OUTPUT;
-    }
-
-    const jestData = loadJestData(rootDir);
-    const resolvedCoverage = resolveCoverage(codeModel, rootDir, jestData);
-    const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
-      weights: config.weights as import('../../scorer/composer').ScoreWeights | undefined,
-      enableBugs: !!options.bugs,
-    });
+    for (const note of notes) console.error(note);
 
     if (options.format === 'json') {
       console.log(JSON.stringify(result, null, 2));
+    } else if (options.format === 'score') {
+      // Sync write so CI callers never see an empty pipe if the process exits quickly.
+      fs.writeSync(process.stdout.fd, formatScore(result));
     } else {
       console.log(formatTerminalReport(result));
     }
 
+    const composite = Math.round(result.composite);
+    if (options.minScore !== undefined && composite < parseInt(options.minScore, 10)) {
+      process.exitCode = 1;
+      return;
+    }
     if (options.bugThreshold && options.bugs) {
       const threshold = parseInt(options.bugThreshold, 10);
-      const highRiskCount = result.potentialBugs.filter((b) => b.risk === 'high').length;
-      if (highRiskCount >= threshold) {
+      const highRisk = result.potentialBugs.filter((b) => b.risk === 'high').length;
+      if (highRisk >= threshold) {
         process.exitCode = 1;
+        return;
       }
     }
-  });
+    process.exitCode = 0;
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exitCode = 1;
+  }
+}
+
+/** Removed in 0.3.0 — declared only so our migration error runs instead of Commander's. */
+export function addRemovedFlagOptions(command: Command): Command {
+  return command
+    .addOption(new Option('--no-llm').hideHelp())
+    .addOption(new Option('--reasoner-input <file>').hideHelp())
+    .addOption(new Option('--module <path>').hideHelp())
+    .addOption(new Option('--file <path>').hideHelp());
+}
+
+export const analyzeCommand = addRemovedFlagOptions(
+  new Command('analyze')
+    .description('Score the extracted model against reasoner output and coverage')
+    .option('--root <path>', 'project root', process.cwd())
+    .option('--format <format>', 'output format: terminal, json, or score', 'terminal')
+    .option('--min-score <number>', 'exit 1 if the composite score is below this')
+    .option('--bug-threshold <number>', 'exit 1 if high-risk bugs >= threshold')
+    .option('--bugs', 'include bug analysis in the report'),
+).action((options: AnalyzeCommandOptions) => {
+  runAnalyzeCommand(options, 'analyze');
+});

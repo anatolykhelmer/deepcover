@@ -102,3 +102,8 @@ export function formatTerminalReport(result: ScoreResult): string {
 
   return lines.join('\n');
 }
+
+/** CI contract: the composite score alone, nothing else on stdout. */
+export function formatScore(result: ScoreResult): string {
+  return `${Math.round(result.composite)}\n`;
+}
