@@ -286,5 +286,92 @@ describe('pipeline loaders', () => {
       const signals = computeBugSignals(codeModel, tmpDir, tmpDir);
       expect(Array.isArray(signals)).toBe(true);
     });
+
+    it('boosts confidence of unhandled-error-path signal when Istanbul branch coverage is < 100%', () => {
+      // Build Istanbul fixture with partial branch coverage (50%) in the method's line range.
+      // This mirrors the shape in the approved loadIstanbulByMethod test: branchMap with
+      // one if-branch and b: [1, 0] giving 50% coverage.
+      const coverage: IstanbulCoverageData = {
+        [path.resolve(tmpDir, 'src/service.ts')]: {
+          statementMap: {
+            '0': { start: { line: 5, column: 0 }, end: { line: 5, column: 10 } },
+            '1': { start: { line: 6, column: 0 }, end: { line: 6, column: 20 } },
+          },
+          s: { '0': 1, '1': 1 },
+          branchMap: {
+            '0': { loc: { start: { line: 6 }, end: { line: 6 } }, type: 'if' },
+          },
+          b: { '0': [1, 0] },
+          fnMap: {},
+          f: {},
+        },
+      };
+
+      const codeModel: CodeModel = {
+        modules: [
+          {
+            filePath: 'src/service.ts',
+            classes: [
+              {
+                name: 'ErrorService',
+                type: 'service',
+                methods: [
+                  {
+                    name: 'risky',
+                    visibility: 'public',
+                    params: [],
+                    returnType: 'void',
+                    branches: [
+                      {
+                        type: 'if',
+                        condition: 'state',
+                        lineNumber: 6,
+                      },
+                    ],
+                    branchCount: 1,
+                    throwsErrors: true,
+                    hasAsyncOps: false,
+                    externalCalls: [],
+                    internalCalls: [],
+                    startLine: 5,
+                    endLine: 8,
+                  },
+                ],
+                dependencies: [],
+                states: [],
+              },
+            ],
+          },
+        ],
+        dependencyGraph: [],
+        testInventory: {
+          testFiles: [],
+          coverage: {},
+        },
+      };
+
+      // Compute signals without Istanbul data.
+      const withoutIstanbul = computeBugSignals(codeModel, tmpDir, path.join(tmpDir, 'no-istanbul'));
+      const unhandledWithoutIstanbul = withoutIstanbul.find((s) => s.pattern === 'unhandled-error-path');
+
+      // Compute signals with Istanbul data showing 50% branch coverage.
+      fs.writeFileSync(
+        path.join(tmpDir, 'istanbul-coverage.json'),
+        JSON.stringify(coverage),
+      );
+      const withIstanbul = computeBugSignals(codeModel, tmpDir, tmpDir);
+      const unhandledWithIstanbul = withIstanbul.find((s) => s.pattern === 'unhandled-error-path');
+
+      // Confidence calculation from src/bug-detector/detectors/unhandled-error-path.ts:61-68:
+      // base = 0.5
+      // +0.1 if throwsErrors (method has throwsErrors: true)
+      // +0.1 if istanbul && branchCoveragePercent < 100 (fixture has b:[1,0] = 50% coverage)
+      // Without Istanbul: 0.5 + 0.1 = 0.6
+      // With Istanbul: 0.5 + 0.1 + 0.1 = 0.7
+      expect(unhandledWithoutIstanbul).toBeDefined();
+      expect(unhandledWithoutIstanbul?.confidence).toBe(0.6);
+      expect(unhandledWithIstanbul).toBeDefined();
+      expect(unhandledWithIstanbul?.confidence).toBe(0.7);
+    });
   });
 });
