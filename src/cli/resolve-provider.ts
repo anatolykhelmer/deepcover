@@ -1,13 +1,20 @@
 import type { LLMProvider } from '../reasoner/providers/base';
 import { AnthropicProvider } from '../reasoner/providers/anthropic';
 import { MockLLMProvider } from '../reasoner/providers/mock';
+import type { ResolvedReasoner } from '../pipeline/reasoner-mode';
 import type { DeepCoverConfig } from './config';
 
+export type { ResolvedReasoner };
+
 /**
- * Resolve an LLM provider from config + env.
- * Default path is Cursor (external reasoner-input) or mock for --llm without Anthropic.
+ * Decide who plays the Reasoner for this run, and say so out loud.
+ *
+ * `cursor`/`none` mean an external agent fills `reasoner-output.json`; the CLI
+ * writes a template and stops. Returning a mock provider for those (as earlier
+ * versions did) fabricated LLM insight that nobody asked for and nobody could
+ * see was fake.
  */
-export function resolveLLMProvider(config: DeepCoverConfig): LLMProvider {
+export function resolveReasoner(config: DeepCoverConfig): ResolvedReasoner {
   const provider = config.reasoner?.provider ?? 'cursor';
 
   if (provider === 'anthropic') {
@@ -18,16 +25,22 @@ export function resolveLLMProvider(config: DeepCoverConfig): LLMProvider {
           'Set reasoner.apiKey in deepcover.config or ANTHROPIC_API_KEY in the environment.',
       );
     }
-    return new AnthropicProvider({
-      apiKey,
-      model: config.reasoner?.model,
-    });
+    return {
+      mode: 'provider',
+      providerName: 'anthropic',
+      provider: new AnthropicProvider({ apiKey, model: config.reasoner?.model }),
+    };
   }
 
   if (provider === 'mock') {
-    return new MockLLMProvider();
+    return { mode: 'provider', providerName: 'mock', provider: new MockLLMProvider() };
   }
 
-  // cursor / none — callers should prefer --reasoner-input or --no-llm
-  return new MockLLMProvider();
+  return { mode: 'agent-template', providerName: provider };
+}
+
+/** @deprecated Use `resolveReasoner` — this cannot express agent-template mode. */
+export function resolveLLMProvider(config: DeepCoverConfig): LLMProvider {
+  const resolved = resolveReasoner(config);
+  return resolved.mode === 'provider' ? resolved.provider : new MockLLMProvider();
 }
