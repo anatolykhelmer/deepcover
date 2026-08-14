@@ -35,7 +35,7 @@ export function generateGaps(
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
       for (const method of cls.methods) {
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name);
+        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
         const hasTests = mc?.isCovered ?? false;
         const risk = getMethodRisk(method, reasonerOutput, cls.name, method.name);
 
@@ -66,7 +66,7 @@ export function generateGaps(
       }
 
       for (const state of cls.states) {
-        const covered = state.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(cls.name, m));
+        const covered = state.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(cls.name, m, mod.filePath));
         if (!covered) {
           const risk = state.affectedMethods.some((m) => {
             const method = cls.methods.find((mm) => mm.name === m);

@@ -7,6 +7,7 @@ import {
   type SourceMethodNames,
 } from '../scope';
 import type { ClassNode, CodeModel, ModuleNode, TestFileNode } from '../../types/code-model';
+import type { ClassMethodOwners } from '../../types/method-owner';
 
 function makeTestFile(filePath: string, targetMethods: string[], targetClass?: string): TestFileNode {
   return {
@@ -56,15 +57,26 @@ function makeModule(filePath: string, methodNames: string[], className = 'SomeSe
   };
 }
 
-/** Builds a `SourceMethodNames` directly, for tests that don't need a full ModuleNode[]. */
+/**
+ * Builds a `SourceMethodNames` directly, for tests that don't need a full ModuleNode[].
+ * Owners may be class names (`string[]`, any declaring file) or a
+ * `className → files` record when the declaring files matter for the assertion.
+ */
 function makeSourceMethodNames(
-  classOwners: Record<string, string[]> = {},
+  classOwners: Record<string, string[] | Record<string, string[]>> = {},
   functionNames: string[] = [],
 ): SourceMethodNames {
-  return {
-    classMethodOwners: new Map(Object.entries(classOwners).map(([method, owners]) => [method, new Set(owners)])),
-    functionNames: new Set(functionNames),
-  };
+  const classMethodOwners: ClassMethodOwners = new Map();
+  for (const [method, owners] of Object.entries(classOwners)) {
+    const byClass = new Map<string, Set<string>>();
+    if (Array.isArray(owners)) {
+      for (const cls of owners) byClass.set(cls, new Set(['/repo/src/some.service.ts']));
+    } else {
+      for (const [cls, files] of Object.entries(owners)) byClass.set(cls, new Set(files));
+    }
+    classMethodOwners.set(method, byClass);
+  }
+  return { classMethodOwners, functionNames: new Set(functionNames) };
 }
 
 describe('collectSourceMethodNames', () => {
@@ -75,7 +87,11 @@ describe('collectSourceMethodNames', () => {
     ];
 
     expect(collectSourceMethodNames(modules)).toEqual(
-      makeSourceMethodNames({ createOrder: ['SomeService'], reserve: ['SomeService'], release: ['SomeService'] }),
+      makeSourceMethodNames({
+        createOrder: { SomeService: ['/repo/src/orders/orders.service.ts'] },
+        reserve: { SomeService: ['/repo/src/orders/inventory.service.ts'] },
+        release: { SomeService: ['/repo/src/orders/inventory.service.ts'] },
+      }),
     );
   });
 
@@ -117,7 +133,9 @@ describe('collectSourceMethodNames', () => {
     ];
 
     expect(collectSourceMethodNames(modules)).toEqual(
-      makeSourceMethodNames({ doThing: ['AService', 'BService'] }),
+      makeSourceMethodNames({
+        doThing: { AService: ['/repo/src/a/a.service.ts'], BService: ['/repo/src/b/b.service.ts'] },
+      }),
     );
   });
 });

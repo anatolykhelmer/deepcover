@@ -62,7 +62,7 @@ export class UntestedConditionOperandDetector implements BugDetector {
     const compound = method.branches.filter((b) => (b.operands?.length ?? 0) >= 2);
     if (compound.length === 0) return [];
 
-    const methodCoverage = coverage.getMethodCoverage(owner, method.name);
+    const methodCoverage = coverage.getMethodCoverage(owner, method.name, filePath);
     // An untested method is a coverage gap the gap generator already reports; this
     // detector is only about conditions that look covered but are not.
     if (!methodCoverage?.isCovered) return [];

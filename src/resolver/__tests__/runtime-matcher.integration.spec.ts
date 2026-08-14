@@ -47,8 +47,10 @@ describe('matchRuntimeTests with a real extract (absolute inventory paths)', () 
     const owners = buildClassMethodOwners(model.modules);
     const result = matchRuntimeTests(runtime, model.testInventory.testFiles, rootDir, owners);
 
+    // Runtime keys are file-qualified, matching the resolver's map keys (task 021).
+    const sourceFile = path.join(rootDir, 'source.ts');
     expect(result.size).toBeGreaterThan(0);
-    expect(result.get('ItemService.getAll')?.passed).toContain('should return all items from repository');
-    expect(result.get('ItemService.getById')?.failed).toContain('should throw when item not found');
+    expect(result.get(`${sourceFile}:ItemService.getAll`)?.passed).toContain('should return all items from repository');
+    expect(result.get(`${sourceFile}:ItemService.getById`)?.failed).toContain('should throw when item not found');
   });
 });

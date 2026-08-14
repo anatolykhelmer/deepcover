@@ -92,7 +92,8 @@ function extractDescribeBlocks(sourceFile: SourceFile): DescribeBlockNode[] {
 
     const mocks = extractMocksFromBlock(block);
     const { subjectVars, targetClass } = resolveTargetClass(call, name, subjectBindings);
-    const tests = extractTestsFromBlock(block, subjectVars, targetClass);
+    const targetClassFile = targetClass ? resolveClassImportFile(sourceFile, targetClass) : null;
+    const tests = extractTestsFromBlock(block, subjectVars, targetClass, targetClassFile);
     for (const test of tests) {
       test.mocks = [...mocks];
     }
@@ -460,10 +461,29 @@ function findVariableNameForObjectLiteral(objLit: ObjectLiteralExpression): stri
  * Tests                                                               *
  * ------------------------------------------------------------------ */
 
+/**
+ * Resolves the file that declares `className` via the test file's own import of
+ * it — the only static signal distinguishing two files that both export a class
+ * with that name. `null` when the class is not imported or the module specifier
+ * does not resolve to a project source file.
+ */
+function resolveClassImportFile(sourceFile: SourceFile, className: string): string | null {
+  for (const imp of sourceFile.getImportDeclarations()) {
+    const matchesNamed = imp
+      .getNamedImports()
+      .some((n) => (n.getAliasNode()?.getText() ?? n.getName()) === className);
+    const matchesDefault = imp.getDefaultImport()?.getText() === className;
+    if (!matchesNamed && !matchesDefault) continue;
+    return imp.getModuleSpecifierSourceFile()?.getFilePath() ?? null;
+  }
+  return null;
+}
+
 function extractTestsFromBlock(
   block: Block,
   subjectVars: Set<string>,
-  targetClass: string | null
+  targetClass: string | null,
+  targetClassFile: string | null
 ): TestNode[] {
   const tests: TestNode[] = [];
 
@@ -484,7 +504,7 @@ function extractTestsFromBlock(
     if (!isTestCallback(callback)) continue;
 
     if (!callee.each) {
-      tests.push(analyzeTest(title, title, callback, subjectVars, targetClass));
+      tests.push(analyzeTest(title, title, callback, subjectVars, targetClass, targetClassFile));
       continue;
     }
 
@@ -493,7 +513,7 @@ function extractTestsFromBlock(
       // Table could not be read statically (or is very large): keep one entry that
       // carries the raw title template, so the assertions still reach the inventory.
       tests.push({
-        ...analyzeTest(title, title, callback, subjectVars, targetClass),
+        ...analyzeTest(title, title, callback, subjectVars, targetClass, targetClassFile),
         parameterized: info,
       });
       continue;
@@ -502,7 +522,7 @@ function extractTestsFromBlock(
     callee.each.rows.forEach((row, index) => {
       const caseName = interpolateEachTitle(title, row, index);
       tests.push({
-        ...analyzeTest(caseName, title, callback, subjectVars, targetClass),
+        ...analyzeTest(caseName, title, callback, subjectVars, targetClass, targetClassFile),
         parameterized: { ...info, caseIndex: index },
       });
     });
@@ -521,7 +541,8 @@ function analyzeTest(
   titleForHint: string,
   callback: TestCallback,
   subjectVars: Set<string>,
-  targetClass: string | null
+  targetClass: string | null,
+  targetClassFile: string | null
 ): TestNode {
   const body = callback.getBody();
   // Concise arrow bodies (`it('x', () => expect(...).toBe(1))`) carry assertions too.
@@ -539,6 +560,7 @@ function analyzeTest(
     mocks,
     isAsync,
     targetClass,
+    targetClassFile,
     ...(targetCallArgs ? { targetCallArgs } : {}),
   };
 }

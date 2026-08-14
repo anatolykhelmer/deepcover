@@ -104,9 +104,10 @@ export interface TestInventory {
   testFiles: TestFileNode[];
   /**
    * `methodName -> testNames[]` for standalone functions (no reliable per-test class
-   * signal to qualify them further); `ClassName.methodName -> testNames[]` for class
-   * methods, keyed by the test's resolved `targetClass` so a same-named method on an
-   * unrelated class can't share coverage.
+   * signal to qualify them further); `filePath:ClassName.methodName -> testNames[]`
+   * for class methods, keyed by the test's resolved `targetClass` and its declaring
+   * file so neither a same-named method on an unrelated class nor a same-named class
+   * in another file can share coverage (task 021).
    */
   coverage: Record<string, string[]>;
 }
@@ -139,6 +140,13 @@ export interface TestNode {
    * type-check; treat `undefined` the same as `null`.
    */
   targetClass?: string | null;
+  /**
+   * The file that declares `targetClass`, resolved from the test file's import of
+   * that class. `null`/absent when the class is not imported (declared inline,
+   * injected indirectly, or only named via the `describe` title). Used to pick the
+   * right declaration when two files export a class with the same name (task 021).
+   */
+  targetClassFile?: string | null;
   /**
    * Arguments the test passes to `targetMethod`, as written (`['2', 'foo', 'add']`).
    * Absent when no call to the target method could be located statically. Used to tell

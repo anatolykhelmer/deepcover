@@ -123,18 +123,19 @@ function collectMethodStates(
   reasonerOutput: ReasonerOutput,
   className: string,
   methodName: string,
-  resolvedCoverage: ResolvedCoverage
+  resolvedCoverage: ResolvedCoverage,
+  filePath: string
 ): { testedStates: number; totalStates: number } {
   const tested = new Map<string, boolean>();
 
   for (const s of staticStates) {
     if (!s.affectedMethods.includes(methodName)) continue;
-    const isTested = s.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(className, m));
+    const isTested = s.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(className, m, filePath));
     const key = normalizeStateKey(s.name);
     tested.set(key, (tested.get(key) ?? false) || isTested);
   }
 
-  const methodCovered = resolvedCoverage.isMethodCovered(className, methodName);
+  const methodCovered = resolvedCoverage.isMethodCovered(className, methodName, filePath);
   for (const ds of reasonerOutput.discoveredStates) {
     if (ds.className !== className || ds.methodName !== methodName) continue;
     const key = normalizeStateKey(ds.state);
@@ -242,23 +243,27 @@ export function composeScore(
   /**
    * Score one callable. Class methods key on the class name; standalone
    * functions key on the module file path, matching how the resolver, the
-   * reasoner prompts and the gap generator identify them.
+   * reasoner prompts and the gap generator identify them. `filePath` pins
+   * the coverage lookup to this module's own declaration, so a same-named
+   * class in another file never blocks or steals credit (task 021).
    */
   function scoreCallable(
     owner: string,
     callable: { name: string; branchCount: number; externalCalls: string[] },
     staticStates: StateNode[],
-    isClass: boolean
+    isClass: boolean,
+    filePath: string
   ): FunctionScore {
-    const mc = resolvedCoverage.getMethodCoverage(owner, callable.name);
-    const testNames = resolvedCoverage.getTestsForMethod(owner, callable.name);
+    const mc = resolvedCoverage.getMethodCoverage(owner, callable.name, filePath);
+    const testNames = resolvedCoverage.getTestsForMethod(owner, callable.name, filePath);
 
     const { testedStates, totalStates } = collectMethodStates(
       staticStates,
       reasonerOutput,
       owner,
       callable.name,
-      resolvedCoverage
+      resolvedCoverage,
+      filePath
     );
 
     const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames, owner, isClass);
@@ -285,6 +290,7 @@ export function composeScore(
     return {
       className: owner,
       methodName: callable.name,
+      filePath,
       composite: Math.min(100, methodComposite),
       criticality: getCriticality(callable, reasonerOutput, owner, callable.name),
       testedStates,
@@ -302,11 +308,11 @@ export function composeScore(
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
       for (const method of cls.methods) {
-        perFunction.push(scoreCallable(cls.name, method, cls.states, true));
+        perFunction.push(scoreCallable(cls.name, method, cls.states, true, mod.filePath));
       }
     }
     for (const fn of mod.functions ?? []) {
-      perFunction.push(scoreCallable(mod.filePath, fn, [], false));
+      perFunction.push(scoreCallable(mod.filePath, fn, [], false, mod.filePath));
     }
   }
 

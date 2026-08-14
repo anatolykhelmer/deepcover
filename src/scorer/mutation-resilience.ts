@@ -74,7 +74,7 @@ export function calculateMutationResilience(
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
       for (const method of cls.methods) {
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name);
+        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
         const hasTests = mc?.isCovered ?? false;
 
         if (resolvedCoverage.hasIstanbulData && mc?.istanbul) {

@@ -66,7 +66,7 @@ describe('composer', () => {
           ],
         },
       ],
-      coverage: { 'ItemService.getAll': ['t1'], 'ItemService.getById': [] },
+      coverage: { '/src/s.ts:ItemService.getAll': ['t1'], '/src/s.ts:ItemService.getById': [] },
     },
   };
 
@@ -269,7 +269,7 @@ describe('composer', () => {
             ],
           },
         ],
-        coverage: { 'PaymentGateway.charge': ['charges a card'] },
+        coverage: { 'src/orders/payment.gateway.ts:PaymentGateway.charge': ['charges a card'] },
       },
     };
   }
@@ -513,7 +513,7 @@ describe('composer', () => {
               ],
             },
           ],
-          coverage: { 'AService.doThing': ['adds one'] },
+          coverage: { '/src/moduleA/a.service.ts:AService.doThing': ['adds one'] },
         },
       };
     }
@@ -541,6 +541,74 @@ describe('composer', () => {
       expect(aThing).toBeDefined();
       expect(aThing!.strongAssertions).toBe(1);
       expect(aThing!.untested).not.toContain('no test coverage');
+    });
+  });
+
+  /**
+   * Task 021: the same class NAME in two different files. Per-function scoring
+   * iterates modules and must look coverage up file-qualified — a name-only
+   * lookup fails closed on the duplicate and would mark both copies untested.
+   */
+  describe('duplicate class name across files', () => {
+    function duplicateClassModel(): CodeModel {
+      const cls = (file: string) => ({
+        filePath: file,
+        functions: [],
+        classes: [
+          {
+            name: 'OrderService',
+            type: 'service' as const,
+            methods: [method('create', { startLine: 1, endLine: 3 })],
+            dependencies: [],
+            states: [],
+          },
+        ],
+      });
+      return {
+        modules: [cls('/src/a/order.service.ts'), cls('/src/b/order.service.ts')],
+        dependencyGraph: [],
+        testInventory: {
+          testFiles: [
+            {
+              filePath: '/src/a/order.service.spec.ts',
+              describes: [
+                {
+                  name: 'OrderService',
+                  tests: [
+                    {
+                      name: 'creates',
+                      targetMethod: 'create',
+                      targetClass: 'OrderService',
+                      targetClassFile: '/src/a/order.service.ts',
+                      assertions: [
+                        { type: 'value_check', target: 'service.create(input)', matcherUsed: 'toEqual' },
+                      ],
+                      mocks: [],
+                      isAsync: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          coverage: { '/src/a/order.service.ts:OrderService.create': ['creates'] },
+        },
+      };
+    }
+
+    it('scores the tested file as covered and the untested one as uncovered', () => {
+      const model = duplicateClassModel();
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+
+      const entries = result.perFunction.filter(
+        (f) => f.className === 'OrderService' && f.methodName === 'create'
+      );
+      expect(entries).toHaveLength(2);
+
+      const [aEntry, bEntry] = entries; // module order: /src/a first, /src/b second
+      expect(aEntry.untested).not.toContain('no test coverage');
+      expect(bEntry.untested).toContain('no test coverage');
     });
   });
 });

@@ -757,6 +757,40 @@ describe('test-analyzer', () => {
       expect(aBlock?.tests[0].targetClass).toBe('AService');
       expect(bBlock?.tests[0].targetClass).toBe('BService');
     });
+
+    it('resolves targetClassFile from the import of the target class', () => {
+      // Two files both declare `class OrderService` — the import is the only
+      // signal for which file's class this spec exercises (task 021).
+      const project = new Project({ useInMemoryFileSystem: true });
+      project.createSourceFile('/proj/a/order.service.ts', 'export class OrderService { create() {} }');
+      project.createSourceFile('/proj/b/order.service.ts', 'export class OrderService { create() {} }');
+      const spec = project.createSourceFile('/proj/a/order.service.spec.ts', `
+        import { OrderService } from './order.service';
+
+        describe('OrderService', () => {
+          let service: OrderService;
+          beforeEach(() => { service = new OrderService(); });
+          it('creates', () => {
+            expect(service.create()).toBeDefined();
+          });
+        });
+      `);
+      const result = analyzeTestFile(spec);
+      expect(result.describes[0].tests[0].targetClassFile).toBe('/proj/a/order.service.ts');
+    });
+
+    it('leaves targetClassFile null when the target class is not imported', () => {
+      const result = analyzeSource(`
+        describe('OrdersService', () => {
+          let service: OrdersService;
+          beforeEach(() => { service = new OrdersService(); });
+          it('creates an order', () => {
+            expect(service.createOrder('cust-1', [])).toBeDefined();
+          });
+        });
+      `);
+      expect(result.describes[0].tests[0].targetClassFile).toBeNull();
+    });
   });
 
   describe('target call arguments', () => {

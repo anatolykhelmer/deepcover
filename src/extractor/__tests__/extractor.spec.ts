@@ -49,21 +49,36 @@ describe('extractor', () => {
       expect(filePaths.some((p) => p.endsWith('strong-tests.spec.ts'))).toBe(true);
     });
 
-    it('testInventory.coverage maps ClassName.methodName to test names', () => {
+    it('testInventory.coverage maps file-qualified class method keys to test names', () => {
       const model = extractCodeModel({ rootDir: ASSERTION_QUALITY_DIR });
-      expect(model.testInventory.coverage['ItemService.getAll']).toBeDefined();
-      expect(model.testInventory.coverage['ItemService.getById']).toBeDefined();
-      expect(model.testInventory.coverage['ItemService.create']).toBeDefined();
+      const sourceFile = path.join(ASSERTION_QUALITY_DIR, 'source.ts');
+      const key = (method: string) => `${sourceFile}:ItemService.${method}`;
+      expect(model.testInventory.coverage[key('getAll')]).toBeDefined();
+      expect(model.testInventory.coverage[key('getById')]).toBeDefined();
+      expect(model.testInventory.coverage[key('create')]).toBeDefined();
 
-      expect(model.testInventory.coverage['ItemService.getAll']).toContain('should get all items');
-      expect(model.testInventory.coverage['ItemService.getAll']).toContain('should return all items from repository');
+      expect(model.testInventory.coverage[key('getAll')]).toContain('should get all items');
+      expect(model.testInventory.coverage[key('getAll')]).toContain('should return all items from repository');
 
-      expect(model.testInventory.coverage['ItemService.getById']).toContain('should get by id');
-      expect(model.testInventory.coverage['ItemService.getById']).toContain('should return item by id');
-      expect(model.testInventory.coverage['ItemService.getById']).toContain('should throw when item not found');
+      expect(model.testInventory.coverage[key('getById')]).toContain('should get by id');
+      expect(model.testInventory.coverage[key('getById')]).toContain('should return item by id');
+      expect(model.testInventory.coverage[key('getById')]).toContain('should throw when item not found');
 
-      expect(model.testInventory.coverage['ItemService.create']).toContain('should create');
-      expect(model.testInventory.coverage['ItemService.create']).toContain('should save item via repository');
+      expect(model.testInventory.coverage[key('create')]).toContain('should create');
+      expect(model.testInventory.coverage[key('create')]).toContain('should save item via repository');
+    });
+  });
+
+  describe('fixtures/duplicate-class-names', () => {
+    const DUPLICATE_DIR = path.resolve(__dirname, '../../../fixtures/duplicate-class-names');
+
+    it('credits only the file whose class the spec imports', () => {
+      const model = extractCodeModel({ rootDir: DUPLICATE_DIR });
+      const aKey = `${path.join(DUPLICATE_DIR, 'a', 'order.service.ts')}:OrderService.create`;
+      const bKey = `${path.join(DUPLICATE_DIR, 'b', 'order.service.ts')}:OrderService.create`;
+
+      expect(model.testInventory.coverage[aKey]).toContain('should create order');
+      expect(model.testInventory.coverage[bKey]).toBeUndefined();
     });
   });
 

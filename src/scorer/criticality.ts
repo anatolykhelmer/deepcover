@@ -38,7 +38,7 @@ export function calculateCriticalityWeighting(
           : weight;
 
         totalWeight += effectiveWeight;
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name);
+        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
         const hasTests = mc?.isCovered ?? false;
         if (hasTests) {
           const linePct = mc?.istanbul?.lineCoveragePercent;

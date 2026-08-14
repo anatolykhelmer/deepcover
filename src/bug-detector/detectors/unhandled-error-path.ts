@@ -31,7 +31,7 @@ export class UnhandledErrorPathDetector implements BugDetector {
                 ? `${catchBranches.length} catch block(s) at line(s) ${catchBranches.map((b) => b.lineNumber).join(', ')} with no error-path test`
                 : `Method throws errors but no test provokes the error path`,
               sourceLocation: { file: mod.filePath, line: catchBranches[0]?.lineNumber ?? method.startLine },
-              confidence: this.calculateConfidence(catchBranches.length, method.throwsErrors, coverage, cls.name, method.name),
+              confidence: this.calculateConfidence(catchBranches.length, method.throwsErrors, coverage, cls.name, method.name, mod.filePath),
             });
           }
         }
@@ -58,11 +58,11 @@ export class UnhandledErrorPathDetector implements BugDetector {
     return false;
   }
 
-  private calculateConfidence(catchCount: number, throwsErrors: boolean, coverage: ResolvedCoverage, className: string, methodName: string): number {
+  private calculateConfidence(catchCount: number, throwsErrors: boolean, coverage: ResolvedCoverage, className: string, methodName: string, filePath: string): number {
     let confidence = 0.5;
     if (catchCount > 0) confidence += 0.1 * Math.min(catchCount, 3);
     if (throwsErrors) confidence += 0.1;
-    const mc = coverage.getMethodCoverage(className, methodName);
+    const mc = coverage.getMethodCoverage(className, methodName, filePath);
     if (mc?.istanbul && mc.istanbul.branchCoveragePercent < 100) confidence += 0.1;
     return Math.min(confidence, 1);
   }

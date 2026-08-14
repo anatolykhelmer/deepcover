@@ -55,7 +55,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['weak', 'weak2'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['weak', 'weak2'] },
         },
       };
 
@@ -76,7 +76,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['strong', 'strong2'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['strong', 'strong2'] },
         },
       };
 
@@ -142,7 +142,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['t'] },
         },
       };
 
@@ -334,7 +334,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.lowComplex': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.lowComplex': ['t'] },
         },
       };
 
@@ -390,7 +390,7 @@ describe('sub-score calculators', () => {
               describes: [{ name: 'S', tests: [{ name: 't', targetMethod: 'get', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'S' }] }],
             },
           ],
-          coverage: { 'S.get': ['t'] },
+          coverage: { '/src/s.ts:S.get': ['t'] },
         },
       };
       const empty = emptyReasonerOutput();
@@ -461,7 +461,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['t'] },
         },
       };
 
