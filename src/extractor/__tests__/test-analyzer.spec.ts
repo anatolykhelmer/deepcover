@@ -779,6 +779,28 @@ describe('test-analyzer', () => {
       expect(result.describes[0].tests[0].targetClassFile).toBe('/proj/a/order.service.ts');
     });
 
+    it('resolves targetClassFile through a barrel re-export to the declaring file', () => {
+      // Nest monorepos import through barrels; the specifier resolves to
+      // index.ts, but the coverage identity needs the file that DECLARES
+      // the class, or duplicate-name attribution fails closed and drops credit.
+      const project = new Project({ useInMemoryFileSystem: true });
+      project.createSourceFile('/proj/a/order.service.ts', 'export class OrderService { create() {} }');
+      project.createSourceFile('/proj/a/index.ts', "export { OrderService } from './order.service';");
+      const spec = project.createSourceFile('/proj/a/order.service.spec.ts', `
+        import { OrderService } from './index';
+
+        describe('OrderService', () => {
+          let service: OrderService;
+          beforeEach(() => { service = new OrderService(); });
+          it('creates', () => {
+            expect(service.create()).toBeDefined();
+          });
+        });
+      `);
+      const result = analyzeTestFile(spec);
+      expect(result.describes[0].tests[0].targetClassFile).toBe('/proj/a/order.service.ts');
+    });
+
     it('leaves targetClassFile null when the target class is not imported', () => {
       const result = analyzeSource(`
         describe('OrdersService', () => {

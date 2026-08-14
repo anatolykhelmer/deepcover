@@ -610,5 +610,22 @@ describe('composer', () => {
       expect(aEntry.untested).not.toContain('no test coverage');
       expect(bEntry.untested).toContain('no test coverage');
     });
+
+    it('does not leak assertion credit onto the untested duplicate', () => {
+      // The text-match tally path scans every test whose targetClass matches by
+      // NAME; the untested copy must not collect the other file's assertions.
+      const model = duplicateClassModel();
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+
+      const entries = result.perFunction.filter(
+        (f) => f.className === 'OrderService' && f.methodName === 'create'
+      );
+      const [aEntry, bEntry] = entries;
+      expect(aEntry.strongAssertions).toBe(1);
+      expect(bEntry.strongAssertions).toBe(0);
+      expect(bEntry.mediumAssertions ?? 0).toBe(0);
+      expect(bEntry.weakAssertions).toBe(0);
+    });
   });
 });

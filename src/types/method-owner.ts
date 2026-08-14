@@ -35,6 +35,43 @@ export function buildClassMethodOwners(modules: ModuleNode[]): ClassMethodOwners
   return owners;
 }
 
+/** Maps a class name to every file in scope declaring a class by that name. */
+export type ClassFileOwners = Map<string, Set<string>>;
+
+export function buildClassFileOwners(modules: ModuleNode[]): ClassFileOwners {
+  const owners: ClassFileOwners = new Map();
+  for (const mod of modules) {
+    for (const cls of mod.classes) {
+      let files = owners.get(cls.name);
+      if (!files) {
+        files = new Set();
+        owners.set(cls.name, files);
+      }
+      files.add(mod.filePath);
+    }
+  }
+  return owners;
+}
+
+/**
+ * Resolves which file's class a test targets, failing closed: a uniquely-named
+ * class resolves without an import signal; a class name declared in several
+ * files resolves only through the test's own resolved import (`targetClassFile`).
+ * Anything a scorer or detector credits per (class, file) must gate through
+ * this, or a same-named class in another file inherits the credit (task 021).
+ */
+export function resolveTestClassFile(
+  targetClass: string | null | undefined,
+  targetClassFile: string | null | undefined,
+  owners: ClassFileOwners
+): string | null {
+  if (!targetClass) return null;
+  const files = owners.get(targetClass);
+  if (!files || files.size === 0) return null;
+  if (files.size === 1) return files.values().next().value as string;
+  return targetClassFile && files.has(targetClassFile) ? targetClassFile : null;
+}
+
 /** Internal coverage key for a class method, file-qualified so same-named
  *  classes in different files never collide (task 021). Human-facing output
  *  keeps `ClassName.methodName`. */

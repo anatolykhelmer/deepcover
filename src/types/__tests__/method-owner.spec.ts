@@ -1,7 +1,9 @@
 import {
+  buildClassFileOwners,
   buildClassMethodOwners,
   classMethodKey,
   resolveClassMethodKey,
+  resolveTestClassFile,
 } from '../method-owner';
 import type { ModuleNode } from '../code-model';
 
@@ -65,5 +67,30 @@ describe('resolveClassMethodKey', () => {
 
   it('returns null for methods no class owns', () => {
     expect(resolveClassMethodKey('standaloneFn', 'OrderService', null, owners)).toBeNull();
+  });
+});
+
+describe('resolveTestClassFile', () => {
+  const owners = buildClassFileOwners([
+    makeModule('src/a/order.service.ts', 'OrderService', ['create']),
+    makeModule('src/b/order.service.ts', 'OrderService', ['create']),
+    makeModule('src/c/user.service.ts', 'UserService', ['create']),
+  ]);
+
+  it('resolves the file of a uniquely-named class without an import signal', () => {
+    expect(resolveTestClassFile('UserService', null, owners)).toBe('src/c/user.service.ts');
+  });
+
+  it('uses the resolved import file to break duplicate-name ties', () => {
+    expect(resolveTestClassFile('OrderService', 'src/b/order.service.ts', owners)).toBe(
+      'src/b/order.service.ts'
+    );
+  });
+
+  it('fails closed on unresolvable duplicates and unknown classes', () => {
+    expect(resolveTestClassFile('OrderService', null, owners)).toBeNull();
+    expect(resolveTestClassFile('OrderService', 'src/elsewhere.ts', owners)).toBeNull();
+    expect(resolveTestClassFile('GhostService', null, owners)).toBeNull();
+    expect(resolveTestClassFile(null, null, owners)).toBeNull();
   });
 });

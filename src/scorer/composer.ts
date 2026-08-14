@@ -4,6 +4,7 @@ import type { ResolvedCoverage } from '../resolver/types';
 import type { ScoreResult, SubScore, FunctionScore } from './types';
 import { generateGaps } from './gap-generator';
 import { classifyMatcher } from './matchers';
+import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../types/method-owner';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -37,21 +38,28 @@ function tallyAssertion(tally: AssertionTally, matcherUsed: string): void {
  *
  * The "written against a call to it" path text-scans every assertion in the
  * whole test inventory, so for a class method it must additionally require the
- * test's resolved `targetClass` to match `owner` — otherwise a same-named method
- * on a completely unrelated, untested class gets full-weight credit here just
- * because some other test happens to call `.methodName(...)`. Standalone
- * functions (`isClass: false`) have no comparable per-test class signal and
- * keep the previous unscoped match.
+ * test's resolved `targetClass` to match `owner` AND resolve to this module's
+ * own file — otherwise a same-named method on an unrelated class, or the same
+ * class name in another file, gets full-weight credit here just because some
+ * other test happens to call `.methodName(...)`. Standalone functions
+ * (`isClass: false`) have no comparable per-test class signal and keep the
+ * previous unscoped match.
  */
 function tallyAssertionsForMethod(
   codeModel: CodeModel,
   methodName: string,
   testNames: string[],
   owner: string,
-  isClass: boolean
+  isClass: boolean,
+  filePath: string,
+  classFileOwners: ClassFileOwners
 ): AssertionTally {
   const direct = emptyTally();
   const transitive = emptyTally();
+
+  const testTargetsThisClass = (test: { targetClass?: string | null; targetClassFile?: string | null }): boolean =>
+    test.targetClass === owner &&
+    resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) === filePath;
 
   for (const file of codeModel.testInventory.testFiles) {
     for (const block of file.describes) {
@@ -63,7 +71,7 @@ function tallyAssertionsForMethod(
           for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
         } else if (transitiveMatch) {
           for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
-        } else if (!isClass || test.targetClass === owner) {
+        } else if (!isClass || testTargetsThisClass(test)) {
           for (const a of test.assertions) {
             if (extractMethodFromTarget(a.target) === methodName) {
               tallyAssertion(direct, a.matcherUsed);
@@ -232,6 +240,7 @@ export function composeScore(
   weights: ScoreWeights = DEFAULT_WEIGHTS
 ): ScoreResult {
   const w = redistributeWeights(subScores, weights);
+  const classFileOwners = buildClassFileOwners(codeModel.modules);
   const composite =
     subScores.assertionQuality.final * w.assertionQuality +
     subScores.stateCoverage.final * w.stateCoverage +
@@ -266,7 +275,7 @@ export function composeScore(
       filePath
     );
 
-    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames, owner, isClass);
+    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames, owner, isClass, filePath, classFileOwners);
 
     const untested: string[] = [];
     if (!mc?.isCovered) {

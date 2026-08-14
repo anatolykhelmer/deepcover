@@ -3,6 +3,7 @@ import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { getAssertionSpecificity } from './matchers';
+import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../types/method-owner';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -14,17 +15,20 @@ function extractMethodFromTarget(target: string): string | null {
  * method as its target) or a text match (some assertion literally calls it).
  *
  * For class methods (`isClass: true`) every test considered must have a resolved
- * `targetClass` equal to `owner` first: the text-match path in particular scans
- * every test in the inventory, and without this gate a same-named method on a
- * completely unrelated class would inflate this method's specificity score.
- * Standalone functions have no comparable per-test class signal and keep the
- * previous unscoped match.
+ * `targetClass` equal to `owner` AND resolve to this module's own file first:
+ * the text-match path in particular scans every test in the inventory, and
+ * without this gate a same-named method on an unrelated class — or the same
+ * class name declared in another file — would inflate this method's specificity
+ * score (task 021). Standalone functions have no comparable per-test class
+ * signal and keep the previous unscoped match.
  */
 function tallyAssertionSpecificity(
   testFiles: TestFileNode[],
   methodName: string,
   owner: string,
-  isClass: boolean
+  isClass: boolean,
+  filePath: string,
+  classFileOwners: ClassFileOwners
 ): { specificitySum: number; count: number } {
   let specificitySum = 0;
   let count = 0;
@@ -33,6 +37,10 @@ function tallyAssertionSpecificity(
     for (const block of file.describes) {
       for (const test of block.tests) {
         if (isClass && test.targetClass !== owner) continue;
+        if (
+          isClass &&
+          resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) !== filePath
+        ) continue;
 
         if (test.targetMethod === methodName) {
           for (const a of test.assertions) {
@@ -70,6 +78,7 @@ export function calculateMutationResilience(
   let branchesHitWeighted = 0;
   let assertionSpecificitySum = 0;
   let assertionCount = 0;
+  const classFileOwners = buildClassFileOwners(codeModel.modules);
 
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
@@ -98,7 +107,7 @@ export function calculateMutationResilience(
         }
 
         if (hasTests) {
-          const { specificitySum, count } = tallyAssertionSpecificity(testFiles, method.name, cls.name, true);
+          const { specificitySum, count } = tallyAssertionSpecificity(testFiles, method.name, cls.name, true, mod.filePath, classFileOwners);
           assertionSpecificitySum += specificitySum;
           assertionCount += count;
         }
@@ -130,7 +139,7 @@ export function calculateMutationResilience(
       }
 
       if (hasTests) {
-        const { specificitySum, count } = tallyAssertionSpecificity(testFiles, fn.name, mod.filePath, false);
+        const { specificitySum, count } = tallyAssertionSpecificity(testFiles, fn.name, mod.filePath, false, mod.filePath, classFileOwners);
         assertionSpecificitySum += specificitySum;
         assertionCount += count;
       }

@@ -64,6 +64,41 @@ describe('UnhandledErrorPathDetector', () => {
     expect(signals[0].confidence).toBeGreaterThan(0);
   });
 
+  it('does not let one file\'s error test silence a same-named class in another file (task 021)', () => {
+    const throwingMethod = {
+      name: 'createOrder', visibility: 'public' as const, params: [], returnType: 'Promise<Order>',
+      branches: [{ type: 'try_catch' as const, condition: 'catch (error)', lineNumber: 15 }],
+      branchCount: 2, throwsErrors: true, hasAsyncOps: true,
+      externalCalls: ['repository.save'], internalCalls: [], startLine: 10, endLine: 30,
+    };
+    const codeModel = makeCodeModel({
+      modules: [
+        {
+          filePath: 'src/a/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [{ ...throwingMethod }], dependencies: [], states: [] }],
+        },
+        {
+          filePath: 'src/b/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [{ ...throwingMethod }], dependencies: [], states: [] }],
+        },
+      ],
+      testInventory: {
+        testFiles: [{ filePath: 'src/a/order.service.spec.ts', describes: [{ name: 'OrderService',
+          tests: [{ name: 'should reject on repository error', targetMethod: 'createOrder',
+            targetClass: 'OrderService', targetClassFile: 'src/a/order.service.ts',
+            assertions: [{ type: 'rejects', target: 'createOrder', matcherUsed: 'toThrow' }],
+            mocks: [], isAsync: true }],
+        }] }],
+        coverage: { 'src/a/order.service.ts:OrderService.createOrder': ['should reject on repository error'] },
+      },
+    });
+    const signals = detector.detect(codeModel, makeCoverage());
+    // a/ has its own error-path test; b/ does not — b/ must still be flagged.
+    const files = signals.map((s) => s.sourceLocation.file);
+    expect(files).toContain('src/b/order.service.ts');
+    expect(files).not.toContain('src/a/order.service.ts');
+  });
+
   it('does not flag method when test throws into catch block', () => {
     const codeModel = makeCodeModel({
       modules: [{
@@ -82,10 +117,10 @@ describe('UnhandledErrorPathDetector', () => {
       testInventory: {
         testFiles: [{ filePath: '__tests__/order.service.spec.ts', describes: [{ name: 'OrderService',
           tests: [
-            { name: 'should create an order', targetMethod: 'createOrder',
+            { name: 'should create an order', targetMethod: 'createOrder', targetClass: 'OrderService',
               assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }],
               mocks: ['OrderRepository'], isAsync: true },
-            { name: 'should handle repository error', targetMethod: 'createOrder',
+            { name: 'should handle repository error', targetMethod: 'createOrder', targetClass: 'OrderService',
               assertions: [{ type: 'rejects', target: 'createOrder', matcherUsed: 'toThrow' }],
               mocks: ['OrderRepository'], isAsync: true },
           ],

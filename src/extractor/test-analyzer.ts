@@ -464,16 +464,30 @@ function findVariableNameForObjectLiteral(objLit: ObjectLiteralExpression): stri
 /**
  * Resolves the file that declares `className` via the test file's own import of
  * it — the only static signal distinguishing two files that both export a class
- * with that name. `null` when the class is not imported or the module specifier
- * does not resolve to a project source file.
+ * with that name. Follows the import's symbol through aliases so a barrel
+ * re-export (`export { X } from './x'` in an index.ts) resolves to the file that
+ * DECLARES the class, not to the barrel — duplicate-name attribution keys on
+ * declaring files and would otherwise fail closed and drop credit. Falls back to
+ * the specifier's resolved file when the symbol chain cannot be followed.
+ * `null` when the class is not imported at all.
  */
 function resolveClassImportFile(sourceFile: SourceFile, className: string): string | null {
   for (const imp of sourceFile.getImportDeclarations()) {
-    const matchesNamed = imp
+    const namedImport = imp
       .getNamedImports()
-      .some((n) => (n.getAliasNode()?.getText() ?? n.getName()) === className);
-    const matchesDefault = imp.getDefaultImport()?.getText() === className;
-    if (!matchesNamed && !matchesDefault) continue;
+      .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === className);
+    const defaultImport = imp.getDefaultImport()?.getText() === className ? imp.getDefaultImport() : undefined;
+    const importedNode = namedImport?.getNameNode() ?? defaultImport;
+    if (!importedNode) continue;
+
+    const symbol = importedNode.getSymbol();
+    const aliased = symbol?.getAliasedSymbol() ?? symbol;
+    const declarationFile = aliased
+      ?.getDeclarations()
+      .map((d) => d.getSourceFile())
+      .find((sf) => sf !== sourceFile);
+    if (declarationFile) return declarationFile.getFilePath();
+
     return imp.getModuleSpecifierSourceFile()?.getFilePath() ?? null;
   }
   return null;
