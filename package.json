@@ -1,6 +1,6 @@
 {
   "name": "@anatolykhelmer/deep-cover",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
