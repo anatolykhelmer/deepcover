@@ -1,4 +1,4 @@
-name: Auto Release
+name: Release and Publish
 
 on:
   push:
@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,3 +51,23 @@ jobs:
           release_name: "Release ${{ steps.version.outputs.version }}"
           draft: false
           prerelease: false
+
+      - name: Use Node.js
+        if: steps.check-tag.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        if: steps.check-tag.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Build
+        if: steps.check-tag.outputs.exists == 'false'
+        run: npm run build
+
+      - name: Publish to npm with provenance
+        if: steps.check-tag.outputs.exists == 'false'
+        run: npm publish --provenance
