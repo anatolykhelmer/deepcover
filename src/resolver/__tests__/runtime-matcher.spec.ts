@@ -39,6 +39,20 @@ describe('matchRuntimeTests', () => {
     expect(result.size).toBe(0);
   });
 
+  it('matches when inventory paths are absolute, as produced by a real extract', () => {
+    // extractCodeModel globs with absolute: true, so TestFileNode.filePath is
+    // absolute in real runs — only unit fixtures use relative paths.
+    const absoluteTestFiles: TestFileNode[] = [{
+      ...testFiles[0],
+      filePath: '/project/src/order.spec.ts',
+    }];
+    const result = matchRuntimeTests(runtime, absoluteTestFiles, '/project');
+    const methodTests = result.get('createOrder');
+    expect(methodTests).toBeDefined();
+    expect(methodTests!.passed).toContain('should create order');
+    expect(methodTests!.failed).toContain('should fail on invalid input');
+  });
+
   describe('class-owned methods (cross-class leak regression)', () => {
     const crossClassRuntime: JestRuntimeData = {
       testResults: [

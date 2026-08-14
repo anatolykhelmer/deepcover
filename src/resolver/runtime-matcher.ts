@@ -76,7 +76,7 @@ function normalizePath(filePath: string, rootDir: string): string {
 
 function buildTestNodeIndex(
   testFiles: TestFileNode[],
-  _rootDir: string
+  rootDir: string
 ): Map<string, { testName: string; targetMethod: string | null; targetClass: string | null }[]> {
   const index = new Map<string, { testName: string; targetMethod: string | null; targetClass: string | null }[]>();
   for (const file of testFiles) {
@@ -86,7 +86,10 @@ function buildTestNodeIndex(
         entries.push({ testName: test.name, targetMethod: test.targetMethod, targetClass: test.targetClass ?? null });
       }
     }
-    index.set(file.filePath, entries);
+    // Extract produces absolute paths (globSync absolute: true) while Jest
+    // runtime lookups are normalized to repo-relative — index in the same
+    // key space so real runs actually match (task 022).
+    index.set(normalizePath(file.filePath, rootDir), entries);
   }
   return index;
 }
