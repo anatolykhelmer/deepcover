@@ -92,7 +92,8 @@ function extractDescribeBlocks(sourceFile: SourceFile): DescribeBlockNode[] {
 
     const mocks = extractMocksFromBlock(block);
     const { subjectVars, targetClass } = resolveTargetClass(call, name, subjectBindings);
-    const tests = extractTestsFromBlock(block, subjectVars, targetClass);
+    const targetClassFile = targetClass ? resolveClassImportFile(sourceFile, targetClass) : null;
+    const tests = extractTestsFromBlock(block, subjectVars, targetClass, targetClassFile);
     for (const test of tests) {
       test.mocks = [...mocks];
     }
@@ -460,10 +461,43 @@ function findVariableNameForObjectLiteral(objLit: ObjectLiteralExpression): stri
  * Tests                                                               *
  * ------------------------------------------------------------------ */
 
+/**
+ * Resolves the file that declares `className` via the test file's own import of
+ * it — the only static signal distinguishing two files that both export a class
+ * with that name. Follows the import's symbol through aliases so a barrel
+ * re-export (`export { X } from './x'` in an index.ts) resolves to the file that
+ * DECLARES the class, not to the barrel — duplicate-name attribution keys on
+ * declaring files and would otherwise fail closed and drop credit. Falls back to
+ * the specifier's resolved file when the symbol chain cannot be followed.
+ * `null` when the class is not imported at all.
+ */
+function resolveClassImportFile(sourceFile: SourceFile, className: string): string | null {
+  for (const imp of sourceFile.getImportDeclarations()) {
+    const namedImport = imp
+      .getNamedImports()
+      .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === className);
+    const defaultImport = imp.getDefaultImport()?.getText() === className ? imp.getDefaultImport() : undefined;
+    const importedNode = namedImport?.getNameNode() ?? defaultImport;
+    if (!importedNode) continue;
+
+    const symbol = importedNode.getSymbol();
+    const aliased = symbol?.getAliasedSymbol() ?? symbol;
+    const declarationFile = aliased
+      ?.getDeclarations()
+      .map((d) => d.getSourceFile())
+      .find((sf) => sf !== sourceFile);
+    if (declarationFile) return declarationFile.getFilePath();
+
+    return imp.getModuleSpecifierSourceFile()?.getFilePath() ?? null;
+  }
+  return null;
+}
+
 function extractTestsFromBlock(
   block: Block,
   subjectVars: Set<string>,
-  targetClass: string | null
+  targetClass: string | null,
+  targetClassFile: string | null
 ): TestNode[] {
   const tests: TestNode[] = [];
 
@@ -484,7 +518,7 @@ function extractTestsFromBlock(
     if (!isTestCallback(callback)) continue;
 
     if (!callee.each) {
-      tests.push(analyzeTest(title, title, callback, subjectVars, targetClass));
+      tests.push(analyzeTest(title, title, callback, subjectVars, targetClass, targetClassFile));
       continue;
     }
 
@@ -493,7 +527,7 @@ function extractTestsFromBlock(
       // Table could not be read statically (or is very large): keep one entry that
       // carries the raw title template, so the assertions still reach the inventory.
       tests.push({
-        ...analyzeTest(title, title, callback, subjectVars, targetClass),
+        ...analyzeTest(title, title, callback, subjectVars, targetClass, targetClassFile),
         parameterized: info,
       });
       continue;
@@ -502,7 +536,7 @@ function extractTestsFromBlock(
     callee.each.rows.forEach((row, index) => {
       const caseName = interpolateEachTitle(title, row, index);
       tests.push({
-        ...analyzeTest(caseName, title, callback, subjectVars, targetClass),
+        ...analyzeTest(caseName, title, callback, subjectVars, targetClass, targetClassFile),
         parameterized: { ...info, caseIndex: index },
       });
     });
@@ -521,7 +555,8 @@ function analyzeTest(
   titleForHint: string,
   callback: TestCallback,
   subjectVars: Set<string>,
-  targetClass: string | null
+  targetClass: string | null,
+  targetClassFile: string | null
 ): TestNode {
   const body = callback.getBody();
   // Concise arrow bodies (`it('x', () => expect(...).toBe(1))`) carry assertions too.
@@ -539,6 +574,7 @@ function analyzeTest(
     mocks,
     isAsync,
     targetClass,
+    targetClassFile,
     ...(targetCallArgs ? { targetCallArgs } : {}),
   };
 }

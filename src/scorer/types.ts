@@ -11,6 +11,8 @@ export interface SubScore {
 export interface FunctionScore {
   className: string;
   methodName: string;
+  /** Declaring module — disambiguates same-named classes in different files (task 021). */
+  filePath?: string;
   composite: number;
   criticality: 'low' | 'medium' | 'high';
   testedStates: number;

@@ -8,6 +8,7 @@ import type {
 } from '../../types/code-model';
 import type { BinaryExprCoverage, ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
+import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../../types/method-owner';
 
 /** Istanbul proved the operand was never evaluated — nothing to interpret. */
 const NEVER_EVALUATED_CONFIDENCE = 0.9;
@@ -35,16 +36,17 @@ export class UntestedConditionOperandDetector implements BugDetector {
 
   detect(codeModel: CodeModel, coverage: ResolvedCoverage): BugSignal[] {
     const signals: BugSignal[] = [];
+    const classFileOwners = buildClassFileOwners(codeModel.modules);
 
     for (const mod of codeModel.modules) {
       for (const cls of mod.classes) {
         for (const method of cls.methods) {
-          signals.push(...this.inspect(codeModel, coverage, mod.filePath, cls.name, method, true));
+          signals.push(...this.inspect(codeModel, coverage, mod.filePath, cls.name, method, true, classFileOwners));
         }
       }
       for (const fn of mod.functions ?? []) {
         // Standalone functions are keyed by file path everywhere else in the pipeline.
-        signals.push(...this.inspect(codeModel, coverage, mod.filePath, mod.filePath, fn, false));
+        signals.push(...this.inspect(codeModel, coverage, mod.filePath, mod.filePath, fn, false, classFileOwners));
       }
     }
 
@@ -57,17 +59,18 @@ export class UntestedConditionOperandDetector implements BugDetector {
     filePath: string,
     owner: string,
     method: MethodNode | FunctionNode,
-    isClass: boolean
+    isClass: boolean,
+    classFileOwners: ClassFileOwners
   ): BugSignal[] {
     const compound = method.branches.filter((b) => (b.operands?.length ?? 0) >= 2);
     if (compound.length === 0) return [];
 
-    const methodCoverage = coverage.getMethodCoverage(owner, method.name);
+    const methodCoverage = coverage.getMethodCoverage(owner, method.name, filePath);
     // An untested method is a coverage gap the gap generator already reports; this
     // detector is only about conditions that look covered but are not.
     if (!methodCoverage?.isCovered) return [];
 
-    const tests = findTests(codeModel, owner, method.name, isClass);
+    const tests = findTests(codeModel, owner, method.name, isClass, filePath, classFileOwners);
     const signals: BugSignal[] = [];
 
     for (const branch of compound) {
@@ -211,14 +214,22 @@ function findTests(
   codeModel: CodeModel,
   owner: string,
   methodName: string,
-  isClass: boolean
+  isClass: boolean,
+  filePath: string,
+  classFileOwners: ClassFileOwners
 ): TestNode[] {
   const tests: TestNode[] = [];
   for (const file of codeModel.testInventory.testFiles) {
     for (const block of file.describes) {
       for (const test of block.tests) {
         // Standalone functions have no reliable per-test class signal to scope by.
+        // Class tests must resolve to this module's own file — a same-named class
+        // in another file must not look like it drives this method (task 021).
         if (isClass && test.targetClass !== owner) continue;
+        if (
+          isClass &&
+          resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) !== filePath
+        ) continue;
         if (test.targetMethod === methodName) tests.push(test);
       }
     }

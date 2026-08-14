@@ -55,7 +55,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['weak', 'weak2'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['weak', 'weak2'] },
         },
       };
 
@@ -76,7 +76,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['strong', 'strong2'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['strong', 'strong2'] },
         },
       };
 
@@ -142,7 +142,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['t'] },
         },
       };
 
@@ -297,6 +297,77 @@ describe('sub-score calculators', () => {
       const score = calculateMutationResilience(noTestsModel, emptyReasonerOutput(), resolvedFor(noTestsModel));
       expect(score.base).toBe(0);
     });
+
+    it('does not tally another file\'s tests for a same-named class (task 021)', () => {
+      // /src/a and /src/b both declare OrderService.create. Only a/ has real
+      // tests (strong); b/ is marked covered without its own tests. A weak-tested
+      // UserService makes any leaked copy of a's strong specificity shift the
+      // global average, so the duplicate-name model must score the same as a
+      // control model where b's class has a unique name.
+      const method = (name: string) => ({
+        name, visibility: 'public' as const, params: [], returnType: 'void',
+        branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false,
+        externalCalls: [], internalCalls: [], startLine: 1, endLine: 1,
+      });
+      const buildModel = (bClassName: string): CodeModel => ({
+        modules: [
+          {
+            filePath: '/src/a/order.service.ts',
+            classes: [{ name: 'OrderService', type: 'service', methods: [method('create')], dependencies: [], states: [] }],
+          },
+          {
+            filePath: '/src/b/order.service.ts',
+            classes: [{ name: bClassName, type: 'service', methods: [method('create')], dependencies: [], states: [] }],
+          },
+          {
+            filePath: '/src/c/user.service.ts',
+            classes: [{ name: 'UserService', type: 'service', methods: [method('find')], dependencies: [], states: [] }],
+          },
+        ],
+        dependencyGraph: [],
+        testInventory: {
+          testFiles: [
+            {
+              filePath: '/src/a/order.service.spec.ts',
+              describes: [{
+                name: 'OrderService',
+                tests: [{
+                  name: 'creates strongly', targetMethod: 'create', targetClass: 'OrderService',
+                  targetClassFile: '/src/a/order.service.ts',
+                  assertions: [{ type: 'called_with', target: 'repo.save', matcherUsed: 'toHaveBeenCalledWith' }],
+                  mocks: [], isAsync: false,
+                }],
+              }],
+            },
+            {
+              filePath: '/src/c/user.service.spec.ts',
+              describes: [{
+                name: 'UserService',
+                tests: [{
+                  name: 'finds weakly', targetMethod: 'find', targetClass: 'UserService',
+                  targetClassFile: '/src/c/user.service.ts',
+                  assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeDefined' }],
+                  mocks: [], isAsync: false,
+                }],
+              }],
+            },
+          ],
+          coverage: {
+            '/src/a/order.service.ts:OrderService.create': ['creates strongly'],
+            [`/src/b/order.service.ts:${bClassName}.create`]: ['covered elsewhere'],
+            '/src/c/user.service.ts:UserService.find': ['finds weakly'],
+          },
+        },
+      });
+
+      const duplicate = buildModel('OrderService');
+      const control = buildModel('OrderServiceB');
+
+      const duplicateScore = calculateMutationResilience(duplicate, emptyReasonerOutput(), resolvedFor(duplicate));
+      const controlScore = calculateMutationResilience(control, emptyReasonerOutput(), resolvedFor(control));
+
+      expect(duplicateScore.base).toBeCloseTo(controlScore.base, 10);
+    });
   });
 
   describe('criticality-weighting', () => {
@@ -334,7 +405,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.lowComplex': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.lowComplex': ['t'] },
         },
       };
 
@@ -390,7 +461,7 @@ describe('sub-score calculators', () => {
               describes: [{ name: 'S', tests: [{ name: 't', targetMethod: 'get', assertions: [{ type: 'value_check', target: 'r', matcherUsed: 'toEqual' }], mocks: [], isAsync: false, targetClass: 'S' }] }],
             },
           ],
-          coverage: { 'S.get': ['t'] },
+          coverage: { '/src/s.ts:S.get': ['t'] },
         },
       };
       const empty = emptyReasonerOutput();
@@ -461,7 +532,7 @@ describe('sub-score calculators', () => {
               ],
             },
           ],
-          coverage: { 'ItemService.getAll': ['t'] },
+          coverage: { '/src/item.service.ts:ItemService.getAll': ['t'] },
         },
       };
 

@@ -179,6 +179,56 @@ describe('UntestedConditionOperandDetector', () => {
       expect(signals).toEqual([]);
     });
 
+    it('does not let a same-named class in another file silence the signal (task 021)', () => {
+      // Two files both declare CalculatorController.calculate. The b/ copy's
+      // THROWS_ON_B test must not count as driving a/'s bRaw operands.
+      const withFile = (test: TestNode, file: string): TestNode => ({ ...test, targetClassFile: file });
+      const aFile = 'src/a/calculator.controller.ts';
+      const bFile = 'src/b/calculator.controller.ts';
+      const cls = {
+        name: 'CalculatorController',
+        type: 'controller' as const,
+        methods: [makeMethod()],
+        dependencies: [],
+        states: [],
+      };
+      const model: CodeModel = {
+        modules: [
+          { filePath: aFile, classes: [{ ...cls, methods: [makeMethod()] }] },
+          { filePath: bFile, classes: [{ ...cls, methods: [makeMethod()] }] },
+        ],
+        dependencyGraph: [],
+        testInventory: {
+          testFiles: [
+            {
+              filePath: 'src/a/calculator.controller.spec.ts',
+              describes: [{
+                name: 'CalculatorController',
+                tests: [HAPPY_PATH, THROWS_ON_A, THROWS_ON_OP].map((t) => withFile(t, aFile)),
+              }],
+            },
+            {
+              filePath: 'src/b/calculator.controller.spec.ts',
+              describes: [{
+                name: 'CalculatorController',
+                tests: [withFile(THROWS_ON_B, bFile)],
+              }],
+            },
+          ],
+          coverage: {},
+        },
+      };
+
+      const signals = detector.detect(model, makeCoverage());
+
+      // a/'s bRaw operands are still untested — b/'s test belongs to b/'s class.
+      const aSignals = signals.filter((s) => s.sourceLocation.file === aFile);
+      expect(aSignals.map((s) => s.evidence)).toEqual([
+        expect.stringContaining('"bRaw === undefined"'),
+        expect.stringContaining('"Number.isNaN(b)"'),
+      ]);
+    });
+
     it('ignores an untested method — that is a coverage gap, reported elsewhere', () => {
       const signals = detector.detect(
         makeCodeModel([HAPPY_PATH, THROWS_ON_A, THROWS_ON_OP]),

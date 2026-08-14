@@ -111,6 +111,28 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
+## Migrating to 0.4.0
+
+Internal coverage identity is now file-qualified: class methods are keyed
+`filePath:ClassName.methodName` (matching how standalone functions were already
+keyed by file), so two files that both export a class with the same name no
+longer overwrite each other's coverage.
+
+**Re-run `deepcover extract` (or `run`) after upgrading.** A `code-model.json`
+produced by 0.3.x keys class methods as `ClassName.methodName`; the 0.4.0
+resolver looks them up file-qualified and would silently find no static
+coverage in the old artifact.
+
+For the API, `ResolvedCoverage` accessors (`getMethodCoverage`,
+`isMethodCovered`, `getTestsForMethod`) accept an optional `filePath` third
+argument. Without it, lookups of a class name declared in several files fail
+closed (return nothing) rather than guess.
+
+Known limitation: when duplicate class names exist, a test's credit is
+attributed via the file its spec imports the class from (barrel re-exports are
+followed to the declaring file). If the import cannot be resolved statically,
+the credit is dropped rather than guessed.
+
 ## Migrating from 0.2.x
 
 `analyze` and `score` no longer extract or call an LLM — they score the artifacts

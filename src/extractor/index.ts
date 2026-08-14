@@ -13,7 +13,7 @@ import type {
   TestInventory,
   TestFileNode,
 } from '../types/code-model';
-import { buildClassMethodOwners } from '../types/method-owner';
+import { buildClassMethodOwners, resolveClassMethodKey } from '../types/method-owner';
 
 export interface TsMorphProjectOptions {
   skipAddingFilesFromTsConfig?: boolean;
@@ -127,12 +127,18 @@ export function extractCodeModel(options: ExtractOptions): CodeModel {
 
         const owners = classMethodOwners.get(test.targetMethod);
         if (owners && owners.size > 0) {
-          // Class-owned method: only credit the class this test actually resolved to —
-          // fail closed (drop it) when that can't be determined, since a same-named
-          // method on an unrelated class must never share coverage.
-          const testClass = test.targetClass ?? null;
-          if (testClass && owners.has(testClass)) {
-            addCoverage(`${testClass}.${test.targetMethod}`, test.name);
+          // Class-owned method: only credit the class (and, when the class name is
+          // declared in several files, the specific file) this test actually resolved
+          // to — fail closed (drop it) when that can't be determined, since a
+          // same-named method on an unrelated class must never share coverage.
+          const key = resolveClassMethodKey(
+            test.targetMethod,
+            test.targetClass ?? null,
+            test.targetClassFile ?? null,
+            classMethodOwners
+          );
+          if (key) {
+            addCoverage(key, test.name);
           }
           continue;
         }

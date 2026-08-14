@@ -28,7 +28,7 @@ function createMinimalCodeModel(): CodeModel {
     dependencyGraph: [],
     testInventory: {
       testFiles: [],
-      coverage: { 'OrderService.create': ['test: should create'] },
+      coverage: { 'src/order.service.ts:OrderService.create': ['test: should create'] },
     },
   };
 }
@@ -127,7 +127,7 @@ describe('resolveCoverage', () => {
         testFiles: [],
         // Qualified key: only AService.doThing is covered, BService.doThing must not
         // inherit it just because the bare method name matches.
-        coverage: { 'AService.doThing': ['adds one'] },
+        coverage: { 'src/a.service.ts:AService.doThing': ['adds one'] },
       },
     };
 

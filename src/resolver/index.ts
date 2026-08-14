@@ -8,7 +8,7 @@ import type {
 } from './types';
 import { mapIstanbulToMethod } from './istanbul-mapper';
 import { matchRuntimeTests } from './runtime-matcher';
-import { buildClassMethodOwners } from '../types/method-owner';
+import { buildClassMethodOwners, classMethodKey } from '../types/method-owner';
 
 export { resolveCoverage };
 export type { ResolvedCoverage, MethodCoverage } from './types';
@@ -38,6 +38,10 @@ function resolveCoverage(
   for (const mod of codeModel.modules) {
     for (const cls of mod.classes) {
       for (const method of cls.methods) {
+        // Internal identity is file-qualified so two files that both declare
+        // `class X { m() {} }` never overwrite each other (task 021);
+        // `qualifiedName` stays the human-facing form.
+        const key = classMethodKey(mod.filePath, cls.name, method.name);
         const qualifiedName = `${cls.name}.${method.name}`;
         const absFilePath = path.resolve(rootDir, mod.filePath);
 
@@ -46,9 +50,9 @@ function resolveCoverage(
           methodName: method.name,
           qualifiedName,
           filePath: mod.filePath,
-          // `coverage` keys class methods by `ClassName.methodName` (see extractor/index.ts)
+          // `coverage` keys class methods file-qualified (see extractor/index.ts)
           // so a same-named method on an unrelated class never shares static test credit.
-          staticTests: staticCoverage[qualifiedName] ?? [],
+          staticTests: staticCoverage[key] ?? [],
           isCovered: false,
           coverageSource: 'static',
         };
@@ -64,7 +68,7 @@ function resolveCoverage(
         }
 
         if (hasRuntimeData) {
-          const rt = runtimeMap.get(qualifiedName);
+          const rt = runtimeMap.get(key);
           if (rt) {
             mc.runtime = {
               testNames: rt.passed,
@@ -83,7 +87,7 @@ function resolveCoverage(
           mc.coverageSource = 'static';
         }
 
-        methods.set(qualifiedName, mc);
+        methods.set(key, mc);
       }
     }
 
@@ -142,12 +146,12 @@ function resolveCoverage(
       for (const cls of mod.classes) {
         for (const method of cls.methods) {
           if (method.internalCalls.length === 0) continue;
-          const callerMc = methods.get(`${cls.name}.${method.name}`);
+          const callerMc = methods.get(classMethodKey(mod.filePath, cls.name, method.name));
           if (!callerMc || callerMc.staticTests.length === 0) continue;
 
           for (const calleeName of method.internalCalls) {
             if (calleeName === method.name) continue;
-            const calleeMc = methods.get(`${cls.name}.${calleeName}`);
+            const calleeMc = methods.get(classMethodKey(mod.filePath, cls.name, calleeName));
             if (calleeMc && calleeMc.staticTests.length === 0) {
               calleeMc.staticTests.push(...callerMc.staticTests);
               changed = true;
@@ -173,18 +177,40 @@ function resolveCoverage(
     }
   }
 
+  // `ClassName.methodName` → file-qualified keys, for callers that have no file
+  // path in hand (reasoner output, LLM ratings). Ambiguous names fail closed.
+  const keysByName = new Map<string, string[]>();
+  for (const [key, mc] of methods) {
+    if (key === mc.qualifiedName) continue; // standalone functions: direct key
+    const list = keysByName.get(mc.qualifiedName);
+    if (list) list.push(key);
+    else keysByName.set(mc.qualifiedName, [key]);
+  }
+
+  function lookup(className: string, methodName: string, filePath?: string): MethodCoverage | undefined {
+    if (filePath !== undefined) {
+      const byFile = methods.get(classMethodKey(filePath, className, methodName));
+      if (byFile) return byFile;
+    }
+    const name = `${className}.${methodName}`;
+    const direct = methods.get(name); // standalone functions (className = module path)
+    if (direct) return direct;
+    const candidates = keysByName.get(name);
+    return candidates && candidates.length === 1 ? methods.get(candidates[0]) : undefined;
+  }
+
   return {
     methods,
     hasIstanbulData,
     hasRuntimeData,
-    isMethodCovered(className: string, methodName: string): boolean {
-      return methods.get(`${className}.${methodName}`)?.isCovered ?? false;
+    isMethodCovered(className: string, methodName: string, filePath?: string): boolean {
+      return lookup(className, methodName, filePath)?.isCovered ?? false;
     },
-    getMethodCoverage(className: string, methodName: string): MethodCoverage | undefined {
-      return methods.get(`${className}.${methodName}`);
+    getMethodCoverage(className: string, methodName: string, filePath?: string): MethodCoverage | undefined {
+      return lookup(className, methodName, filePath);
     },
-    getTestsForMethod(className: string, methodName: string): string[] {
-      const mc = methods.get(`${className}.${methodName}`);
+    getTestsForMethod(className: string, methodName: string, filePath?: string): string[] {
+      const mc = lookup(className, methodName, filePath);
       if (!mc) return [];
       const tests = new Set<string>(mc.staticTests);
       if (mc.runtime) {

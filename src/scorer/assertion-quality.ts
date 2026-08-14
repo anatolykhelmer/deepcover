@@ -30,9 +30,10 @@ function getRuntimeAssertionCount(
   resolvedCoverage: ResolvedCoverage,
   className: string,
   methodName: string,
-  testName: string
+  testName: string,
+  filePath: string | undefined
 ): number | undefined {
-  const mc = resolvedCoverage.getMethodCoverage(className, methodName);
+  const mc = resolvedCoverage.getMethodCoverage(className, methodName, filePath);
   const hit = mc?.runtime?.perTest.find((t) => t.name === testName);
   return hit?.assertionCount;
 }
@@ -66,37 +67,50 @@ export function calculateAssertionQuality(
   const resolverEmpty = resolvedCoverage.methods.size === 0;
 
   /** Resolves which class/module owns `target`, validating a class-owned method
-   *  against the test's own resolved `targetClass` — fails closed (`null`) when
-   *  that can't be established. */
+   *  against the test's own resolved `targetClass` — and, when that class name is
+   *  declared in several files, against the file the test imports it from — fails
+   *  closed (`null`) when that can't be established. */
   function resolveOwner(
     target: string,
-    testTargetClass: string | null | undefined
-  ): { owner: string; isClass: boolean } | null {
+    testTargetClass: string | null | undefined,
+    testTargetClassFile: string | null | undefined
+  ): { owner: string; ownerFile: string | undefined; isClass: boolean } | null {
     const classOwners = classMethodOwners.get(target);
     if (classOwners && classOwners.size > 0) {
-      return testTargetClass && classOwners.has(testTargetClass)
-        ? { owner: testTargetClass, isClass: true }
+      if (!testTargetClass) return null;
+      const files = classOwners.get(testTargetClass);
+      if (!files || files.size === 0) return null;
+      if (files.size === 1) {
+        return { owner: testTargetClass, ownerFile: files.values().next().value as string, isClass: true };
+      }
+      return testTargetClassFile && files.has(testTargetClassFile)
+        ? { owner: testTargetClass, ownerFile: testTargetClassFile, isClass: true }
         : null;
     }
     const fileOwner = functionOwner.get(target);
-    return fileOwner ? { owner: fileOwner, isClass: false } : null;
+    return fileOwner ? { owner: fileOwner, ownerFile: undefined, isClass: false } : null;
   }
 
-  function targetMethodCovered(owner: string, targetMethod: string, isClass: boolean): boolean {
+  function targetMethodCovered(
+    owner: string,
+    targetMethod: string,
+    isClass: boolean,
+    ownerFile: string | undefined
+  ): boolean {
     if (resolverEmpty) {
-      const key = isClass ? `${owner}.${targetMethod}` : targetMethod;
+      const key = isClass ? `${ownerFile}:${owner}.${targetMethod}` : targetMethod;
       return (codeModel.testInventory.coverage[key]?.length ?? 0) > 0;
     }
-    return resolvedCoverage.isMethodCovered(owner, targetMethod);
+    return resolvedCoverage.isMethodCovered(owner, targetMethod, ownerFile);
   }
 
   function shouldCountTest(test: TestNode): boolean {
     const target = test.targetMethod ?? undefined;
     if (failedTestNames.has(test.name)) return false;
     if (!target) return false;
-    const resolved = resolveOwner(target, test.targetClass);
+    const resolved = resolveOwner(target, test.targetClass, test.targetClassFile);
     if (!resolved) return false;
-    return targetMethodCovered(resolved.owner, target, resolved.isClass);
+    return targetMethodCovered(resolved.owner, target, resolved.isClass, resolved.ownerFile);
   }
 
   let weightedScore = 0;
@@ -109,13 +123,13 @@ export function calculateAssertionQuality(
         const target = test.targetMethod ?? undefined;
         if (!target) continue;
         if (failedTestNames.has(test.name)) continue;
-        const resolved = resolveOwner(target, test.targetClass);
+        const resolved = resolveOwner(target, test.targetClass, test.targetClassFile);
         if (!resolved) continue;
-        if (!targetMethodCovered(resolved.owner, target, resolved.isClass)) continue;
+        if (!targetMethodCovered(resolved.owner, target, resolved.isClass, resolved.ownerFile)) continue;
 
         let assertions = test.assertions;
         const runtimeAc = resolvedCoverage.hasRuntimeData
-          ? getRuntimeAssertionCount(resolvedCoverage, resolved.owner, target, test.name)
+          ? getRuntimeAssertionCount(resolvedCoverage, resolved.owner, target, test.name, resolved.ownerFile)
           : undefined;
         if (runtimeAc !== undefined && runtimeAc !== assertions.length) {
           assertions = assertions.slice(0, Math.min(assertions.length, runtimeAc));

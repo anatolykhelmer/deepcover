@@ -68,6 +68,8 @@ export interface RuntimeMethodMetrics {
 export interface MethodCoverage {
   className: string;
   methodName: string;
+  /** Human-facing `ClassName.methodName` (or `filePath.fnName` for standalone
+   *  functions) — the internal Map key is file-qualified instead (task 021). */
   qualifiedName: string;
   filePath: string;
   staticTests: string[];
@@ -77,11 +79,18 @@ export interface MethodCoverage {
   coverageSource: 'istanbul' | 'static';
 }
 
+/**
+ * Class methods are keyed `filePath:ClassName.methodName`; standalone functions
+ * `filePath.fnName`. The accessors accept an optional `filePath` — without it a
+ * class-method lookup falls back to a `ClassName.methodName` index and fails
+ * closed (returns nothing) when two files declare the same class name, since
+ * crediting the wrong declaration is worse than crediting neither.
+ */
 export interface ResolvedCoverage {
   methods: Map<string, MethodCoverage>;
   hasIstanbulData: boolean;
   hasRuntimeData: boolean;
-  isMethodCovered(className: string, methodName: string): boolean;
-  getMethodCoverage(className: string, methodName: string): MethodCoverage | undefined;
-  getTestsForMethod(className: string, methodName: string): string[];
+  isMethodCovered(className: string, methodName: string, filePath?: string): boolean;
+  getMethodCoverage(className: string, methodName: string, filePath?: string): MethodCoverage | undefined;
+  getTestsForMethod(className: string, methodName: string, filePath?: string): string[];
 }

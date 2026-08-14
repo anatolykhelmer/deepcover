@@ -39,6 +39,20 @@ describe('matchRuntimeTests', () => {
     expect(result.size).toBe(0);
   });
 
+  it('matches when inventory paths are absolute, as produced by a real extract', () => {
+    // extractCodeModel globs with absolute: true, so TestFileNode.filePath is
+    // absolute in real runs — only unit fixtures use relative paths.
+    const absoluteTestFiles: TestFileNode[] = [{
+      ...testFiles[0],
+      filePath: '/project/src/order.spec.ts',
+    }];
+    const result = matchRuntimeTests(runtime, absoluteTestFiles, '/project');
+    const methodTests = result.get('createOrder');
+    expect(methodTests).toBeDefined();
+    expect(methodTests!.passed).toContain('should create order');
+    expect(methodTests!.failed).toContain('should fail on invalid input');
+  });
+
   describe('class-owned methods (cross-class leak regression)', () => {
     const crossClassRuntime: JestRuntimeData = {
       testResults: [
@@ -68,16 +82,56 @@ describe('matchRuntimeTests', () => {
       },
     ]);
 
-    it('keys a class-owned method by ClassName.methodName, not the bare name', () => {
+    it('keys a class-owned method by its file-qualified name, not the bare name', () => {
       const result = matchRuntimeTests(crossClassRuntime, [aTestFile], '/project', classMethodOwners);
-      expect(result.get('AService.doThing')?.passed).toContain('adds one');
+      expect(result.get('src/a.service.ts:AService.doThing')?.passed).toContain('adds one');
       expect(result.has('doThing')).toBe(false);
     });
 
     it('does not let an unrelated class share the bare method name key', () => {
       const result = matchRuntimeTests(crossClassRuntime, [aTestFile], '/project', classMethodOwners);
       // A same-named BService.doThing must not pick up AService's runtime result.
-      expect(result.get('BService.doThing')).toBeUndefined();
+      expect(result.get('src/b.service.ts:BService.doThing')).toBeUndefined();
+    });
+
+    it('fails closed when a duplicated class name has no resolved import file', () => {
+      // Both files declare AService; without targetClassFile the credit is dropped.
+      const dupOwners = buildClassMethodOwners([
+        {
+          filePath: 'src/a1/a.service.ts',
+          classes: [{ name: 'AService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+        },
+        {
+          filePath: 'src/a2/a.service.ts',
+          classes: [{ name: 'AService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+        },
+      ]);
+      const result = matchRuntimeTests(crossClassRuntime, [aTestFile], '/project', dupOwners);
+      expect(result.size).toBe(0);
+    });
+
+    it('attributes to the declaring file resolved from the test import', () => {
+      const dupOwners = buildClassMethodOwners([
+        {
+          filePath: 'src/a1/a.service.ts',
+          classes: [{ name: 'AService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+        },
+        {
+          filePath: 'src/a2/a.service.ts',
+          classes: [{ name: 'AService', type: 'service', methods: [{ name: 'doThing' } as never], dependencies: [], states: [] }],
+        },
+      ]);
+      const testFileWithImport: TestFileNode = {
+        filePath: 'src/a.spec.ts',
+        describes: [{
+          name: 'AService',
+          tests: [
+            { name: 'adds one', targetMethod: 'doThing', targetClass: 'AService', targetClassFile: 'src/a2/a.service.ts', assertions: [], mocks: [], isAsync: false },
+          ],
+        }],
+      };
+      const result = matchRuntimeTests(crossClassRuntime, [testFileWithImport], '/project', dupOwners);
+      expect(result.get('src/a2/a.service.ts:AService.doThing')?.passed).toContain('adds one');
     });
   });
 });
