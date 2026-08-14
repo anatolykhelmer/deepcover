@@ -64,14 +64,18 @@ function tallyAssertionsForMethod(
   for (const file of codeModel.testInventory.testFiles) {
     for (const block of file.describes) {
       for (const test of block.tests) {
-        const directMatch = test.targetMethod === methodName && testNames.includes(test.name);
+        // `testNames` is already file-scoped, but test NAMES are global — two
+        // specs may both use it('creates'), so looking a test node back up by
+        // name must still require it to target this class's own file.
+        const inScope = !isClass || testTargetsThisClass(test);
+        const directMatch = inScope && test.targetMethod === methodName && testNames.includes(test.name);
         const transitiveMatch =
-          !directMatch && test.targetMethod !== methodName && testNames.includes(test.name);
+          !directMatch && inScope && test.targetMethod !== methodName && testNames.includes(test.name);
         if (directMatch) {
           for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
         } else if (transitiveMatch) {
           for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
-        } else if (!isClass || testTargetsThisClass(test)) {
+        } else if (inScope) {
           for (const a of test.assertions) {
             if (extractMethodFromTarget(a.target) === methodName) {
               tallyAssertion(direct, a.matcherUsed);

@@ -611,6 +611,47 @@ describe('composer', () => {
       expect(bEntry.untested).toContain('no test coverage');
     });
 
+    it('keeps assertions separate when both duplicates use the same test name', () => {
+      // testNames is file-scoped, but the direct-match path used to look test
+      // nodes back up by NAME across the whole inventory — two specs both using
+      // it('creates') cross-attached each other's assertions.
+      const model = duplicateClassModel();
+      model.testInventory.testFiles.push({
+        filePath: '/src/b/order.service.spec.ts',
+        describes: [
+          {
+            name: 'OrderService',
+            tests: [
+              {
+                name: 'creates', // same name as a/'s test
+                targetMethod: 'create',
+                targetClass: 'OrderService',
+                targetClassFile: '/src/b/order.service.ts',
+                assertions: [
+                  { type: 'value_check', target: 'result', matcherUsed: 'toBeDefined' }, // weak
+                ],
+                mocks: [],
+                isAsync: false,
+              },
+            ],
+          },
+        ],
+      });
+      model.testInventory.coverage['/src/b/order.service.ts:OrderService.create'] = ['creates'];
+
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+
+      const entries = result.perFunction.filter(
+        (f) => f.className === 'OrderService' && f.methodName === 'create'
+      );
+      const [aEntry, bEntry] = entries; // module order: /src/a first, /src/b second
+      expect(aEntry.strongAssertions).toBe(1);
+      expect(aEntry.weakAssertions).toBe(0);
+      expect(bEntry.weakAssertions).toBe(1);
+      expect(bEntry.strongAssertions).toBe(0);
+    });
+
     it('does not leak assertion credit onto the untested duplicate', () => {
       // The text-match tally path scans every test whose targetClass matches by
       // NAME; the untested copy must not collect the other file's assertions.
