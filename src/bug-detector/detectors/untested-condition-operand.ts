@@ -8,7 +8,8 @@ import type {
 } from '../../types/code-model';
 import type { BinaryExprCoverage, ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
-import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../../types/method-owner';
+import { buildClassFileOwners, type ClassFileOwners } from '../../types/method-owner';
+import { findTestsForCallable } from '../find-tests';
 
 /** Istanbul proved the operand was never evaluated — nothing to interpret. */
 const NEVER_EVALUATED_CONFIDENCE = 0.9;
@@ -70,7 +71,7 @@ export class UntestedConditionOperandDetector implements BugDetector {
     // detector is only about conditions that look covered but are not.
     if (!methodCoverage?.isCovered) return [];
 
-    const tests = findTests(codeModel, owner, method.name, isClass, filePath, classFileOwners);
+    const tests = findTestsForCallable(codeModel, method.name, { owner, filePath, isClass }, classFileOwners);
     const signals: BugSignal[] = [];
 
     for (const branch of compound) {
@@ -210,29 +211,3 @@ function nearestDifferingPositions(test: TestNode, baseline: TestNode[]): number
   return nearest ?? [];
 }
 
-function findTests(
-  codeModel: CodeModel,
-  owner: string,
-  methodName: string,
-  isClass: boolean,
-  filePath: string,
-  classFileOwners: ClassFileOwners
-): TestNode[] {
-  const tests: TestNode[] = [];
-  for (const file of codeModel.testInventory.testFiles) {
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        // Standalone functions have no reliable per-test class signal to scope by.
-        // Class tests must resolve to this module's own file — a same-named class
-        // in another file must not look like it drives this method (task 021).
-        if (isClass && test.targetClass !== owner) continue;
-        if (
-          isClass &&
-          resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) !== filePath
-        ) continue;
-        if (test.targetMethod === methodName) tests.push(test);
-      }
-    }
-  }
-  return tests;
-}

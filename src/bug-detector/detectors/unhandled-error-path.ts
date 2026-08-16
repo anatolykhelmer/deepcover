@@ -1,7 +1,8 @@
 import type { CodeModel } from '../../types/code-model';
 import type { ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
-import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../../types/method-owner';
+import { buildClassFileOwners } from '../../types/method-owner';
+import { findTestsForCallable } from '../find-tests';
 
 const ERROR_TEST_KEYWORDS = [
   'error', 'fail', 'throw', 'reject', 'exception', 'invalid',
@@ -21,7 +22,8 @@ export class UnhandledErrorPathDetector implements BugDetector {
           const catchBranches = method.branches.filter((b) => b.type === 'try_catch');
           if (catchBranches.length === 0 && !method.throwsErrors) continue;
 
-          const tests = this.findTestsForMethod(codeModel, method.name, cls.name, mod.filePath, classFileOwners);
+          const tests = findTestsForCallable(codeModel, method.name,
+            { owner: cls.name, filePath: mod.filePath, isClass: true }, classFileOwners);
           const hasErrorTest = tests.some((t) => this.isErrorPathTest(t));
 
           if (!hasErrorTest) {
@@ -40,30 +42,6 @@ export class UnhandledErrorPathDetector implements BugDetector {
       }
     }
     return signals;
-  }
-
-  /** Tests targeting this specific class's method — a test on a same-named
-   *  method of an unrelated class, or of a same-named class in another file,
-   *  must not silence this method's missing-error-path signal (task 021). */
-  private findTestsForMethod(
-    codeModel: CodeModel,
-    methodName: string,
-    className: string,
-    filePath: string,
-    classFileOwners: ClassFileOwners
-  ) {
-    const tests: Array<{ name: string; assertions: Array<{ type: string }>; mocks: string[] }> = [];
-    for (const file of codeModel.testInventory.testFiles) {
-      for (const block of file.describes) {
-        for (const test of block.tests) {
-          if (test.targetMethod !== methodName) continue;
-          if (test.targetClass !== className) continue;
-          if (resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) !== filePath) continue;
-          tests.push(test);
-        }
-      }
-    }
-    return tests;
   }
 
   private isErrorPathTest(test: { name: string; assertions: Array<{ type: string }> }): boolean {
