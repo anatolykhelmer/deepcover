@@ -81,16 +81,21 @@ export interface MethodCoverage {
 
 /**
  * Class methods are keyed `filePath:ClassName.methodName`; standalone functions
- * `filePath.fnName`. The accessors accept an optional `filePath` — without it a
- * class-method lookup falls back to a `ClassName.methodName` index and fails
- * closed (returns nothing) when two files declare the same class name, since
- * crediting the wrong declaration is worse than crediting neither.
+ * `filePath.fnName`, where the owner already is the module path.
+ *
+ * `filePath` is required on every accessor. It used to be optional, which let a
+ * call site silently fall back to a `ClassName.methodName` index — correct until
+ * two files declared the same class name, at which point the lookup returned
+ * nothing and each caller reinterpreted that nothing its own way (task 021).
+ * Requiring it makes every such site a compile error instead. Callers holding
+ * only a Reasoner-supplied class name resolve it first through
+ * `resolveReasonerOwnerFile`, which fails closed on a duplicated name.
  */
 export interface ResolvedCoverage {
   methods: Map<string, MethodCoverage>;
   hasIstanbulData: boolean;
   hasRuntimeData: boolean;
-  isMethodCovered(className: string, methodName: string, filePath?: string): boolean;
-  getMethodCoverage(className: string, methodName: string, filePath?: string): MethodCoverage | undefined;
-  getTestsForMethod(className: string, methodName: string, filePath?: string): string[];
+  isMethodCovered(className: string, methodName: string, filePath: string): boolean;
+  getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined;
+  getTestsForMethod(className: string, methodName: string, filePath: string): string[];
 }

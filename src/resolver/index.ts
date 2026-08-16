@@ -187,11 +187,9 @@ function resolveCoverage(
     else keysByName.set(mc.qualifiedName, [key]);
   }
 
-  function lookup(className: string, methodName: string, filePath?: string): MethodCoverage | undefined {
-    if (filePath !== undefined) {
-      const byFile = methods.get(classMethodKey(filePath, className, methodName));
-      if (byFile) return byFile;
-    }
+  function lookup(className: string, methodName: string, filePath: string): MethodCoverage | undefined {
+    const byFile = methods.get(classMethodKey(filePath, className, methodName));
+    if (byFile) return byFile;
     const name = `${className}.${methodName}`;
     const direct = methods.get(name); // standalone functions (className = module path)
     if (direct) return direct;
@@ -203,13 +201,13 @@ function resolveCoverage(
     methods,
     hasIstanbulData,
     hasRuntimeData,
-    isMethodCovered(className: string, methodName: string, filePath?: string): boolean {
+    isMethodCovered(className: string, methodName: string, filePath: string): boolean {
       return lookup(className, methodName, filePath)?.isCovered ?? false;
     },
-    getMethodCoverage(className: string, methodName: string, filePath?: string): MethodCoverage | undefined {
+    getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined {
       return lookup(className, methodName, filePath);
     },
-    getTestsForMethod(className: string, methodName: string, filePath?: string): string[] {
+    getTestsForMethod(className: string, methodName: string, filePath: string): string[] {
       const mc = lookup(className, methodName, filePath);
       if (!mc) return [];
       const tests = new Set<string>(mc.staticTests);

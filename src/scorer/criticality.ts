@@ -2,6 +2,7 @@ import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
+import { buildClassFileOwners, resolveReasonerOwnerFile } from '../types/method-owner';
 
 function getComplexityWeight(method: { branchCount: number; externalCalls: string[] }): number {
   const branchWeight = Math.min(method.branchCount + 1, 10);
@@ -57,7 +58,7 @@ export function calculateCriticalityWeighting(
         : weight;
 
       totalWeight += effectiveWeight;
-      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name);
+      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
       if (hasTests) {
         const linePct = mc?.istanbul?.lineCoveragePercent;
@@ -74,21 +75,29 @@ export function calculateCriticalityWeighting(
   let totalConfidence = 0;
   const ratings = reasonerOutput.criticalityRatings;
 
-  if (ratings.length > 0) {
-    for (const r of ratings) {
+  // A rating naming a class that several files declare cannot be tied to either
+  // declaration; a name-only lookup returns nothing, which would then read as
+  // "untested" and penalise a method that may well be covered. Drop it instead.
+  const classFileOwners = buildClassFileOwners(codeModel.modules);
+  const attributable = ratings
+    .map((r) => ({ r, filePath: resolveReasonerOwnerFile(r.className, classFileOwners) }))
+    .filter((entry): entry is { r: typeof entry.r; filePath: string } => entry.filePath !== null);
+
+  if (attributable.length > 0) {
+    for (const { r, filePath } of attributable) {
       totalConfidence += r.confidence;
-      const hasTests = resolvedCoverage.getMethodCoverage(r.className, r.methodName)?.isCovered ?? false;
+      const hasTests = resolvedCoverage.getMethodCoverage(r.className, r.methodName, filePath)?.isCovered ?? false;
       if (r.criticality === 'high' && !hasTests) {
         llmAdjustment -= 10 * r.confidence;
       } else if (r.criticality === 'low' && hasTests) {
         llmAdjustment += 2 * r.confidence;
       }
     }
-    llmAdjustment = ratings.length > 0 ? llmAdjustment / ratings.length : 0;
+    llmAdjustment = llmAdjustment / attributable.length;
     llmAdjustment = Math.max(-20, Math.min(20, llmAdjustment));
   }
 
-  const confidence = ratings.length > 0 ? totalConfidence / ratings.length : 0;
+  const confidence = attributable.length > 0 ? totalConfidence / attributable.length : 0;
   const final = Math.max(0, Math.min(100, base + llmAdjustment));
 
   return { base, llmAdjustment, final, confidence, applicable: true };

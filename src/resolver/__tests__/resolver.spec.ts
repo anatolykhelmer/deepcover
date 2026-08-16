@@ -40,8 +40,8 @@ describe('resolveCoverage', () => {
 
     expect(resolved.hasIstanbulData).toBe(false);
     expect(resolved.hasRuntimeData).toBe(false);
-    expect(resolved.isMethodCovered('OrderService', 'create')).toBe(true);
-    expect(resolved.isMethodCovered('OrderService', 'delete')).toBe(false);
+    expect(resolved.isMethodCovered('OrderService', 'create', 'src/order.service.ts')).toBe(true);
+    expect(resolved.isMethodCovered('OrderService', 'delete', 'src/order.service.ts')).toBe(false);
   });
 
   it('uses Istanbul when available, overriding static', () => {
@@ -63,10 +63,10 @@ describe('resolveCoverage', () => {
     const resolved = resolveCoverage(model, '/project', { istanbul });
 
     expect(resolved.hasIstanbulData).toBe(true);
-    const createCov = resolved.getMethodCoverage('OrderService', 'create');
+    const createCov = resolved.getMethodCoverage('OrderService', 'create', 'src/order.service.ts');
     expect(createCov?.istanbul?.linesCovered).toBe(1);
     expect(createCov?.coverageSource).toBe('istanbul');
-    expect(resolved.isMethodCovered('OrderService', 'delete')).toBe(false);
+    expect(resolved.isMethodCovered('OrderService', 'delete', 'src/order.service.ts')).toBe(false);
   });
 
   it('getTestsForMethod merges static + passed runtime tests', () => {
@@ -86,7 +86,7 @@ describe('resolveCoverage', () => {
     };
 
     const resolved = resolveCoverage(model, '/project', { runtime });
-    const tests = resolved.getTestsForMethod('OrderService', 'create');
+    const tests = resolved.getTestsForMethod('OrderService', 'create', 'src/order.service.ts');
     expect(tests).toContain('should create');
   });
 
@@ -132,8 +132,8 @@ describe('resolveCoverage', () => {
     };
 
     const resolved = resolveCoverage(model, '/project');
-    expect(resolved.isMethodCovered('AService', 'doThing')).toBe(true);
-    expect(resolved.isMethodCovered('BService', 'doThing')).toBe(false);
-    expect(resolved.getTestsForMethod('BService', 'doThing')).toEqual([]);
+    expect(resolved.isMethodCovered('AService', 'doThing', 'src/a.service.ts')).toBe(true);
+    expect(resolved.isMethodCovered('BService', 'doThing', 'src/b.service.ts')).toBe(false);
+    expect(resolved.getTestsForMethod('BService', 'doThing', 'src/b.service.ts')).toEqual([]);
   });
 });
