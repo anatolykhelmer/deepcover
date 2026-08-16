@@ -111,6 +111,41 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
+## Migrating to 0.5.0
+
+`ResolvedCoverage`'s accessors — `getMethodCoverage`, `isMethodCovered`,
+`getTestsForMethod` — now **require** the `filePath` third argument that 0.4.0
+made optional.
+
+```ts
+// 0.4.0 — compiled, but fell back to a name-only lookup
+coverage.getMethodCoverage('OrderService', 'create');
+
+// 0.5.0 — the declaring file is part of the identity
+coverage.getMethodCoverage('OrderService', 'create', 'src/order.service.ts');
+```
+
+The optional argument was the problem: omitting it fell back to a
+`ClassName.methodName` index that returns nothing once two files declare the
+same class name, and every caller read that nothing differently — one as "no
+coverage data", another as "untested". Requiring it makes each such site a
+compile error instead.
+
+If you only have a class name (for example when consuming Reasoner output,
+which names an owner but never a file), resolve it first:
+
+```ts
+import { buildClassFileOwners, resolveReasonerOwnerFile } from '@anatolykhelmer/deep-cover';
+
+const owners = buildClassFileOwners(codeModel.modules);
+const filePath = resolveReasonerOwnerFile(rating.className, owners);
+// null → that class name is declared in several files; drop the judgment
+// rather than scoring it against whichever declaration a lookup reaches first
+```
+
+Bug detectors now also scan `mod.functions`, so standalone functions produce bug
+signals, and every detector scopes test evidence to the declaring file.
+
 ## Migrating to 0.4.0
 
 Internal coverage identity is now file-qualified: class methods are keyed
@@ -124,9 +159,10 @@ resolver looks them up file-qualified and would silently find no static
 coverage in the old artifact.
 
 For the API, `ResolvedCoverage` accessors (`getMethodCoverage`,
-`isMethodCovered`, `getTestsForMethod`) accept an optional `filePath` third
+`isMethodCovered`, `getTestsForMethod`) gained an optional `filePath` third
 argument. Without it, lookups of a class name declared in several files fail
-closed (return nothing) rather than guess.
+closed (return nothing) rather than guess. **0.5.0 makes this argument
+required** — see above.
 
 Known limitation: when duplicate class names exist, a test's credit is
 attributed via the file its spec imports the class from (barrel re-exports are
