@@ -31,7 +31,7 @@ function getRuntimeAssertionCount(
   className: string,
   methodName: string,
   testName: string,
-  filePath: string | undefined
+  filePath: string
 ): number | undefined {
   const mc = resolvedCoverage.getMethodCoverage(className, methodName, filePath);
   const hit = mc?.runtime?.perTest.find((t) => t.name === testName);
@@ -74,7 +74,7 @@ export function calculateAssertionQuality(
     target: string,
     testTargetClass: string | null | undefined,
     testTargetClassFile: string | null | undefined
-  ): { owner: string; ownerFile: string | undefined; isClass: boolean } | null {
+  ): { owner: string; ownerFile: string; isClass: boolean } | null {
     const classOwners = classMethodOwners.get(target);
     if (classOwners && classOwners.size > 0) {
       if (!testTargetClass) return null;
@@ -87,15 +87,16 @@ export function calculateAssertionQuality(
         ? { owner: testTargetClass, ownerFile: testTargetClassFile, isClass: true }
         : null;
     }
+    // A standalone function is owned by its module, so the owner already is the file.
     const fileOwner = functionOwner.get(target);
-    return fileOwner ? { owner: fileOwner, ownerFile: undefined, isClass: false } : null;
+    return fileOwner ? { owner: fileOwner, ownerFile: fileOwner, isClass: false } : null;
   }
 
   function targetMethodCovered(
     owner: string,
     targetMethod: string,
     isClass: boolean,
-    ownerFile: string | undefined
+    ownerFile: string
   ): boolean {
     if (resolverEmpty) {
       const key = isClass ? `${ownerFile}:${owner}.${targetMethod}` : targetMethod;

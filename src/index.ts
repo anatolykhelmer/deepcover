@@ -6,6 +6,18 @@ export * from './types/code-model';
 export { resolveCoverage } from './resolver';
 export type { ResolvedCoverage, MethodCoverage } from './resolver';
 
+// Coverage identity helpers. `ResolvedCoverage`'s accessors require a declaring
+// file; callers holding only a class name resolve it through these first.
+export {
+  buildClassFileOwners,
+  buildClassMethodOwners,
+  classMethodKey,
+  resolveClassMethodKey,
+  resolveReasonerOwnerFile,
+  resolveTestClassFile,
+} from './types/method-owner';
+export type { ClassFileOwners, ClassMethodOwners } from './types/method-owner';
+
 export { runScorer } from './scorer';
 export type { ScorerOptions } from './scorer';
 export type { ScoreResult, ScoreWeights } from './scorer';

@@ -124,10 +124,19 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
     expect(classGaps).toEqual([]);
   }
 
+  /** Paradigm assertions name methods `ClassName.method`; the declaring file
+   *  comes from the resolved entry, which the accessors now require. */
+  const fileOf = (qualifiedName: string): string => {
+    for (const mc of resolvedCoverage.methods.values()) {
+      if (mc.qualifiedName === qualifiedName) return mc.filePath;
+    }
+    return '';
+  };
+
   if (assertions.coveredMethods) {
     for (const qualifiedName of assertions.coveredMethods) {
       const [className, methodName] = qualifiedName.split('.');
-      const isCovered = resolvedCoverage.isMethodCovered(className, methodName);
+      const isCovered = resolvedCoverage.isMethodCovered(className, methodName, fileOf(qualifiedName));
       expect(isCovered).toBe(true);
     }
   }
@@ -135,7 +144,7 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
   if (assertions.uncoveredMethods) {
     for (const qualifiedName of assertions.uncoveredMethods) {
       const [className, methodName] = qualifiedName.split('.');
-      const isCovered = resolvedCoverage.isMethodCovered(className, methodName);
+      const isCovered = resolvedCoverage.isMethodCovered(className, methodName, fileOf(qualifiedName));
       expect(isCovered).toBe(false);
 
       const perMethod = scoreResult.perFunction.find(

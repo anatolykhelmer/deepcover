@@ -115,7 +115,7 @@ export function calculateMutationResilience(
     }
 
     for (const fn of mod.functions ?? []) {
-      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name);
+      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
 
       if (resolvedCoverage.hasIstanbulData && mc?.istanbul) {

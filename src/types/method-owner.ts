@@ -72,6 +72,24 @@ export function resolveTestClassFile(
   return targetClassFile && files.has(targetClassFile) ? targetClassFile : null;
 }
 
+/**
+ * Resolves the file a Reasoner judgment refers to. Reasoner output names an
+ * owner but never a file, so the name has to be resolved against the model:
+ *
+ * - a class name declared in exactly one file → that file;
+ * - an owner that is not a class name at all → itself, since standalone
+ *   functions are owned by their module path;
+ * - a class name declared in several files → `null`, meaning the judgment
+ *   cannot be attributed and the caller must drop it rather than score it
+ *   against whichever declaration a name-only lookup happens to reach.
+ */
+export function resolveReasonerOwnerFile(owner: string, owners: ClassFileOwners): string | null {
+  const files = owners.get(owner);
+  if (!files) return owner;
+  if (files.size === 1) return files.values().next().value as string;
+  return null;
+}
+
 /** Internal coverage key for a class method, file-qualified so same-named
  *  classes in different files never collide (task 021). Human-facing output
  *  keeps `ClassName.methodName`. */

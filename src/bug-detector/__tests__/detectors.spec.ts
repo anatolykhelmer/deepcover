@@ -266,8 +266,12 @@ describe('AssertionMismatchDetector', () => {
         }],
       }],
       testInventory: {
+        // `targetClass` is what scopes a test to this class: the extractor always
+        // resolves one, falling back to the outermost describe title, so a fixture
+        // without it would not survive real extraction.
         testFiles: [{ filePath: '__tests__/payment.spec.ts', describes: [{ name: 'PaymentService',
           tests: [{ name: 'should process payment', targetMethod: 'processPayment',
+            targetClass: 'PaymentService',
             assertions: [
               { type: 'called_with', target: 'gateway.charge', matcherUsed: 'toHaveBeenCalledWith' },
               { type: 'spy_call_count', target: 'gateway.charge', matcherUsed: 'toHaveBeenCalledTimes' },

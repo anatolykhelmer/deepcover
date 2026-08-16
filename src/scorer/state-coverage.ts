@@ -2,10 +2,12 @@ import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
+import { buildClassFileOwners, resolveReasonerOwnerFile } from '../types/method-owner';
 
 /** Branch scale 0–1 when Istanbul exists on the affected method; otherwise 1. */
 function getBranchScaleForState(
   className: string,
+  filePath: string,
   affectedMethods: string[],
   resolvedCoverage: ResolvedCoverage
 ): number {
@@ -13,7 +15,7 @@ function getBranchScaleForState(
   let hasAny = false;
   let best = 0;
   for (const m of affectedMethods) {
-    const mc = resolvedCoverage.getMethodCoverage(className, m);
+    const mc = resolvedCoverage.getMethodCoverage(className, m, filePath);
     if (mc?.istanbul) {
       hasAny = true;
       const pct = mc.istanbul.branchCoveragePercent;
@@ -48,11 +50,18 @@ function getOverallBranchCoverage(resolvedCoverage: ResolvedCoverage): number | 
  * to prevent LLM inflation beyond what Istanbul data supports.
  */
 export function calculateStateCoverage(
-  _codeModel: CodeModel,
+  codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
   resolvedCoverage: ResolvedCoverage
 ): SubScore {
-  const discovered = reasonerOutput.discoveredStates;
+  const classFileOwners = buildClassFileOwners(codeModel.modules);
+
+  // A state naming a class that several files declare cannot be tied to either
+  // declaration. Scoring it anyway would read the missing lookup as "no Istanbul
+  // data" and hand it full branch scale, so it is dropped from the metric.
+  const discovered = reasonerOutput.discoveredStates
+    .map((ds) => ({ ds, filePath: resolveReasonerOwnerFile(ds.className, classFileOwners) }))
+    .filter((entry): entry is { ds: typeof entry.ds; filePath: string } => entry.filePath !== null);
 
   if (discovered.length === 0) {
     return { base: 0, llmAdjustment: 0, final: 0, confidence: 0, applicable: false };
@@ -61,10 +70,10 @@ export function calculateStateCoverage(
   let testedWeight = 0;
   let totalConfidence = 0;
 
-  for (const ds of discovered) {
+  for (const { ds, filePath } of discovered) {
     totalConfidence += ds.confidence;
     if (ds.isTested) {
-      const scale = getBranchScaleForState(ds.className, [ds.methodName], resolvedCoverage);
+      const scale = getBranchScaleForState(ds.className, filePath, [ds.methodName], resolvedCoverage);
       testedWeight += scale * ds.confidence;
     }
   }

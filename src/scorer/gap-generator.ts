@@ -89,7 +89,7 @@ export function generateGaps(
 
     for (const fn of mod.functions ?? []) {
       const className = mod.filePath;
-      const mc = resolvedCoverage.getMethodCoverage(className, fn.name);
+      const mc = resolvedCoverage.getMethodCoverage(className, fn.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
       const risk = getMethodRisk(fn, reasonerOutput, className, fn.name);
 
