@@ -92,4 +92,94 @@ describe('buildStateCatalog', () => {
     expect(catalog.forMethod('OrderService', 'submit', '/elsewhere.ts')).toEqual([]);
     expect(catalog.forMethod('OtherService', 'submit', '/src/order.service.ts')).toEqual([]);
   });
+
+  it('applies the coverage floor to reasoner isTested', () => {
+    // Reasoner says tested, but the method has no coverage → not tested.
+    const model = classModel({ methods: ['submit'] });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: 'OrderService', methodName: 'submit', state: 'already cancelled', isTested: true, riskIfUntested: 'high', confidence: 0.9 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+
+    expect(catalog.entries).toHaveLength(1);
+    expect(catalog.entries[0]).toMatchObject({
+      owner: 'OrderService',
+      filePath: '/src/order.service.ts',
+      stateName: 'already cancelled',
+      provenance: 'reasoner',
+      isTested: false,
+      confidence: 0.9,
+      riskIfUntested: 'high',
+    });
+  });
+
+  it('keeps reasoner isTested when the method is covered', () => {
+    const model = classModel({
+      methods: ['submit'],
+      coverage: { '/src/order.service.ts:OrderService.submit': ['t1'] },
+    });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: 'OrderService', methodName: 'submit', state: 'already cancelled', isTested: true, riskIfUntested: 'high', confidence: 0.9 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+    expect(catalog.entries[0].isTested).toBe(true);
+  });
+
+  it('drops reasoner states whose class is declared in several files', () => {
+    const model: CodeModel = {
+      modules: [
+        {
+          filePath: '/src/a/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [method('submit')], dependencies: [], states: [] }],
+        },
+        {
+          filePath: '/src/b/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [method('submit')], dependencies: [], states: [] }],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: { testFiles: [], coverage: {} },
+    };
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: 'OrderService', methodName: 'submit', state: 'ambiguous', isTested: false, riskIfUntested: 'high', confidence: 0.9 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+    expect(catalog.entries).toEqual([]);
+    expect(catalog.droppedAmbiguous).toBe(1);
+  });
+
+  it('resolves standalone-function owners to themselves', () => {
+    const model: CodeModel = {
+      modules: [
+        {
+          filePath: '/src/utils.ts',
+          classes: [],
+          functions: [{ ...method('parseAmount'), visibility: 'public' as const }],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: { testFiles: [], coverage: { parseAmount: ['t1'] } },
+    };
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: '/src/utils.ts', methodName: 'parseAmount', state: 'negative amount', isTested: true, riskIfUntested: 'medium', confidence: 0.8 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+
+    expect(catalog.entries).toHaveLength(1);
+    expect(catalog.entries[0].owner).toBe('/src/utils.ts');
+    expect(catalog.entries[0].filePath).toBe('/src/utils.ts');
+    expect(catalog.droppedAmbiguous).toBe(0);
+  });
 });

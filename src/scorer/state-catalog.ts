@@ -1,6 +1,7 @@
 import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
+import { buildClassFileOwners, resolveReasonerOwnerFile } from '../types/method-owner';
 
 export interface StateCatalogEntry {
   /** File declaring the owner. */
@@ -81,10 +82,44 @@ export function buildStateCatalog(
     }
   }
 
+  const classFileOwners = buildClassFileOwners(codeModel.modules);
+  let droppedAmbiguous = 0;
+
+  for (const ds of reasonerOutput.discoveredStates) {
+    const filePath = resolveReasonerOwnerFile(ds.className, classFileOwners);
+    if (filePath === null) {
+      droppedAmbiguous += 1;
+      continue;
+    }
+    const normalizedKey = normalizeStateKey(ds.state);
+    const key = entryKey(filePath, ds.className, ds.methodName, normalizedKey);
+    const isTested = ds.isTested && resolvedCoverage.isMethodCovered(ds.className, ds.methodName, filePath);
+    const existing = byKey.get(key);
+    if (existing) {
+      // Same state found by both sources — merge in Task 3.
+      existing.provenance = 'both';
+      existing.isTested = existing.isTested || isTested;
+      existing.confidence = 1;
+      existing.riskIfUntested = ds.riskIfUntested;
+    } else {
+      byKey.set(key, {
+        filePath,
+        owner: ds.className,
+        methodName: ds.methodName,
+        stateName: ds.state,
+        normalizedKey,
+        provenance: 'reasoner',
+        isTested,
+        confidence: ds.confidence,
+        riskIfUntested: ds.riskIfUntested,
+      });
+    }
+  }
+
   const entries = [...byKey.values()];
   return {
     entries,
-    droppedAmbiguous: 0,
+    droppedAmbiguous,
     forMethod(owner, methodName, filePath) {
       return entries.filter((e) => e.owner === owner && e.methodName === methodName && e.filePath === filePath);
     },
