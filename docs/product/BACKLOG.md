@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-001 | One StateCatalog for aggregate and per-method scores | Designing — spec approved, scope widened to all 4 state consumers (aggregate, per-method, untested list, gaps). High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-18-state-catalog-design.md) | | 2026-08-18 |
+| BL-001 | One StateCatalog for aggregate and per-method scores | Planned — spec + 7-task implementation plan ready; scope covers all 4 state consumers (aggregate, per-method, untested list, gaps). High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-18-state-catalog-design.md) | [plan](../superpowers/plans/2026-08-18-state-catalog.md) | 2026-08-18 |
 | BL-002 | Validate config and runtime JSON with existing Zod | `DeepCoverConfigSchema` + optional Jest/Istanbul runtime schemas via `safeParse` with clear warnings — use Zod already in the package, not a new config loader. High priority, impact 4/effort 2. | | | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
@@ -46,6 +46,10 @@
 |----|-------|--------|---------|
 
 ## Decision Log
+
+### 2026-08-18 — BL-001 (planned)
+- Wrote the 7-task implementation plan (`docs/superpowers/plans/2026-08-18-state-catalog.md`); status → planned.
+- During planning discovered the gap generator already emits static-state gaps with a third testedness semantic (any affected method covered, medium-risk floor); spec corrected — the catalog replaces both of its state loops.
 
 ### 2026-08-18 — BL-001
 - Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-18-state-catalog-design.md`); status → designing.
