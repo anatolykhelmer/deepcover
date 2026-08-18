@@ -3,6 +3,7 @@ import type { ReasonerOutput } from '../../reasoner/types';
 import type { MethodCoverage, ResolvedCoverage } from '../../resolver/types';
 import { classMethodKey } from '../../types/method-owner';
 import { calculateStateCoverage } from '../state-coverage';
+import { buildStateCatalog } from '../state-catalog';
 import { calculateCriticalityWeighting } from '../criticality';
 
 /**
@@ -128,7 +129,7 @@ describe('state coverage with a duplicated class name', () => {
       testInventory: { testFiles: [], coverage: {} },
     };
 
-    const score = calculateStateCoverage(model, output, resolved);
+    const score = calculateStateCoverage(buildStateCatalog(model, output, resolved), resolved);
 
     // Only ItemService.getAll is attributable, and it sits at 50% branch scale.
     // Counting the unattributable OrderService state at scale 1 would read as 75.

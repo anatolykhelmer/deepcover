@@ -1,8 +1,6 @@
-import type { CodeModel } from '../types/code-model';
-import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
-import { buildClassFileOwners, resolveReasonerOwnerFile } from '../types/method-owner';
+import type { StateCatalog } from './state-catalog';
 
 /** Branch scale 0–1 when Istanbul exists on the affected method; otherwise 1. */
 function getBranchScaleForState(
@@ -40,46 +38,38 @@ function getOverallBranchCoverage(resolvedCoverage: ResolvedCoverage): number | 
 }
 
 /**
- * State coverage is purely reasoner-driven.
- * Without discoveredStates the metric is not applicable and its weight
- * is redistributed to the other sub-scores.
+ * State coverage over the unified StateCatalog (static ∪ reasoner states,
+ * testedness decided at catalog build — see state-catalog.ts). With no
+ * entries the metric is not applicable and its weight is redistributed to
+ * the other sub-scores.
  *
- * When the reasoner provides states, each tested state scores at its
- * Istanbul branch scale (0-1); untested states score 0.
- * The result is capped at overall Istanbul branch coverage + 10
- * to prevent LLM inflation beyond what Istanbul data supports.
+ * Each tested entry scores at its Istanbul branch scale (0-1) weighted by
+ * the entry's confidence; untested entries score 0. The result is capped at
+ * overall Istanbul branch coverage + 10 to prevent LLM inflation beyond
+ * what Istanbul data supports.
  */
 export function calculateStateCoverage(
-  codeModel: CodeModel,
-  reasonerOutput: ReasonerOutput,
+  catalog: StateCatalog,
   resolvedCoverage: ResolvedCoverage
 ): SubScore {
-  const classFileOwners = buildClassFileOwners(codeModel.modules);
-
-  // A state naming a class that several files declare cannot be tied to either
-  // declaration. Scoring it anyway would read the missing lookup as "no Istanbul
-  // data" and hand it full branch scale, so it is dropped from the metric.
-  const discovered = reasonerOutput.discoveredStates
-    .map((ds) => ({ ds, filePath: resolveReasonerOwnerFile(ds.className, classFileOwners) }))
-    .filter((entry): entry is { ds: typeof entry.ds; filePath: string } => entry.filePath !== null);
-
-  if (discovered.length === 0) {
+  const { entries } = catalog;
+  if (entries.length === 0) {
     return { base: 0, llmAdjustment: 0, final: 0, confidence: 0, applicable: false };
   }
 
   let testedWeight = 0;
   let totalConfidence = 0;
 
-  for (const { ds, filePath } of discovered) {
-    totalConfidence += ds.confidence;
-    if (ds.isTested) {
-      const scale = getBranchScaleForState(ds.className, filePath, [ds.methodName], resolvedCoverage);
-      testedWeight += scale * ds.confidence;
+  for (const e of entries) {
+    totalConfidence += e.confidence;
+    if (e.isTested) {
+      const scale = getBranchScaleForState(e.owner, e.filePath, [e.methodName], resolvedCoverage);
+      testedWeight += scale * e.confidence;
     }
   }
 
-  const avgConfidence = totalConfidence / discovered.length;
-  let base = (testedWeight / discovered.length) * 100;
+  const avgConfidence = totalConfidence / entries.length;
+  let base = (testedWeight / entries.length) * 100;
 
   const overallBranch = getOverallBranchCoverage(resolvedCoverage);
   if (overallBranch !== undefined) {

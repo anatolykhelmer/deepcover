@@ -8,6 +8,7 @@ import { runBugDetector } from '../bug-detector';
 import { mergeBugFindings } from '../bug-merger';
 import { calculateAssertionQuality } from './assertion-quality';
 import { calculateStateCoverage } from './state-coverage';
+import { buildStateCatalog } from './state-catalog';
 import { calculateMutationResilience } from './mutation-resilience';
 import { calculateCriticalityWeighting } from './criticality';
 import { composeScore } from './composer';
@@ -38,7 +39,13 @@ function runScorer(
         : (options as ScorerOptions);
 
   const assertionQuality = calculateAssertionQuality(codeModel, reasonerOutput, resolvedCoverage);
-  const stateCoverage = calculateStateCoverage(codeModel, reasonerOutput, resolvedCoverage);
+  const catalog = buildStateCatalog(codeModel, reasonerOutput, resolvedCoverage);
+  if (catalog.droppedAmbiguous > 0) {
+    console.warn(
+      `deepcover: dropped ${catalog.droppedAmbiguous} reasoner state(s) whose class is declared in multiple files`
+    );
+  }
+  const stateCoverage = calculateStateCoverage(catalog, resolvedCoverage);
   const mutationResilience = calculateMutationResilience(codeModel, reasonerOutput, resolvedCoverage);
   const criticalityWeighting = calculateCriticalityWeighting(codeModel, reasonerOutput, resolvedCoverage);
 
