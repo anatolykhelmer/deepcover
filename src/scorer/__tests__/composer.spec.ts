@@ -3,6 +3,7 @@ import type { DiscoveredState, ReasonerOutput } from '../../reasoner/types';
 import type { SubScore } from '../types';
 import { resolveCoverage } from '../../resolver';
 import { composeScore } from '../composer';
+import { buildStateCatalog } from '../state-catalog';
 
 const PROJECT_ROOT = '/project';
 
@@ -78,7 +79,7 @@ describe('composer', () => {
       criticalityWeighting: { base: 100, llmAdjustment: 0, final: 100, confidence: 0, applicable: true },
     };
     const resolved = resolveCoverage(minimalModel, PROJECT_ROOT);
-    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved);
+    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved, buildStateCatalog(minimalModel, emptyReasonerOutput(), resolved));
     expect(result.composite).toBe(100);
   });
 
@@ -90,14 +91,14 @@ describe('composer', () => {
       criticalityWeighting: { base: 20, llmAdjustment: 0, final: 20, confidence: 0, applicable: true },
     };
     const resolved = resolveCoverage(minimalModel, PROJECT_ROOT);
-    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved);
+    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved, buildStateCatalog(minimalModel, emptyReasonerOutput(), resolved));
     expect(result.composite).toBeCloseTo(0.3 * 80 + 0.3 * 60 + 0.25 * 40 + 0.15 * 20, 1);
   });
 
   it('per-function scores generated for each method', () => {
     const subScores = makeSubScores();
     const resolved = resolveCoverage(minimalModel, PROJECT_ROOT);
-    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved);
+    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved, buildStateCatalog(minimalModel, emptyReasonerOutput(), resolved));
     expect(result.perFunction).toHaveLength(2);
     expect(result.perFunction.map((f) => f.methodName)).toEqual(expect.arrayContaining(['getAll', 'getById']));
     expect(result.perFunction.every((f) => f.className === 'ItemService')).toBe(true);
@@ -113,7 +114,7 @@ describe('composer', () => {
       criticalityWeighting: { base: 0, llmAdjustment: 0, final: 0, confidence: 0, applicable: true },
     };
     const resolved = resolveCoverage(minimalModel, PROJECT_ROOT);
-    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved, {
+    const result = composeScore(subScores, minimalModel, emptyReasonerOutput(), resolved, buildStateCatalog(minimalModel, emptyReasonerOutput(), resolved), {
       assertionQuality: 1,
       stateCoverage: 0,
       mutationResilience: 0,
@@ -164,7 +165,7 @@ describe('composer', () => {
     };
 
     const resolved = resolveCoverage(modelWithStandalone, PROJECT_ROOT);
-    const result = composeScore(makeSubScores(), modelWithStandalone, emptyReasonerOutput(), resolved);
+    const result = composeScore(makeSubScores(), modelWithStandalone, emptyReasonerOutput(), resolved, buildStateCatalog(modelWithStandalone, emptyReasonerOutput(), resolved));
     expect(result.perFunction).toHaveLength(1);
     expect(result.perFunction[0].className).toBe('/src/formatter.ts');
     expect(result.perFunction[0].methodName).toBe('formatError');
@@ -278,7 +279,7 @@ describe('composer', () => {
     const istanbul = fullyCoveredIstanbul(`${PROJECT_ROOT}/src/orders/payment.gateway.ts`);
     const resolved = resolveCoverage(model, PROJECT_ROOT, { istanbul });
     const reasoner = { ...emptyReasonerOutput(), discoveredStates };
-    const result = composeScore(makeSubScores(), model, reasoner, resolved);
+    const result = composeScore(makeSubScores(), model, reasoner, resolved, buildStateCatalog(model, reasoner, resolved));
     const charge = result.perFunction.find((f) => f.methodName === 'charge');
     if (!charge) throw new Error('charge not scored');
     return charge;
@@ -380,11 +381,35 @@ describe('composer', () => {
         discoveredStates: [discoveredState({ state: 'authorized', isTested: true })],
       };
 
-      const result = composeScore(makeSubScores(), model, reasoner, resolved);
+      const result = composeScore(makeSubScores(), model, reasoner, resolved, buildStateCatalog(model, reasoner, resolved));
       const charge = result.perFunction.find((f) => f.methodName === 'charge')!;
 
       expect(charge.totalStates).toBe(1);
       expect(charge.testedStates).toBe(0);
+    });
+
+    it('a static state is tested per-method, not by any affected method', () => {
+      // OrderStatus affects both charge (covered) and refund (uncovered):
+      // charge's entry is tested, refund's is not.
+      const model = paymentGatewayModel([], [
+        { source: 'enum', name: 'OrderStatus', values: ['PAID'], affectedMethods: ['charge', 'refund'] },
+      ]);
+      model.modules[0].classes[0].methods.push(method('refund'));
+
+      // No Istanbul here: full-file Istanbul data would mark refund covered
+      // and defeat the point of the fixture. charge stays covered via the
+      // test-inventory coverage map alone.
+      const resolved = resolveCoverage(model, PROJECT_ROOT);
+      const reasoner = emptyReasonerOutput();
+      const result = composeScore(makeSubScores(), model, reasoner, resolved, buildStateCatalog(model, reasoner, resolved));
+
+      const charge = result.perFunction.find((f) => f.methodName === 'charge')!;
+      const refund = result.perFunction.find((f) => f.methodName === 'refund')!;
+      expect(charge.testedStates).toBe(1);
+      expect(charge.totalStates).toBe(1);
+      expect(refund.testedStates).toBe(0);
+      expect(refund.totalStates).toBe(1);
+      expect(refund.untested).toContain('OrderStatus');
     });
   });
 
@@ -521,7 +546,7 @@ describe('composer', () => {
     it('gives the untested class zero assertion credit, consistent with "no test coverage"', () => {
       const model = twoClassModel();
       const resolved = resolveCoverage(model, PROJECT_ROOT);
-      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved, buildStateCatalog(model, emptyReasonerOutput(), resolved));
 
       const bThing = result.perFunction.find((f) => f.className === 'BService' && f.methodName === 'doThing');
       expect(bThing).toBeDefined();
@@ -535,7 +560,7 @@ describe('composer', () => {
     it('still gives the actually-tested class its own credit', () => {
       const model = twoClassModel();
       const resolved = resolveCoverage(model, PROJECT_ROOT);
-      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved, buildStateCatalog(model, emptyReasonerOutput(), resolved));
 
       const aThing = result.perFunction.find((f) => f.className === 'AService' && f.methodName === 'doThing');
       expect(aThing).toBeDefined();
@@ -599,7 +624,7 @@ describe('composer', () => {
     it('scores the tested file as covered and the untested one as uncovered', () => {
       const model = duplicateClassModel();
       const resolved = resolveCoverage(model, PROJECT_ROOT);
-      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved, buildStateCatalog(model, emptyReasonerOutput(), resolved));
 
       const entries = result.perFunction.filter(
         (f) => f.className === 'OrderService' && f.methodName === 'create'
@@ -640,7 +665,7 @@ describe('composer', () => {
       model.testInventory.coverage['/src/b/order.service.ts:OrderService.create'] = ['creates'];
 
       const resolved = resolveCoverage(model, PROJECT_ROOT);
-      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved, buildStateCatalog(model, emptyReasonerOutput(), resolved));
 
       const entries = result.perFunction.filter(
         (f) => f.className === 'OrderService' && f.methodName === 'create'
@@ -657,7 +682,7 @@ describe('composer', () => {
       // NAME; the untested copy must not collect the other file's assertions.
       const model = duplicateClassModel();
       const resolved = resolveCoverage(model, PROJECT_ROOT);
-      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved);
+      const result = composeScore(makeSubScores(), model, emptyReasonerOutput(), resolved, buildStateCatalog(model, emptyReasonerOutput(), resolved));
 
       const entries = result.perFunction.filter(
         (f) => f.className === 'OrderService' && f.methodName === 'create'

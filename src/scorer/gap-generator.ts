@@ -1,6 +1,7 @@
 import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
+import type { StateCatalog } from './state-catalog';
 import type { PrioritizedGap } from './types';
 
 const RISK_ORDER = { high: 0, medium: 1, low: 2 } as const;
@@ -25,10 +26,14 @@ function suggestTest(className: string, methodName: string, scenario: string): s
   return `Test ${className}.${methodName} ${scenario}`;
 }
 
+// `_catalog` is accepted but unused for now: Task 6 moves gap generation onto
+// the StateCatalog. Optional so existing 3-argument callers keep compiling
+// until then.
 export function generateGaps(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
-  resolvedCoverage: ResolvedCoverage
+  resolvedCoverage: ResolvedCoverage,
+  _catalog?: StateCatalog
 ): PrioritizedGap[] {
   const gaps: PrioritizedGap[] = [];
 

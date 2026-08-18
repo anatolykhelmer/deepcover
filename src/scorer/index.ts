@@ -50,7 +50,7 @@ function runScorer(
   const criticalityWeighting = calculateCriticalityWeighting(codeModel, reasonerOutput, resolvedCoverage);
 
   const subScores = { assertionQuality, stateCoverage, mutationResilience, criticalityWeighting };
-  const scoreResult = composeScore(subScores, codeModel, reasonerOutput, resolvedCoverage, opts.weights);
+  const scoreResult = composeScore(subScores, codeModel, reasonerOutput, resolvedCoverage, catalog, opts.weights);
 
   let potentialBugs: PotentialBug[] = [];
   if (opts.enableBugs) {
