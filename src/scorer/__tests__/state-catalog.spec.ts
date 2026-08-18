@@ -182,4 +182,51 @@ describe('buildStateCatalog', () => {
     expect(catalog.entries[0].filePath).toBe('/src/utils.ts');
     expect(catalog.droppedAmbiguous).toBe(0);
   });
+
+  it('merges a state named by both sources into one entry', () => {
+    const model = classModel({
+      methods: ['submit'],
+      states: [{ source: 'enum', name: 'Declined', values: ['soft', 'hard'], affectedMethods: ['submit'] }],
+      coverage: { '/src/order.service.ts:OrderService.submit': ['t1'] },
+    });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        // Different casing/whitespace — still the same normalized key.
+        { className: 'OrderService', methodName: 'submit', state: ' declined ', isTested: false, riskIfUntested: 'high', confidence: 0.7 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+
+    expect(catalog.entries).toHaveLength(1);
+    expect(catalog.entries[0]).toMatchObject({
+      provenance: 'both',
+      isTested: true, // static side: submit is covered
+      confidence: 1,
+      riskIfUntested: 'high',
+      values: ['soft', 'hard'],
+    });
+  });
+
+  it('does not merge same-named states of same-named classes in different files', () => {
+    const model: CodeModel = {
+      modules: [
+        {
+          filePath: '/src/a/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [method('submit')], dependencies: [],
+            states: [{ source: 'enum', name: 'Status', values: ['A'], affectedMethods: ['submit'] }] }],
+        },
+        {
+          filePath: '/src/b/order.service.ts',
+          classes: [{ name: 'OrderService', type: 'service', methods: [method('submit')], dependencies: [],
+            states: [{ source: 'enum', name: 'Status', values: ['B'], affectedMethods: ['submit'] }] }],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: { testFiles: [], coverage: {} },
+    };
+    const catalog = buildStateCatalog(model, emptyReasonerOutput(), resolvedFor(model));
+    expect(catalog.entries).toHaveLength(2);
+    expect(new Set(catalog.entries.map((e) => e.filePath)).size).toBe(2);
+  });
 });
