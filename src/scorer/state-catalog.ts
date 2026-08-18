@@ -16,7 +16,10 @@ export interface StateCatalogEntry {
   provenance: 'static' | 'reasoner' | 'both';
   /** Computed once at build time; see build rules in the design spec. */
   isTested: boolean;
-  /** Static entries: 1.0 (AST facts); reasoner entries: the LLM value; merged: 1.0. */
+  /**
+   * Static entries: 1.0 (AST facts); reasoner entries: the LLM value (max
+   * across reasoner-emitted duplicates); cross-source merged ('both'): 1.0.
+   */
   confidence: number;
   /** Reasoner-sourced only. */
   riskIfUntested?: 'low' | 'medium' | 'high';
@@ -34,6 +37,18 @@ export interface StateCatalog {
 
 function normalizeStateKey(state: string): string {
   return state.trim().toLowerCase();
+}
+
+const RISK_RANK = { low: 1, medium: 2, high: 3 } as const;
+
+/** The more severe of two risks; a defined side wins over undefined. */
+function moreSevereRisk(
+  a: StateCatalogEntry['riskIfUntested'],
+  b: StateCatalogEntry['riskIfUntested']
+): StateCatalogEntry['riskIfUntested'] {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return RISK_RANK[a] >= RISK_RANK[b] ? a : b;
 }
 
 function entryKey(filePath: string, owner: string, methodName: string, normalizedKey: string): string {
@@ -96,11 +111,20 @@ export function buildStateCatalog(
     const isTested = ds.isTested && resolvedCoverage.isMethodCovered(ds.className, ds.methodName, filePath);
     const existing = byKey.get(key);
     if (existing) {
-      // Same state found by both sources — merge in Task 3.
-      existing.provenance = 'both';
-      existing.isTested = existing.isTested || isTested;
-      existing.confidence = 1;
-      existing.riskIfUntested = ds.riskIfUntested;
+      if (existing.provenance === 'static') {
+        // Same state found by both sources — merge in Task 3.
+        existing.provenance = 'both';
+        existing.isTested = existing.isTested || isTested;
+        existing.confidence = 1;
+        existing.riskIfUntested = ds.riskIfUntested;
+      } else {
+        // Reasoner-reasoner duplicate (e.g. casing variants of one state) —
+        // same-source dedupe, not a cross-source merge: keep the provenance,
+        // take the max confidence, and keep the more severe risk.
+        existing.isTested = existing.isTested || isTested;
+        existing.confidence = Math.max(existing.confidence, ds.confidence);
+        existing.riskIfUntested = moreSevereRisk(existing.riskIfUntested, ds.riskIfUntested);
+      }
     } else {
       byKey.set(key, {
         filePath,

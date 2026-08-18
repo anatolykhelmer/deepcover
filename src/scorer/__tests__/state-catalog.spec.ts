@@ -209,6 +209,30 @@ describe('buildStateCatalog', () => {
     });
   });
 
+  it('dedupes reasoner-reasoner duplicates without promoting provenance or confidence', () => {
+    const model = classModel({
+      methods: ['submit'],
+      coverage: { '/src/order.service.ts:OrderService.submit': ['t1'] },
+    });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        // Same state emitted twice with different casing — same normalized key.
+        { className: 'OrderService', methodName: 'submit', state: 'Payment declined', isTested: false, riskIfUntested: 'medium', confidence: 0.6 },
+        { className: 'OrderService', methodName: 'submit', state: 'payment declined', isTested: true, riskIfUntested: 'high', confidence: 0.8 },
+      ],
+    };
+    const catalog = buildStateCatalog(model, reasoner, resolvedFor(model));
+
+    expect(catalog.entries).toHaveLength(1);
+    expect(catalog.entries[0]).toMatchObject({
+      provenance: 'reasoner', // never 'both': no static source named this state
+      isTested: true, // OR semantics: the second duplicate is tested
+      confidence: 0.8, // max of the duplicates, not promoted to 1
+      riskIfUntested: 'high', // the more severe of medium/high
+    });
+  });
+
   it('does not merge same-named states of same-named classes in different files', () => {
     const model: CodeModel = {
       modules: [
