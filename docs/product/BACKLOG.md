@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-001 | One StateCatalog for aggregate and per-method scores | Build one state catalog (extractor static states ∪ reasoner discovered states) and use it for both aggregate state coverage and per-method scoring. High priority, impact 4/effort 2. | | | 2026-08-18 |
+| BL-001 | One StateCatalog for aggregate and per-method scores | Designing — spec approved, scope widened to all 4 state consumers (aggregate, per-method, untested list, gaps). High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-18-state-catalog-design.md) | | 2026-08-18 |
 | BL-002 | Validate config and runtime JSON with existing Zod | `DeepCoverConfigSchema` + optional Jest/Istanbul runtime schemas via `safeParse` with clear warnings — use Zod already in the package, not a new config loader. High priority, impact 4/effort 2. | | | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
@@ -46,6 +46,11 @@
 |----|-------|--------|---------|
 
 ## Decision Log
+
+### 2026-08-18 — BL-001
+- Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-18-state-catalog-design.md`); status → designing.
+- Scope widened beyond the original two consumers: the untested list and gap-generator are also reasoner-only today and will read the same catalog.
+- Granularity: one entry per state×method pair; static states get confidence 1.0; testedness computed once at catalog build (coverage floor now applies to the aggregate too).
 
 ### 2026-08-18 — Bulk import from anatoly-procedures
 - Migrated 15 open DeepCover tasks from `anatoly-procedures` (testing/ai-workflow/code-quality categories) into this repo's product backlog — these are product features of DeepCover itself, not process improvements, so they belong here instead.
