@@ -1,7 +1,7 @@
 import type { CodeModel } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
-import type { StateCatalog } from './state-catalog';
+import type { StateCatalog, StateCatalogEntry } from './state-catalog';
 import type { PrioritizedGap } from './types';
 
 const RISK_ORDER = { high: 0, medium: 1, low: 2 } as const;
@@ -26,14 +26,11 @@ function suggestTest(className: string, methodName: string, scenario: string): s
   return `Test ${className}.${methodName} ${scenario}`;
 }
 
-// `_catalog` is accepted but unused for now: Task 6 moves gap generation onto
-// the StateCatalog. Optional so existing 3-argument callers keep compiling
-// until then.
 export function generateGaps(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
   resolvedCoverage: ResolvedCoverage,
-  _catalog?: StateCatalog
+  catalog: StateCatalog
 ): PrioritizedGap[] {
   const gaps: PrioritizedGap[] = [];
 
@@ -70,26 +67,6 @@ export function generateGaps(
         }
       }
 
-      for (const state of cls.states) {
-        const covered = state.affectedMethods.some((m) => resolvedCoverage.isMethodCovered(cls.name, m, mod.filePath));
-        if (!covered) {
-          const risk = state.affectedMethods.some((m) => {
-            const method = cls.methods.find((mm) => mm.name === m);
-            return method && getMethodRisk(method, reasonerOutput, cls.name, m) === 'high';
-          })
-            ? 'high'
-            : 'medium';
-          gaps.push({
-            rank: 0,
-            className: cls.name,
-            methodName: state.affectedMethods[0] ?? 'unknown',
-            scenario: `state "${state.name}" (${state.values.join(', ')})`,
-            risk,
-            reason: `State ${state.name} affects ${state.affectedMethods.join(', ')} but is untested`,
-            suggestedTest: suggestTest(cls.name, state.affectedMethods[0] ?? 'unknown', `when ${state.name} is ${state.values[0] ?? 'active'}`),
-          });
-        }
-      }
     }
 
     for (const fn of mod.functions ?? []) {
@@ -125,23 +102,40 @@ export function generateGaps(
     }
   }
 
-  for (const ds of reasonerOutput.discoveredStates) {
-    if (!ds.isTested && ds.riskIfUntested !== 'low') {
-      const exists = gaps.some(
-        (g) => g.className === ds.className && g.methodName === ds.methodName && g.scenario.includes(ds.state)
-      );
-      if (!exists) {
-        gaps.push({
-          rank: 0,
-          className: ds.className,
-          methodName: ds.methodName,
-          scenario: ds.state,
-          risk: ds.riskIfUntested,
-          reason: `LLM-discovered state "${ds.state}" is untested`,
-          suggestedTest: suggestTest(ds.className, ds.methodName, ds.state),
-        });
-      }
+  const methodNodeFor = (e: StateCatalogEntry): { branchCount: number; externalCalls: string[] } | null => {
+    const mod = codeModel.modules.find((m) => m.filePath === e.filePath);
+    if (!mod) return null;
+    const cls = mod.classes.find((c) => c.name === e.owner);
+    const callable = cls
+      ? cls.methods.find((m) => m.name === e.methodName)
+      : (mod.functions ?? []).find((f) => f.name === e.methodName);
+    return callable ?? null;
+  };
+
+  for (const e of catalog.entries) {
+    if (e.isTested) continue;
+    let risk = e.riskIfUntested;
+    if (!risk) {
+      const m = methodNodeFor(e);
+      risk = m ? getMethodRisk(m, reasonerOutput, e.owner, e.methodName) : 'medium';
     }
+    if (risk === 'low') continue;
+    const exists = gaps.some(
+      (g) => g.className === e.owner && g.methodName === e.methodName && g.scenario.includes(e.stateName)
+    );
+    if (exists) continue;
+    gaps.push({
+      rank: 0,
+      className: e.owner,
+      methodName: e.methodName,
+      scenario: e.stateName,
+      risk,
+      reason:
+        e.provenance === 'reasoner'
+          ? `LLM-discovered state "${e.stateName}" is untested`
+          : `State ${e.stateName} in ${e.methodName} is untested`,
+      suggestedTest: suggestTest(e.owner, e.methodName, e.stateName),
+    });
   }
 
   gaps.sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk]);
