@@ -7,7 +7,6 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-001 | One StateCatalog for aggregate and per-method scores | Planned — spec + 7-task implementation plan ready; scope covers all 4 state consumers (aggregate, per-method, untested list, gaps). High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-18-state-catalog-design.md) | [plan](../superpowers/plans/2026-08-18-state-catalog.md) | 2026-08-18 |
 | BL-002 | Validate config and runtime JSON with existing Zod | `DeepCoverConfigSchema` + optional Jest/Istanbul runtime schemas via `safeParse` with clear warnings — use Zod already in the package, not a new config loader. High priority, impact 4/effort 2. | | | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
@@ -38,7 +37,7 @@
 
 | ID | Title | Completed |
 |----|-------|-----------|
-| | | |
+| BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 |
 
 ## Dropped
 
@@ -46,6 +45,11 @@
 |----|-------|--------|---------|
 
 ## Decision Log
+
+### 2026-08-18 — BL-001
+- Implemented: `src/scorer/state-catalog.ts` is the single source of domain
+  states; aggregate, per-method, untested lists, and gaps all read it.
+  Behavior changes recorded in README ("State coverage in 0.6.0").
 
 ### 2026-08-18 — BL-001 (planned)
 - Wrote the 7-task implementation plan (`docs/superpowers/plans/2026-08-18-state-catalog.md`); status → planned.

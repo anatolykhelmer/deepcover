@@ -2,6 +2,7 @@ import type { CodeModel, StateNode, MethodNode } from '../../types/code-model';
 import type { ReasonerOutput } from '../../reasoner/types';
 import { resolveCoverage } from '../../resolver';
 import { buildStateCatalog } from '../state-catalog';
+import { runScorer } from '../index';
 
 const PROJECT_ROOT = '/project';
 
@@ -228,5 +229,36 @@ describe('buildStateCatalog', () => {
     const catalog = buildStateCatalog(model, emptyReasonerOutput(), resolvedFor(model));
     expect(catalog.entries).toHaveLength(2);
     expect(new Set(catalog.entries.map((e) => e.filePath)).size).toBe(2);
+  });
+});
+
+describe('aggregate and per-method scores share the catalog (BL-001 invariant)', () => {
+  it('the sum of per-method totalStates equals the catalog entry count', () => {
+    const model = classModel({
+      methods: ['submit', 'cancel', 'refund'],
+      states: [{ source: 'enum', name: 'OrderStatus', values: ['PENDING', 'PAID'], affectedMethods: ['submit', 'cancel'] }],
+      coverage: { '/src/order.service.ts:OrderService.submit': ['t1'] },
+    });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        // one overlapping with the static state, one new, one for another method
+        { className: 'OrderService', methodName: 'submit', state: 'ORDERSTATUS', isTested: true, riskIfUntested: 'high', confidence: 0.9 },
+        { className: 'OrderService', methodName: 'submit', state: 'payment declined', isTested: false, riskIfUntested: 'high', confidence: 0.8 },
+        { className: 'OrderService', methodName: 'refund', state: 'already refunded', isTested: false, riskIfUntested: 'medium', confidence: 0.7 },
+      ],
+    };
+    const resolved = resolvedFor(model);
+    const catalog = buildStateCatalog(model, reasoner, resolved);
+    const result = runScorer(model, reasoner, resolved);
+
+    const perMethodTotal = result.perFunction.reduce((sum, f) => sum + f.totalStates, 0);
+    expect(perMethodTotal).toBe(catalog.entries.length);
+    // 2 static (submit, cancel) with submit's merging the reasoner duplicate,
+    // + 'payment declined' + 'already refunded' = 4
+    expect(catalog.entries).toHaveLength(4);
+
+    const perMethodTested = result.perFunction.reduce((sum, f) => sum + f.testedStates, 0);
+    expect(perMethodTested).toBe(catalog.entries.filter((e) => e.isTested).length);
   });
 });
