@@ -120,10 +120,6 @@ export function generateGaps(
       risk = m ? getMethodRisk(m, reasonerOutput, e.owner, e.methodName) : 'medium';
     }
     if (risk === 'low') continue;
-    const exists = gaps.some(
-      (g) => g.className === e.owner && g.methodName === e.methodName && g.scenario.includes(e.stateName)
-    );
-    if (exists) continue;
     gaps.push({
       rank: 0,
       className: e.owner,
@@ -131,9 +127,11 @@ export function generateGaps(
       scenario: e.stateName,
       risk,
       reason:
-        e.provenance === 'reasoner'
-          ? `LLM-discovered state "${e.stateName}" is untested`
-          : `State ${e.stateName} in ${e.methodName} is untested`,
+        e.provenance === 'static'
+          ? `State ${e.stateName} in ${e.methodName} is untested`
+          : e.provenance === 'reasoner'
+            ? `LLM-discovered state "${e.stateName}" is untested`
+            : `State "${e.stateName}" is untested (found statically and by the LLM)`,
       suggestedTest: suggestTest(e.owner, e.methodName, e.stateName),
     });
   }

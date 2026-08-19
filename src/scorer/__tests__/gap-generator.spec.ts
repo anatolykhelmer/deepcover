@@ -234,4 +234,38 @@ describe('gap-generator', () => {
     expect(declinedGaps).toHaveLength(1);
     expect(declinedGaps[0].risk).toBe('high'); // riskIfUntested wins for merged entries
   });
+
+  it('substring-related state names both produce gaps', () => {
+    const model: CodeModel = {
+      modules: [
+        {
+          filePath: '/src/s.ts',
+          classes: [
+            {
+              name: 'S',
+              type: 'service',
+              methods: [
+                { name: 'm1', visibility: 'public', params: [], returnType: 'void', branches: [], branchCount: 5, throwsErrors: false, hasAsyncOps: false, externalCalls: ['http'], internalCalls: [], startLine: 1, endLine: 1 },
+              ],
+              dependencies: [],
+              states: [],
+            },
+          ],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: { testFiles: [], coverage: {} },
+    };
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: 'S', methodName: 'm1', state: 'unpaid', isTested: false, riskIfUntested: 'high', confidence: 0.9 },
+        { className: 'S', methodName: 'm1', state: 'paid', isTested: false, riskIfUntested: 'high', confidence: 0.9 },
+      ],
+    };
+    const resolved = resolvedFor(model);
+    const gaps = generateGaps(model, reasoner, resolved, buildStateCatalog(model, reasoner, resolved));
+    const names = gaps.filter((g) => g.methodName === 'm1').map((g) => g.scenario);
+    expect(names).toEqual(expect.arrayContaining(['unpaid', 'paid']));
+  });
 });

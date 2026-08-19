@@ -127,6 +127,10 @@ decided once. Scores will shift on re-analysis:
   method happens to be covered.
 - State gaps are emitted per state×method with unified risk rules; the
   same state found by both sources yields one gap.
+- Gap `scenario` for a state is now the bare state name (previously
+  static gaps used `state "X" (values)`).
+- Reasoner states naming a method or class the code model does not declare
+  are dropped from scoring entirely.
 
 ## Migrating to 0.5.0
 

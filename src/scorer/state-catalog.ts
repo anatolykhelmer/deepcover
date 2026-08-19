@@ -106,13 +106,26 @@ export function buildStateCatalog(
       droppedAmbiguous += 1;
       continue;
     }
+    // A reasoner state naming a method its resolved owner does not declare
+    // (or a class the model does not know at all) must not enter the catalog:
+    // the aggregate would count it while per-method scoring never sees it,
+    // breaking the aggregate/per-method invariant this catalog exists for.
+    const ownerModule = codeModel.modules.find((m) => m.filePath === filePath);
+    const ownerClass = ownerModule?.classes.find((c) => c.name === ds.className);
+    const methodExists = ownerClass
+      ? ownerClass.methods.some((m) => m.name === ds.methodName)
+      : ds.className === filePath &&
+        (ownerModule?.functions ?? []).some((f) => f.name === ds.methodName);
+    if (!methodExists) {
+      continue;
+    }
     const normalizedKey = normalizeStateKey(ds.state);
     const key = entryKey(filePath, ds.className, ds.methodName, normalizedKey);
     const isTested = ds.isTested && resolvedCoverage.isMethodCovered(ds.className, ds.methodName, filePath);
     const existing = byKey.get(key);
     if (existing) {
       if (existing.provenance === 'static') {
-        // Same state found by both sources — merge in Task 3.
+        // Same state found by both sources.
         existing.provenance = 'both';
         existing.isTested = existing.isTested || isTested;
         existing.confidence = 1;

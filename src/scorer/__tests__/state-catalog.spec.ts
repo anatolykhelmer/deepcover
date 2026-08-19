@@ -285,4 +285,22 @@ describe('aggregate and per-method scores share the catalog (BL-001 invariant)',
     const perMethodTested = result.perFunction.reduce((sum, f) => sum + f.testedStates, 0);
     expect(perMethodTested).toBe(catalog.entries.filter((e) => e.isTested).length);
   });
+
+  it('ghost reasoner methods and unknown classes do not inflate the catalog', () => {
+    const model = classModel({ methods: ['submit'] });
+    const reasoner: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      discoveredStates: [
+        { className: 'OrderService', methodName: 'doesNotExist', state: 'ghost method', isTested: false, riskIfUntested: 'high', confidence: 0.9 },
+        { className: 'HallucinatedService', methodName: 'submit', state: 'unknown class', isTested: false, riskIfUntested: 'high', confidence: 0.9 },
+      ],
+    };
+    const resolved = resolvedFor(model);
+    const catalog = buildStateCatalog(model, reasoner, resolved);
+    const result = runScorer(model, reasoner, resolved);
+    const perMethodTotal = result.perFunction.reduce((sum, f) => sum + f.totalStates, 0);
+    expect(catalog.entries).toHaveLength(0);
+    expect(perMethodTotal).toBe(catalog.entries.length);
+    expect(perMethodTotal).toBe(0);
+  });
 });
