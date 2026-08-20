@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-19
+> Last updated: 2026-08-20
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-002 | Validate config and runtime JSON with existing Zod | `DeepCoverConfigSchema` + optional Jest/Istanbul runtime schemas via `safeParse` with clear warnings — use Zod already in the package, not a new config loader. High priority, impact 4/effort 2. | | | 2026-08-18 |
+| BL-002 | Validate config and runtime JSON with existing Zod | **designing** — `DeepCoverConfigSchema` + `safeParse` with clear warnings, using the Zod already in the package. Runtime-artifact schemas cut from scope. High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-20-config-validation-design.md) | | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
 ## Ideas
@@ -47,6 +47,13 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-20 — BL-002
+- Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-20-config-validation-design.md`); status → designing.
+- Scope narrowed: config only. Runtime-artifact validation (`jest-runtime.json`, Istanbul `coverage-final.json`) dropped — Istanbul's format is externally defined and `loadIstanbulCoverage` already degrades safely.
+- Schema is the source of truth (`z.infer` replaces the hand-written interface), strict objects at every level so typo'd keys are errors rather than silent no-ops.
+- Scope widened to two adjacent bugs in the same loader: the shallow spread that wiped sibling defaults in a partially specified section, and the silent `catch {}` that discarded a whole `.ts`/`.js` config without a message.
+- No sum-to-1 constraint on `weights` — they are unread by any scorer today; wiring or deleting them stays BL-010.
 
 ### 2026-08-19 — PR #3 review applied; BL-016 dropped
 - Applied the PR #3 review suggestions on the BL-001 branch: removed the gap-generator substring dedupe guard entirely (catalog identity makes it redundant; it swallowed distinct states), dropped ghost reasoner states (unknown method/class) at catalog build so the aggregate/per-method invariant holds for malformed LLM output, three-way gap `reason` by provenance, comment/README cleanups, plus pinning tests.
