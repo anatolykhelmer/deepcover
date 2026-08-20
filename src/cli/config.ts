@@ -54,6 +54,41 @@ export const DEFAULT_CONFIG: DeepCoverConfig = {
   },
 };
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Reads the raw config object, or warns and returns undefined. */
+function readRawConfig(configPath: string): unknown | undefined {
+  if (configPath.endsWith('.json')) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(configPath, 'utf-8');
+    } catch (err) {
+      console.warn(`Warning: could not load ${configPath} — using defaults: ${errorText(err)}`);
+      return undefined;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      console.warn(`Warning: could not parse ${configPath} — using defaults: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
+  try {
+    // For .ts/.js, require works under the tsx runtime.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require(configPath);
+    return mod.default ?? mod;
+  } catch (err) {
+    // Previously a bare `catch {}` — a config that failed to load was discarded
+    // in total silence, which is the worst possible outcome for the user.
+    console.warn(`Warning: could not load ${configPath} — using defaults: ${errorText(err)}`);
+    return undefined;
+  }
+}
+
 export function loadConfig(rootDir: string): DeepCoverConfig {
   const candidates = [
     'deepcover.config.ts',
@@ -63,21 +98,24 @@ export function loadConfig(rootDir: string): DeepCoverConfig {
 
   for (const candidate of candidates) {
     const configPath = path.resolve(rootDir, candidate);
-    if (fs.existsSync(configPath)) {
-      if (candidate.endsWith('.json')) {
-        const raw = fs.readFileSync(configPath, 'utf-8');
-        return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
-      }
-      // For .ts/.js, try require (works with tsx runtime)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const mod = require(configPath);
-        const config = mod.default ?? mod;
-        return { ...DEFAULT_CONFIG, ...config };
-      } catch {
-        // Fall through to default
-      }
+    if (!fs.existsSync(configPath)) continue;
+
+    // Returns on the first candidate that exists, rather than falling through
+    // to the next one: if the user's deepcover.config.ts is broken, silently
+    // loading a stale deepcover.config.json instead would be worse than
+    // running on documented defaults.
+    const raw = readRawConfig(configPath);
+    if (raw === undefined) return DEFAULT_CONFIG;
+
+    const result = DeepCoverConfigSchema.safeParse(raw);
+    if (!result.success) {
+      console.warn(
+        `Warning: invalid config in ${configPath} — using defaults:\n${z.prettifyError(result.error)}`,
+      );
+      return DEFAULT_CONFIG;
     }
+
+    return { ...DEFAULT_CONFIG, ...result.data };
   }
 
   return DEFAULT_CONFIG;

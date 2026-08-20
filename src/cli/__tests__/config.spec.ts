@@ -1,5 +1,7 @@
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { DeepCoverConfigSchema } from '../config';
+import { DeepCoverConfigSchema, loadConfig, DEFAULT_CONFIG } from '../config';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
@@ -78,5 +80,96 @@ describe('DeepCoverConfigSchema', () => {
     const mod = require(path.join(PROJECT_ROOT, 'deepcover.config.ts'));
     const result = DeepCoverConfigSchema.safeParse(mod.default ?? mod);
     expect(result.success ? [] : result.error.issues).toEqual([]);
+  });
+});
+
+describe('loadConfig validation', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  /** A fresh directory per call — Node caches require() by absolute path. */
+  function configDir(filename: string, contents: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-config-'));
+    fs.writeFileSync(path.join(dir, filename), contents);
+    return dir;
+  }
+
+  function jsonDir(config: unknown): string {
+    return configDir('deepcover.config.json', JSON.stringify(config));
+  }
+
+  it('returns defaults with no warning when no config file exists', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-config-'));
+    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid .json config without warning', () => {
+    const config = loadConfig(jsonDir({ reasoner: { provider: 'mock' } }));
+    expect(config.reasoner?.provider).toBe('mock');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid .ts config without warning', () => {
+    const dir = configDir(
+      'deepcover.config.ts',
+      "const c = { reasoner: { provider: 'mock' as const } };\nexport default c;\n",
+    );
+    expect(loadConfig(dir).reasoner?.provider).toBe('mock');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns and uses defaults for an unknown top-level key', () => {
+    const config = loadConfig(jsonDir({ resoner: { provider: 'mock' } }));
+    expect(config).toEqual(DEFAULT_CONFIG);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = warn.mock.calls[0]![0] as string;
+    expect(message).toContain('invalid config');
+    expect(message).toContain('resoner');
+  });
+
+  it('warns and uses defaults for an unknown provider, naming the path', () => {
+    const config = loadConfig(jsonDir({ reasoner: { provider: 'anthropc' } }));
+    expect(config).toEqual(DEFAULT_CONFIG);
+    expect(warn.mock.calls[0]![0]).toContain('reasoner.provider');
+  });
+
+  it('warns and uses defaults for an out-of-range maxInfluence', () => {
+    const config = loadConfig(jsonDir({ reasoner: { provider: 'mock', maxInfluence: 5 } }));
+    expect(config).toEqual(DEFAULT_CONFIG);
+    expect(warn.mock.calls[0]![0]).toContain('reasoner.maxInfluence');
+  });
+
+  it('warns and uses defaults when reasoner has no provider', () => {
+    const config = loadConfig(jsonDir({ reasoner: { model: 'x' } }));
+    expect(config).toEqual(DEFAULT_CONFIG);
+    expect(warn.mock.calls[0]![0]).toContain('reasoner.provider');
+  });
+
+  it('warns and uses defaults for malformed JSON instead of throwing', () => {
+    const dir = configDir('deepcover.config.json', '{ "reasoner": ');
+    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG);
+    expect(warn.mock.calls[0]![0]).toContain('could not parse');
+  });
+
+  it('warns and uses defaults when a .ts config throws on load', () => {
+    const dir = configDir('deepcover.config.ts', "throw new Error('boom');\n");
+    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG);
+    const message = warn.mock.calls[0]![0] as string;
+    expect(message).toContain('could not load');
+    expect(message).toContain('boom');
+  });
+
+  it('names the offending file path in every warning', () => {
+    const dir = jsonDir({ resoner: {} });
+    loadConfig(dir);
+    expect(warn.mock.calls[0]![0]).toContain(path.join(dir, 'deepcover.config.json'));
   });
 });
