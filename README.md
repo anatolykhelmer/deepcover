@@ -111,6 +111,27 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
+## State coverage in 0.6.0 (unreleased)
+
+All four state consumers (aggregate state coverage, per-method scores,
+untested lists, gap generation) now read one StateCatalog — the union of
+statically extracted states and reasoner-discovered states, with testedness
+decided once. Scores will shift on re-analysis:
+
+- The state metric is now **applicable without an LLM run** when the
+  extractor finds static states.
+- A reasoner state only counts as tested when the resolver confirms its
+  method is covered (this floor previously applied per-method but not to
+  the aggregate).
+- A static state is tested per affected method, not when any affected
+  method happens to be covered.
+- State gaps are emitted per state×method with unified risk rules; the
+  same state found by both sources yields one gap.
+- Gap `scenario` for a state is now the bare state name (previously
+  static gaps used `state "X" (values)`).
+- Reasoner states naming a method or class the code model does not declare
+  are dropped from scoring entirely.
+
 ## Migrating to 0.5.0
 
 `ResolvedCoverage`'s accessors — `getMethodCoverage`, `isMethodCovered`,

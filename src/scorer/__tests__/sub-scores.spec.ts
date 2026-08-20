@@ -3,6 +3,7 @@ import type { ReasonerOutput } from '../../reasoner/types';
 import { resolveCoverage } from '../../resolver';
 import { calculateAssertionQuality } from '../assertion-quality';
 import { calculateStateCoverage } from '../state-coverage';
+import { buildStateCatalog } from '../state-catalog';
 import { calculateMutationResilience } from '../mutation-resilience';
 import { calculateCriticalityWeighting } from '../criticality';
 
@@ -163,7 +164,7 @@ describe('sub-score calculators', () => {
   });
 
   describe('state-coverage', () => {
-    it('no discoveredStates = not applicable', () => {
+    it('empty catalog = not applicable', () => {
       const model: CodeModel = {
         modules: [
           {
@@ -183,7 +184,8 @@ describe('sub-score calculators', () => {
         testInventory: { testFiles: [], coverage: {} },
       };
 
-      const score = calculateStateCoverage(model, emptyReasonerOutput(), resolvedFor(model));
+      const resolved = resolvedFor(model);
+      const score = calculateStateCoverage(buildStateCatalog(model, emptyReasonerOutput(), resolved), resolved);
       expect(score.base).toBe(0);
       expect(score.applicable).toBe(false);
     });
@@ -207,7 +209,7 @@ describe('sub-score calculators', () => {
           },
         ],
         dependencyGraph: [],
-        testInventory: { testFiles: [], coverage: {} },
+        testInventory: { testFiles: [], coverage: { '/src/s.ts:S.m1': ['t1'] } },
       };
       const reasoner: ReasonerOutput = {
         discoveredStates: [
@@ -219,7 +221,8 @@ describe('sub-score calculators', () => {
         transitiveInferences: [],
       };
 
-      const score = calculateStateCoverage(model, reasoner, resolvedFor(model));
+      const resolved = resolvedFor(model);
+      const score = calculateStateCoverage(buildStateCatalog(model, reasoner, resolved), resolved);
       expect(score.applicable).toBe(true);
       expect(score.base).toBeGreaterThan(0);
       expect(score.confidence).toBeGreaterThan(0);
@@ -244,7 +247,7 @@ describe('sub-score calculators', () => {
           },
         ],
         dependencyGraph: [],
-        testInventory: { testFiles: [], coverage: {} },
+        testInventory: { testFiles: [], coverage: { '/src/s.ts:S.m1': ['t1'] } },
       };
       const allTested: ReasonerOutput = {
         discoveredStates: [
@@ -265,11 +268,77 @@ describe('sub-score calculators', () => {
         transitiveInferences: [],
       };
 
-      const allScore = calculateStateCoverage(model, allTested, resolvedFor(model));
-      const halfScore = calculateStateCoverage(model, halfTested, resolvedFor(model));
+      const resolved = resolvedFor(model);
+      const allScore = calculateStateCoverage(buildStateCatalog(model, allTested, resolved), resolved);
+      const halfScore = calculateStateCoverage(buildStateCatalog(model, halfTested, resolved), resolved);
       expect(halfScore.base).toBeLessThan(allScore.base);
       expect(halfScore.applicable).toBe(true);
       expect(allScore.applicable).toBe(true);
+    });
+
+    it('static states alone make the metric applicable (no reasoner run)', () => {
+      const model: CodeModel = {
+        modules: [
+          {
+            filePath: '/src/s.ts',
+            classes: [
+              {
+                name: 'S',
+                type: 'service',
+                methods: [
+                  { name: 'm1', visibility: 'public', params: [], returnType: 'void', branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false, externalCalls: [], internalCalls: [], startLine: 1, endLine: 1 },
+                  { name: 'm2', visibility: 'public', params: [], returnType: 'void', branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false, externalCalls: [], internalCalls: [], startLine: 1, endLine: 1 },
+                ],
+                dependencies: [],
+                states: [{ source: 'enum', name: 'Mode', values: ['ON', 'OFF'], affectedMethods: ['m1', 'm2'] }],
+              },
+            ],
+          },
+        ],
+        dependencyGraph: [],
+        testInventory: { testFiles: [], coverage: { '/src/s.ts:S.m1': ['t1'] } },
+      };
+      const resolved = resolvedFor(model);
+      const score = calculateStateCoverage(buildStateCatalog(model, emptyReasonerOutput(), resolved), resolved);
+
+      expect(score.applicable).toBe(true);
+      // 2 entries (m1 tested, m2 not), confidence 1.0, no Istanbul → base 50.
+      expect(score.base).toBeCloseTo(50, 5);
+      expect(score.confidence).toBe(1);
+    });
+
+    it('reasoner isTested without real coverage no longer inflates the aggregate', () => {
+      const model: CodeModel = {
+        modules: [
+          {
+            filePath: '/src/s.ts',
+            classes: [
+              {
+                name: 'S',
+                type: 'service',
+                methods: [
+                  { name: 'm1', visibility: 'public', params: [], returnType: 'void', branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false, externalCalls: [], internalCalls: [], startLine: 1, endLine: 1 },
+                ],
+                dependencies: [],
+                states: [],
+              },
+            ],
+          },
+        ],
+        dependencyGraph: [],
+        testInventory: { testFiles: [], coverage: {} }, // m1 uncovered
+      };
+      const reasoner: ReasonerOutput = {
+        ...emptyReasonerOutput(),
+        discoveredStates: [
+          { className: 'S', methodName: 'm1', state: 'state-a', isTested: true, riskIfUntested: 'high', confidence: 1 },
+        ],
+      };
+      const resolved = resolvedFor(model);
+      const score = calculateStateCoverage(buildStateCatalog(model, reasoner, resolved), resolved);
+
+      expect(score.applicable).toBe(true);
+      expect(score.base).toBe(0);
     });
   });
 
@@ -467,7 +536,7 @@ describe('sub-score calculators', () => {
       const empty = emptyReasonerOutput();
       const r = resolvedFor(model);
       expect(calculateAssertionQuality(model, empty, r).final).toBe(calculateAssertionQuality(model, empty, r).base);
-      expect(calculateStateCoverage(model, empty, r).final).toBe(calculateStateCoverage(model, empty, r).base);
+      expect(calculateStateCoverage(buildStateCatalog(model, empty, r), r).final).toBe(calculateStateCoverage(buildStateCatalog(model, empty, r), r).base);
       expect(calculateMutationResilience(model, empty, r).final).toBe(calculateMutationResilience(model, empty, r).base);
       expect(calculateCriticalityWeighting(model, empty, r).final).toBe(calculateCriticalityWeighting(model, empty, r).base);
     });
@@ -494,7 +563,7 @@ describe('sub-score calculators', () => {
         testInventory: { testFiles: [], coverage: {} },
       };
       const r = resolvedFor(noTestsModel);
-      expect(calculateStateCoverage(noTestsModel, emptyReasonerOutput(), r).base).toBe(0);
+      expect(calculateStateCoverage(buildStateCatalog(noTestsModel, emptyReasonerOutput(), r), r).base).toBe(0);
       expect(calculateMutationResilience(noTestsModel, emptyReasonerOutput(), r).base).toBe(0);
       expect(calculateCriticalityWeighting(noTestsModel, emptyReasonerOutput(), r).base).toBe(0);
     });

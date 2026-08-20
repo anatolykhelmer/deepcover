@@ -1,13 +1,12 @@
 # Product Backlog
 
-> Last updated: 2026-08-18
+> Last updated: 2026-08-19
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-001 | One StateCatalog for aggregate and per-method scores | Planned — spec + 7-task implementation plan ready; scope covers all 4 state consumers (aggregate, per-method, untested list, gaps). High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-18-state-catalog-design.md) | [plan](../superpowers/plans/2026-08-18-state-catalog.md) | 2026-08-18 |
 | BL-002 | Validate config and runtime JSON with existing Zod | `DeepCoverConfigSchema` + optional Jest/Istanbul runtime schemas via `safeParse` with clear warnings — use Zod already in the package, not a new config loader. High priority, impact 4/effort 2. | | | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
@@ -27,6 +26,7 @@
 | BL-013 | Integration tests must not swallow extract failures | Stop `catch { return }` in integration specs so missing/broken fixtures fail the suite instead of passing. | 2026-08-18 |
 | BL-014 | Run should score when reasoner-output is already filled | In agent-template mode `run` stops after the reason stage even when a filled `reasoner-output.json` is sitting on disk, so the user gets no score from the flagship command. | 2026-08-18 |
 | BL-015 | Dedupe extractMethodFromTarget | One helper next to `matchers.ts` now; eventually persist `calledMethod` from ts-morph at extract time instead of re-regexing `AssertionNode.target`. | 2026-08-18 |
+| BL-017 | Rename className to owner in getBranchScaleForState | `state-coverage.ts`'s `getBranchScaleForState` still names its parameter `className`, but since BL-001 it can receive a module filePath for standalone-function-owned catalog entries (correct behavior, misleading name). Also collapse the `affectedMethods: string[]` parameter to a single `methodName` — every call site now passes a one-element array. | 2026-08-19 |
 
 ## In Progress
 
@@ -38,14 +38,27 @@
 
 | ID | Title | Completed |
 |----|-------|-----------|
-| | | |
+| BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 |
 
 ## Dropped
 
 | ID | Title | Reason | Dropped |
 |----|-------|--------|---------|
+| BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-19 — PR #3 review applied; BL-016 dropped
+- Applied the PR #3 review suggestions on the BL-001 branch: removed the gap-generator substring dedupe guard entirely (catalog identity makes it redundant; it swallowed distinct states), dropped ghost reasoner states (unknown method/class) at catalog build so the aggregate/per-method invariant holds for malformed LLM output, three-way gap `reason` by provenance, comment/README cleanups, plus pinning tests.
+- BL-016 → Dropped: the review's stronger fix (delete the guard) supersedes the planned exact-key comparison.
+
+### 2026-08-19 — BL-016, BL-017
+- Added two follow-ups surfaced by BL-001's final whole-branch review, deferred there as non-blocking minors: BL-016 (gap-generator's substring dedupe should be exact-key) and BL-017 (`getBranchScaleForState`'s `className` param should be `owner`/single `methodName`). Both placed in `Ideas` — small, well-scoped, no urgency.
+
+### 2026-08-18 — BL-001
+- Implemented: `src/scorer/state-catalog.ts` is the single source of domain
+  states; aggregate, per-method, untested lists, and gaps all read it.
+  Behavior changes recorded in README ("State coverage in 0.6.0").
 
 ### 2026-08-18 — BL-001 (planned)
 - Wrote the 7-task implementation plan (`docs/superpowers/plans/2026-08-18-state-catalog.md`); status → planned.
