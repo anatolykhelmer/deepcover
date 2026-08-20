@@ -23,9 +23,11 @@ export const reasonCommand = new Command('reason')
     bugs?: boolean;
   }) => {
     const paths = resolvePaths({ root: options.root });
-    const config = loadConfig(paths.rootDir);
 
     try {
+      // Inside the try: an invalid config now aborts the run, and outside it the
+      // throw would escape as an unhandled rejection with a stack trace.
+      const config = loadConfig(paths.rootDir);
       const reasoner = resolveReasoner(config);
 
       // A `--code-model` file may itself be a narrowed extract, so it never counts
