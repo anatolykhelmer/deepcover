@@ -111,7 +111,29 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-## State coverage in 0.6.0 (unreleased)
+## What's new in 0.6.0 (unreleased)
+
+### Config files are validated
+
+`deepcover.config.{ts,js,json}` is now checked against a schema when it loads.
+An unknown key, an invalid value, or a file that cannot be read or parsed
+produces a warning naming the file and the offending key, and DeepCover falls
+back to its defaults rather than running on a config it does not understand:
+
+```
+Warning: invalid config in /project/deepcover.config.json — using defaults:
+✖ Unrecognized key: "resoner"
+✖ Invalid option: expected one of "cursor"|"anthropic"|"mock"|"none"
+  → at reasoner.provider
+```
+
+Unknown keys are errors, not warnings-and-continue — a misspelled key was
+previously accepted and then ignored, which looked identical to the setting
+working. A partially specified section now keeps the defaults for the fields
+it does not mention; previously `weights: { assertionQuality: 0.5 }` silently
+dropped the other three weights.
+
+### State coverage
 
 All four state consumers (aggregate state coverage, per-method scores,
 untested lists, gap generation) now read one StateCatalog — the union of
@@ -575,6 +597,9 @@ export default {
 ```
 
 Also supports `.js` and `.json` config files.
+
+The config is validated when it loads. Unknown keys are errors — if DeepCover
+warns about a key you expect to work, check it against the fields above.
 
 **Anthropic:** set `reasoner.provider` to `'anthropic'` and provide a key. Full walkthrough: [Install for Anthropic](#install-for-anthropic).
 
