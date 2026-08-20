@@ -7,7 +7,6 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-002 | Validate config and runtime JSON with existing Zod | **planned** — `DeepCoverConfigSchema` + `safeParse` with clear warnings, using the Zod already in the package. Runtime-artifact schemas cut from scope. Ships as 0.6.0. High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-20-config-validation-design.md) | [plan](../superpowers/plans/2026-08-20-config-validation.md) | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
 ## Ideas
@@ -39,6 +38,7 @@
 | ID | Title | Completed |
 |----|-------|-----------|
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 |
+| BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 |
 
 ## Dropped
 
@@ -47,6 +47,11 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-20 — BL-002 (ready for merge)
+- Completed implementation: 5 commits on `config-validation`, PR #4 open.
+- Amended the original decision mid-implementation: invalid config now throws `ConfigError` and stops the run (fail-hard) instead of warning and falling back to defaults. The fallback silently changed `reasoner.provider`, making typos in unrelated fields dangerous in CI. Also uncovered and fixed ordering bugs in `extract` and `reason` where config was loaded after (or outside) work/try-catch.
+- Status → ready to merge; this is a breaking change for 0.6.0 (marked with `!` in commit).
 
 ### 2026-08-20 — BL-002 (amended: fail-hard)
 - Reversed the original "warn + fall back to defaults" decision: an invalid config now throws `ConfigError` and stops the run with exit code 1. The fallback silently changed `reasoner.provider`, so a typo in one field could run the analysis against a different provider than configured — and in CI, where `--min-score` gates a build, silently-wrong numbers are worse than a stopped run. Strict schema + soft fallback was also the incoherent pairing.
