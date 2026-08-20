@@ -39,7 +39,8 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "paradigm-e2e",
-      "/docs/"
+      "/docs/",
+      "/.claude/"
     ],
     "collectCoverageFrom": [
       "src/**/*.ts",
