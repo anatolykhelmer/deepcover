@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-002 | Validate config and runtime JSON with existing Zod | **designing** — `DeepCoverConfigSchema` + `safeParse` with clear warnings, using the Zod already in the package. Runtime-artifact schemas cut from scope. High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-20-config-validation-design.md) | | 2026-08-18 |
+| BL-002 | Validate config and runtime JSON with existing Zod | **planned** — `DeepCoverConfigSchema` + `safeParse` with clear warnings, using the Zod already in the package. Runtime-artifact schemas cut from scope. Ships as 0.6.0. High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-20-config-validation-design.md) | [plan](../superpowers/plans/2026-08-20-config-validation.md) | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
 ## Ideas
@@ -47,6 +47,11 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-20 — BL-002 (planned)
+- Wrote the 4-task implementation plan (`docs/superpowers/plans/2026-08-20-config-validation.md`); status → planned.
+- Version bump folded in as Task 4: `package.json` was still on 0.5.0 while the README already documented 0.6.0 as unreleased (left over from BL-001). 0.6.0 now covers both changes.
+- During planning, verified against the working tree that the `z.infer` type is a drop-in for the interface (`tsc --noEmit` clean, including `resolve-provider.ts`'s indexed access) and that `loadConfig` can be tested in-process under ts-jest for `.ts` configs — so config tests do not need to shell out to the CLI the way the other CLI specs do.
 
 ### 2026-08-20 — BL-002
 - Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-20-config-validation-design.md`); status → designing.
