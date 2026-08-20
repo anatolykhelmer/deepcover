@@ -108,8 +108,23 @@ describe('DeepCoverReporter', () => {
     }
   });
 
+  /**
+   * A reporter pointed at a coverage directory that does not exist.
+   *
+   * `globalConfig.coverageDirectory` defaults to `'./coverage'` resolved
+   * against `process.cwd()`, so passing `{}` here makes the reporter read this
+   * repo's own `coverage/` directory. On any machine that has run
+   * `npm test -- --coverage` that directory holds a real `coverage-final.json`,
+   * which the reporter then copies into the test's output directory — green on
+   * a fresh clone, red locally. Every test that does not deliberately provide
+   * coverage data must go through this helper.
+   */
+  function isolatedReporter(options: { outputDir: string }): DeepCoverReporter {
+    return new DeepCoverReporter({ coverageDirectory: path.join(tmpDir, 'no-coverage-here') }, options);
+  }
+
   it('captures test results from mocked AggregatedResult', async () => {
-    const reporter = new DeepCoverReporter({}, { outputDir: tmpDir });
+    const reporter = isolatedReporter({ outputDir: tmpDir });
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
@@ -119,7 +134,7 @@ describe('DeepCoverReporter', () => {
 
   it('writes to the configured output directory', async () => {
     const customDir = path.join(tmpDir, 'custom-output');
-    const reporter = new DeepCoverReporter({}, { outputDir: customDir });
+    const reporter = isolatedReporter({ outputDir: customDir });
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
@@ -128,7 +143,7 @@ describe('DeepCoverReporter', () => {
   });
 
   it('output file contains valid JSON with testResults array', async () => {
-    const reporter = new DeepCoverReporter({}, { outputDir: tmpDir });
+    const reporter = isolatedReporter({ outputDir: tmpDir });
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
@@ -139,7 +154,7 @@ describe('DeepCoverReporter', () => {
   });
 
   it('each test result has testFilePath, testName, status, duration, assertionCount', async () => {
-    const reporter = new DeepCoverReporter({}, { outputDir: tmpDir });
+    const reporter = isolatedReporter({ outputDir: tmpDir });
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
@@ -185,7 +200,10 @@ describe('DeepCoverReporter', () => {
 
   it('does not fail when coverage-final.json does not exist', async () => {
     const outputDir = path.join(tmpDir, 'deepcover-out2');
-    const reporter = new DeepCoverReporter({}, { outputDir });
+    const coverageDir = path.join(tmpDir, 'no-coverage-here');
+    expect(fs.existsSync(coverageDir)).toBe(false);
+
+    const reporter = new DeepCoverReporter({ coverageDirectory: coverageDir }, { outputDir });
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
