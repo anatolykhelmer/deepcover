@@ -54,25 +54,44 @@ export const DEFAULT_CONFIG: DeepCoverConfig = {
   },
 };
 
+/**
+ * A config file exists but cannot be honoured. Thrown rather than warned
+ * because falling back to defaults silently changes what DeepCover does —
+ * most sharply `reasoner.provider`, where a typo elsewhere in the file would
+ * quietly run the analysis against a different provider than the one
+ * configured. In CI, where a score gates the build, silently-wrong numbers are
+ * worse than a stopped run.
+ *
+ * Every CLI command catches this and prints `message` without a stack trace.
+ */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}
+
+const HOW_TO_RECOVER = 'Fix the config, or delete it to run with defaults.';
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Reads the raw config object, or warns and returns undefined. */
-function readRawConfig(configPath: string): unknown | undefined {
+/** Reads the raw config object, or throws ConfigError explaining why it could not. */
+function readRawConfig(configPath: string): unknown {
   if (configPath.endsWith('.json')) {
     let raw: string;
     try {
       raw = fs.readFileSync(configPath, 'utf-8');
     } catch (err) {
-      console.warn(`Warning: could not load ${configPath} — using defaults: ${errorText(err)}`);
-      return undefined;
+      throw new ConfigError(`${configPath} could not be read: ${errorText(err)}\n${HOW_TO_RECOVER}`);
     }
     try {
       return JSON.parse(raw);
     } catch (err) {
-      console.warn(`Warning: could not parse ${configPath} — using defaults: ${errorText(err)}`);
-      return undefined;
+      throw new ConfigError(
+        `${configPath} could not be parsed as JSON: ${errorText(err)}\n${HOW_TO_RECOVER}`,
+      );
     }
   }
 
@@ -82,10 +101,7 @@ function readRawConfig(configPath: string): unknown | undefined {
     const mod = require(configPath);
     return mod.default ?? mod;
   } catch (err) {
-    // Previously a bare `catch {}` — a config that failed to load was discarded
-    // in total silence, which is the worst possible outcome for the user.
-    console.warn(`Warning: could not load ${configPath} — using defaults: ${errorText(err)}`);
-    return undefined;
+    throw new ConfigError(`${configPath} could not be loaded: ${errorText(err)}\n${HOW_TO_RECOVER}`);
   }
 }
 
@@ -122,19 +138,16 @@ export function loadConfig(rootDir: string): DeepCoverConfig {
     const configPath = path.resolve(rootDir, candidate);
     if (!fs.existsSync(configPath)) continue;
 
-    // Returns on the first candidate that exists, rather than falling through
-    // to the next one: if the user's deepcover.config.ts is broken, silently
-    // loading a stale deepcover.config.json instead would be worse than
-    // running on documented defaults.
+    // Stops at the first candidate that exists rather than falling through to
+    // the next one: if the user's deepcover.config.ts is broken, silently
+    // loading a stale deepcover.config.json instead would compound the problem.
     const raw = readRawConfig(configPath);
-    if (raw === undefined) return DEFAULT_CONFIG;
 
     const result = DeepCoverConfigSchema.safeParse(raw);
     if (!result.success) {
-      console.warn(
-        `Warning: invalid config in ${configPath} — using defaults:\n${z.prettifyError(result.error)}`,
+      throw new ConfigError(
+        `Invalid config in ${configPath}:\n${z.prettifyError(result.error)}\n\n${HOW_TO_RECOVER}`,
       );
-      return DEFAULT_CONFIG;
     }
 
     return mergeWithDefaults(result.data);

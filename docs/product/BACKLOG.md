@@ -48,6 +48,12 @@
 
 ## Decision Log
 
+### 2026-08-20 — BL-002 (amended: fail-hard)
+- Reversed the original "warn + fall back to defaults" decision: an invalid config now throws `ConfigError` and stops the run with exit code 1. The fallback silently changed `reasoner.provider`, so a typo in one field could run the analysis against a different provider than configured — and in CI, where `--min-score` gates a build, silently-wrong numbers are worse than a stopped run. Strict schema + soft fallback was also the incoherent pairing.
+- All three failure kinds fail hard (unreadable / unparseable / schema-invalid). A *missing* config file still runs on defaults silently.
+- Uncovered and fixed while doing it: `extract` had no `try/catch` at all and read config at the very *end* (only for the "Next:" hint), so failing there would abort after artifacts were written and success printed; `reason` read config just outside its `try`, so a throw would escape as an unhandled rejection with a stack trace. Config now loads before any work in every command.
+- Spec amended in place with a dated note rather than rewritten, so the reversal and its reasoning stay visible.
+
 ### 2026-08-20 — BL-002 (planned)
 - Wrote the 4-task implementation plan (`docs/superpowers/plans/2026-08-20-config-validation.md`); status → planned.
 - Version bump folded in as Task 4: `package.json` was still on 0.5.0 while the README already documented 0.6.0 as unreleased (left over from BL-001). 0.6.0 now covers both changes.

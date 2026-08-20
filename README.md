@@ -117,21 +117,31 @@ involves an LLM, and it always says which Reasoner it used.
 
 `deepcover.config.{ts,js,json}` is now checked against a schema when it loads.
 An unknown key, an invalid value, or a file that cannot be read or parsed
-produces a warning naming the file and the offending key, and DeepCover falls
-back to its defaults rather than running on a config it does not understand:
+**stops the run** with exit code 1, naming the file and every offending key:
 
 ```
-Warning: invalid config in /project/deepcover.config.json — using defaults:
+Invalid config in /project/deepcover.config.json:
 ✖ Unrecognized key: "resoner"
 ✖ Invalid option: expected one of "cursor"|"anthropic"|"mock"|"none"
   → at reasoner.provider
+
+Fix the config, or delete it to run with defaults.
 ```
 
-Unknown keys are errors, not warnings-and-continue — a misspelled key was
-previously accepted and then ignored, which looked identical to the setting
-working. A partially specified section now keeps the defaults for the fields
-it does not mention; previously `weights: { assertionQuality: 0.5 }` silently
-dropped the other three weights.
+DeepCover stops rather than falling back to defaults because the fallback
+changes what it does — most sharply `reasoner.provider`, where a typo in one
+field would quietly run the analysis against a different provider than the one
+configured. In CI, where `--min-score` gates the build, silently-wrong numbers
+are worse than a stopped run. The check happens before any work, so a failing
+run writes no artifacts.
+
+Having **no** config file is still perfectly normal and runs on defaults
+silently — this applies only to a config file that exists and cannot be
+honoured.
+
+A partially specified section now keeps the defaults for the fields it does not
+mention; previously `weights: { assertionQuality: 0.5 }` silently dropped the
+other three weights.
 
 ### State coverage
 
@@ -598,8 +608,10 @@ export default {
 
 Also supports `.js` and `.json` config files.
 
-The config is validated when it loads. Unknown keys are errors — if DeepCover
-warns about a key you expect to work, check it against the fields above.
+The config is validated when it loads, and an invalid config stops the run with
+exit code 1 before any work happens. Unknown keys are errors — if DeepCover
+rejects a key you expect to work, check it against the fields above. Deleting
+the config file runs on the defaults shown here.
 
 **Anthropic:** set `reasoner.provider` to `'anthropic'` and provide a key. Full walkthrough: [Install for Anthropic](#install-for-anthropic).
 

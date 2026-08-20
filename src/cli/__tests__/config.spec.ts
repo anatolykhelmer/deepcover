@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { DeepCoverConfigSchema, loadConfig, DEFAULT_CONFIG } from '../config';
+import { DeepCoverConfigSchema, loadConfig, DEFAULT_CONFIG, ConfigError } from '../config';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
@@ -83,7 +83,7 @@ describe('DeepCoverConfigSchema', () => {
   });
 });
 
-describe('loadConfig validation', () => {
+describe('loadConfig rejects invalid config', () => {
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -126,51 +126,49 @@ describe('loadConfig validation', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns and uses defaults for an unknown top-level key', () => {
-    const config = loadConfig(jsonDir({ resoner: { provider: 'mock' } }));
-    expect(config).toEqual(DEFAULT_CONFIG);
-    expect(warn).toHaveBeenCalledTimes(1);
-    const message = warn.mock.calls[0]![0] as string;
-    expect(message).toContain('invalid config');
-    expect(message).toContain('resoner');
+  it('throws naming the unknown top-level key', () => {
+    const dir = jsonDir({ resoner: { provider: 'mock' } });
+    expect(() => loadConfig(dir)).toThrow(ConfigError);
+    expect(() => loadConfig(dir)).toThrow(/resoner/);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns and uses defaults for an unknown provider, naming the path', () => {
-    const config = loadConfig(jsonDir({ reasoner: { provider: 'anthropc' } }));
-    expect(config).toEqual(DEFAULT_CONFIG);
-    expect(warn.mock.calls[0]![0]).toContain('reasoner.provider');
+  it('throws naming the path of an unknown provider', () => {
+    const dir = jsonDir({ reasoner: { provider: 'anthropc' } });
+    expect(() => loadConfig(dir)).toThrow(/reasoner\.provider/);
   });
 
-  it('warns and uses defaults for an out-of-range maxInfluence', () => {
-    const config = loadConfig(jsonDir({ reasoner: { provider: 'mock', maxInfluence: 5 } }));
-    expect(config).toEqual(DEFAULT_CONFIG);
-    expect(warn.mock.calls[0]![0]).toContain('reasoner.maxInfluence');
+  it('throws for an out-of-range maxInfluence', () => {
+    const dir = jsonDir({ reasoner: { provider: 'mock', maxInfluence: 5 } });
+    expect(() => loadConfig(dir)).toThrow(/reasoner\.maxInfluence/);
   });
 
-  it('warns and uses defaults when reasoner has no provider', () => {
-    const config = loadConfig(jsonDir({ reasoner: { model: 'x' } }));
-    expect(config).toEqual(DEFAULT_CONFIG);
-    expect(warn.mock.calls[0]![0]).toContain('reasoner.provider');
+  it('throws when reasoner has no provider', () => {
+    const dir = jsonDir({ reasoner: { model: 'x' } });
+    expect(() => loadConfig(dir)).toThrow(/reasoner\.provider/);
   });
 
-  it('warns and uses defaults for malformed JSON instead of throwing', () => {
+  it('throws for malformed JSON', () => {
     const dir = configDir('deepcover.config.json', '{ "reasoner": ');
-    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG);
-    expect(warn.mock.calls[0]![0]).toContain('could not parse');
+    expect(() => loadConfig(dir)).toThrow(ConfigError);
+    expect(() => loadConfig(dir)).toThrow(/could not be parsed/i);
   });
 
-  it('warns and uses defaults when a .ts config throws on load', () => {
+  it('throws when a .ts config throws on load', () => {
     const dir = configDir('deepcover.config.ts', "throw new Error('boom');\n");
-    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG);
-    const message = warn.mock.calls[0]![0] as string;
-    expect(message).toContain('could not load');
-    expect(message).toContain('boom');
+    expect(() => loadConfig(dir)).toThrow(/boom/);
   });
 
-  it('names the offending file path in every warning', () => {
+  it('names the offending file path in the error', () => {
     const dir = jsonDir({ resoner: {} });
-    loadConfig(dir);
-    expect(warn.mock.calls[0]![0]).toContain(path.join(dir, 'deepcover.config.json'));
+    expect(() => loadConfig(dir)).toThrow(
+      new RegExp(path.join(dir, 'deepcover.config.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+  });
+
+  it('tells the user how to get back to a working run', () => {
+    const dir = jsonDir({ resoner: {} });
+    expect(() => loadConfig(dir)).toThrow(/delete it to run with defaults/);
   });
 });
 
