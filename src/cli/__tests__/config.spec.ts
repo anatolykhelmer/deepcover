@@ -173,3 +173,58 @@ describe('loadConfig validation', () => {
     expect(warn.mock.calls[0]![0]).toContain(path.join(dir, 'deepcover.config.json'));
   });
 });
+
+describe('loadConfig merge', () => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  function jsonDir(config: unknown): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-config-'));
+    fs.writeFileSync(path.join(dir, 'deepcover.config.json'), JSON.stringify(config));
+    return dir;
+  }
+
+  it('keeps the other three default weights when one is overridden', () => {
+    const config = loadConfig(jsonDir({ weights: { assertionQuality: 0.5 } }));
+    expect(config.weights).toEqual({
+      assertionQuality: 0.5,
+      stateCoverage: DEFAULT_CONFIG.weights!.stateCoverage,
+      mutationResilience: DEFAULT_CONFIG.weights!.mutationResilience,
+      criticalityWeighting: DEFAULT_CONFIG.weights!.criticalityWeighting,
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the default provider when reasoner specifies only other fields', () => {
+    // provider is required by the schema, so the realistic partial case is
+    // adding a field alongside it and expecting nothing else to be lost.
+    const config = loadConfig(jsonDir({ reasoner: { provider: 'mock', model: 'x' } }));
+    expect(config.reasoner).toEqual({ provider: 'mock', model: 'x' });
+  });
+
+  it('replaces arrays wholesale rather than concatenating', () => {
+    const config = loadConfig(jsonDir({ include: ['src/a.ts'] }));
+    expect(config.include).toEqual(['src/a.ts']);
+  });
+
+  it('leaves untouched sections at their defaults', () => {
+    const config = loadConfig(jsonDir({ thresholds: { composite: 80 } }));
+    expect(config.thresholds).toEqual({ composite: 80 });
+    expect(config.weights).toEqual(DEFAULT_CONFIG.weights);
+    expect(config.reasoner).toEqual(DEFAULT_CONFIG.reasoner);
+  });
+
+  it('does not mutate DEFAULT_CONFIG across calls', () => {
+    loadConfig(jsonDir({ weights: { assertionQuality: 0.99 } }));
+    expect(DEFAULT_CONFIG.weights!.assertionQuality).toBe(0.3);
+    const second = loadConfig(jsonDir({}));
+    expect(second.weights!.assertionQuality).toBe(0.3);
+  });
+});

@@ -89,6 +89,28 @@ function readRawConfig(configPath: string): unknown | undefined {
   }
 }
 
+/**
+ * One level deep, because the config is one level deep. Object sections merge
+ * field-by-field so a partially specified section keeps its sibling defaults;
+ * array fields replace wholesale, since a user narrowing `include` means to
+ * narrow it, not to extend a default.
+ */
+function mergeWithDefaults(config: DeepCoverConfig): DeepCoverConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    ...config,
+    ...(DEFAULT_CONFIG.reasoner || config.reasoner
+      ? { reasoner: { ...DEFAULT_CONFIG.reasoner, ...config.reasoner } as DeepCoverConfig['reasoner'] }
+      : {}),
+    ...(DEFAULT_CONFIG.weights || config.weights
+      ? { weights: { ...DEFAULT_CONFIG.weights, ...config.weights } }
+      : {}),
+    ...(DEFAULT_CONFIG.thresholds || config.thresholds
+      ? { thresholds: { ...DEFAULT_CONFIG.thresholds, ...config.thresholds } }
+      : {}),
+  };
+}
+
 export function loadConfig(rootDir: string): DeepCoverConfig {
   const candidates = [
     'deepcover.config.ts',
@@ -115,7 +137,7 @@ export function loadConfig(rootDir: string): DeepCoverConfig {
       return DEFAULT_CONFIG;
     }
 
-    return { ...DEFAULT_CONFIG, ...result.data };
+    return mergeWithDefaults(result.data);
   }
 
   return DEFAULT_CONFIG;
