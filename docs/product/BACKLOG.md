@@ -7,7 +7,6 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-002 | Validate config and runtime JSON with existing Zod | **ready to merge** — implementation complete (5 commits, PR #4). Breaking change: invalid config now stops the run instead of warning. `DeepCoverConfigSchema` + fail-hard on validation. Ships as 0.6.0. High priority, impact 4/effort 2. | [spec](../superpowers/specs/2026-08-20-config-validation-design.md) | [plan](../superpowers/plans/2026-08-20-config-validation.md) | 2026-08-18 |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
 ## Ideas
@@ -39,6 +38,7 @@
 | ID | Title | Completed |
 |----|-------|-----------|
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 |
+| BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 |
 
 ## Dropped
 
