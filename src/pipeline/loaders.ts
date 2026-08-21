@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { CodeModel, ModuleNode } from '../types/code-model';
+import { allCallables } from '../types/callable';
 import type { BugSignal } from '../bug-detector/types';
 import type { ReasonerOutput } from '../reasoner/types';
 import { ReasonerOutputSchema } from '../reasoner/types';
@@ -105,22 +106,10 @@ export function loadIstanbulByMethod(
     );
     if (!fileCoverage) continue;
 
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        const metrics = mapIstanbulToMethod(fileCoverage[1], method.startLine, method.endLine);
-        if (metrics) {
-          result.set(`${cls.name}.${method.name}`, {
-            lineCoveragePercent: metrics.lineCoveragePercent,
-            branchCoveragePercent: metrics.branchCoveragePercent,
-          });
-        }
-      }
-    }
-
-    for (const fn of mod.functions ?? []) {
-      const metrics = mapIstanbulToMethod(fileCoverage[1], fn.startLine, fn.endLine);
+    for (const c of allCallables(mod)) {
+      const metrics = mapIstanbulToMethod(fileCoverage[1], c.node.startLine, c.node.endLine);
       if (metrics) {
-        result.set(`${mod.filePath}.${fn.name}`, {
+        result.set(c.qualifiedName, {
           lineCoveragePercent: metrics.lineCoveragePercent,
           branchCoveragePercent: metrics.branchCoveragePercent,
         });
