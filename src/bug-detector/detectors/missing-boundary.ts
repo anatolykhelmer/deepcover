@@ -1,8 +1,9 @@
-import type { CodeModel, MethodNode, FunctionNode } from '../../types/code-model';
+import type { CodeModel, CallableNode } from '../../types/code-model';
 import type { ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
 import { buildClassFileOwners, type ClassFileOwners } from '../../types/method-owner';
 import { findTestsForCallable, type CallableScope } from '../find-tests';
+import { allCallables } from '../../types/callable';
 
 const BOUNDARY_PATTERN = /(\w+)\s*(>|<|>=|<=|===|!==)\s*(\d+)/;
 const LENGTH_PATTERN = /(\w+)\.length\s*(>|<|>=|<=|===|!==)\s*(\d+)/;
@@ -16,15 +17,9 @@ export class MissingBoundaryDetector implements BugDetector {
     const classFileOwners = buildClassFileOwners(codeModel.modules);
 
     for (const mod of codeModel.modules) {
-      for (const cls of mod.classes) {
-        for (const method of cls.methods) {
-          signals.push(...this.inspect(codeModel, method,
-            { owner: cls.name, filePath: mod.filePath, isClass: true }, classFileOwners));
-        }
-      }
-      for (const fn of mod.functions ?? []) {
-        signals.push(...this.inspect(codeModel, fn,
-          { owner: mod.filePath, filePath: mod.filePath, isClass: false }, classFileOwners));
+      for (const c of allCallables(mod)) {
+        signals.push(...this.inspect(codeModel, c.node,
+          { owner: c.owner, filePath: c.filePath, isClass: c.ownerKind === 'class' }, classFileOwners));
       }
     }
     return signals;
@@ -32,7 +27,7 @@ export class MissingBoundaryDetector implements BugDetector {
 
   private inspect(
     codeModel: CodeModel,
-    callable: MethodNode | FunctionNode,
+    callable: CallableNode,
     scope: CallableScope,
     classFileOwners: ClassFileOwners
   ): BugSignal[] {
