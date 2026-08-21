@@ -18,8 +18,9 @@ export interface ClassNode {
   states: StateNode[];
 }
 
-export interface MethodNode {
+export interface CallableNode {
   name: string;
+  /** Standalone functions are always 'public'. */
   visibility: 'public' | 'protected' | 'private';
   params: ParamNode[];
   returnType: string;
@@ -33,20 +34,9 @@ export interface MethodNode {
   endLine: number;
 }
 
-export interface FunctionNode {
-  name: string;
-  visibility: 'public';
-  params: ParamNode[];
-  returnType: string;
-  branches: BranchNode[];
-  branchCount: number;
-  throwsErrors: boolean;
-  hasAsyncOps: boolean;
-  externalCalls: string[];
-  internalCalls: string[];
-  startLine: number;
-  endLine: number;
-}
+/** Aliases: the public API and the serialized code-model.json shape are unchanged. */
+export type MethodNode = CallableNode;
+export type FunctionNode = CallableNode;
 
 export interface ParamNode {
   name: string;
