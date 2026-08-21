@@ -124,8 +124,10 @@ function resolveCoverage(
     const byFile = methods.get(classMethodKey(filePath, className, methodName));
     if (byFile) return byFile;
     // standalone functions (className = module path)
-    const fn = methods.get(functionCoverageKey(filePath, methodName));
-    if (fn) return fn;
+    if (className === filePath) {
+      const fn = methods.get(functionCoverageKey(filePath, methodName));
+      if (fn) return fn;
+    }
     const candidates = keysByName.get(`${className}.${methodName}`);
     return candidates && candidates.length === 1 ? methods.get(candidates[0]) : undefined;
   }

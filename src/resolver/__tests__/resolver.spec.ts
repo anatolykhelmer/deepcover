@@ -136,4 +136,46 @@ describe('resolveCoverage', () => {
     expect(resolved.isMethodCovered('BService', 'doThing', 'src/b.service.ts')).toBe(false);
     expect(resolved.getTestsForMethod('BService', 'doThing', 'src/b.service.ts')).toEqual([]);
   });
+
+  it('does not resolve a nonexistent class method to a same-named standalone function (regression)', () => {
+    const model: CodeModel = {
+      modules: [{
+        filePath: 'src/order.service.ts',
+        classes: [{
+          name: 'OrderService',
+          type: 'service',
+          methods: [{
+            name: 'create', visibility: 'public', params: [], returnType: 'void',
+            branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false,
+            externalCalls: [], internalCalls: [], startLine: 5, endLine: 10,
+          }],
+          dependencies: [],
+          states: [],
+        }],
+        functions: [{
+          name: 'ghost', visibility: 'public', params: [], returnType: 'void',
+          branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false,
+          externalCalls: [], internalCalls: [], startLine: 20, endLine: 24,
+        }],
+      }],
+      dependencyGraph: [],
+      testInventory: {
+        testFiles: [],
+        coverage: { ghost: ['covers ghost'] },
+      },
+    };
+
+    const resolved = resolveCoverage(model, '/project');
+
+    // A hallucinated class-method query (e.g. a reasoner rating `OrderService.ghost`)
+    // must fail closed, not borrow the standalone function's coverage.
+    expect(resolved.getMethodCoverage('OrderService', 'ghost', 'src/order.service.ts')).toBeUndefined();
+    expect(resolved.isMethodCovered('OrderService', 'ghost', 'src/order.service.ts')).toBe(false);
+
+    // The legitimate function query (className = module path) still resolves.
+    const fn = resolved.getMethodCoverage('src/order.service.ts', 'ghost', 'src/order.service.ts');
+    expect(fn?.ownerKind).toBe('module');
+    expect(fn?.staticTests).toEqual(['covers ghost']);
+    expect(fn?.isCovered).toBe(true);
+  });
 });
