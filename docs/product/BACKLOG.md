@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-20
+> Last updated: 2026-08-21
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-003 | Callable + CoverageKey instead of class/function dual loops | Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
+| BL-003 | Callable + CoverageKey instead of class/function dual loops | **designing** — Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
 
 ## Ideas
 
@@ -47,6 +47,9 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-21 — BL-003 (designing)
+- Started BL-003 on branch `callable-node` (off main after PR #6 merge). Brainstorming the design spec; status → designing.
 
 ### 2026-08-20 — BL-002 (ready for merge)
 - Completed implementation: 5 commits on `config-validation`, PR #4 open.
