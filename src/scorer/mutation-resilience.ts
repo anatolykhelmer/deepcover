@@ -4,6 +4,7 @@ import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { getAssertionSpecificity } from './matchers';
 import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../types/method-owner';
+import { allCallables } from '../types/callable';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -81,41 +82,8 @@ export function calculateMutationResilience(
   const classFileOwners = buildClassFileOwners(codeModel.modules);
 
   for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
-        const hasTests = mc?.isCovered ?? false;
-
-        if (resolvedCoverage.hasIstanbulData && mc?.istanbul) {
-          const { branchesTotal, branchesHit } = mc.istanbul;
-          if (branchesTotal > 0) {
-            totalBranches += branchesTotal;
-            if (hasTests) branchesHitWeighted += branchesHit;
-          } else if (hasTests) {
-            totalBranches += 1;
-            branchesHitWeighted += 1;
-          }
-        } else {
-          const branchCount = method.branchCount;
-          if (branchCount > 0) {
-            totalBranches += branchCount;
-            if (hasTests) branchesHitWeighted += branchCount;
-          } else if (hasTests) {
-            totalBranches += 1;
-            branchesHitWeighted += 1;
-          }
-        }
-
-        if (hasTests) {
-          const { specificitySum, count } = tallyAssertionSpecificity(testFiles, method.name, cls.name, true, mod.filePath, classFileOwners);
-          assertionSpecificitySum += specificitySum;
-          assertionCount += count;
-        }
-      }
-    }
-
-    for (const fn of mod.functions ?? []) {
-      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name, mod.filePath);
+    for (const c of allCallables(mod)) {
+      const mc = resolvedCoverage.getMethodCoverage(c.owner, c.node.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
 
       if (resolvedCoverage.hasIstanbulData && mc?.istanbul) {
@@ -128,7 +96,7 @@ export function calculateMutationResilience(
           branchesHitWeighted += 1;
         }
       } else {
-        const branchCount = fn.branchCount;
+        const branchCount = c.node.branchCount;
         if (branchCount > 0) {
           totalBranches += branchCount;
           if (hasTests) branchesHitWeighted += branchCount;
@@ -139,7 +107,8 @@ export function calculateMutationResilience(
       }
 
       if (hasTests) {
-        const { specificitySum, count } = tallyAssertionSpecificity(testFiles, fn.name, mod.filePath, false, mod.filePath, classFileOwners);
+        const { specificitySum, count } = tallyAssertionSpecificity(
+          testFiles, c.node.name, c.owner, c.ownerKind === 'class', mod.filePath, classFileOwners);
         assertionSpecificitySum += specificitySum;
         assertionCount += count;
       }

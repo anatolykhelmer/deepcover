@@ -2,25 +2,18 @@ import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import type { StateCatalog } from './state-catalog';
 
-/** Branch scale 0–1 when Istanbul exists on the affected method; otherwise 1. */
+/** Branch scale 0–1 when Istanbul exists on the state's method; otherwise 1.
+ *  `owner` is a class name or, for standalone-function-owned catalog entries,
+ *  the module filePath (BL-001). */
 function getBranchScaleForState(
-  className: string,
+  owner: string,
   filePath: string,
-  affectedMethods: string[],
+  methodName: string,
   resolvedCoverage: ResolvedCoverage
 ): number {
   if (!resolvedCoverage.hasIstanbulData) return 1;
-  let hasAny = false;
-  let best = 0;
-  for (const m of affectedMethods) {
-    const mc = resolvedCoverage.getMethodCoverage(className, m, filePath);
-    if (mc?.istanbul) {
-      hasAny = true;
-      const pct = mc.istanbul.branchCoveragePercent;
-      if (pct > best) best = pct;
-    }
-  }
-  return hasAny ? best / 100 : 1;
+  const mc = resolvedCoverage.getMethodCoverage(owner, methodName, filePath);
+  return mc?.istanbul ? mc.istanbul.branchCoveragePercent / 100 : 1;
 }
 
 /** Aggregate Istanbul branch coverage across all methods. Returns 0–100 or undefined if no data. */
@@ -63,7 +56,7 @@ export function calculateStateCoverage(
   for (const e of entries) {
     totalConfidence += e.confidence;
     if (e.isTested) {
-      const scale = getBranchScaleForState(e.owner, e.filePath, [e.methodName], resolvedCoverage);
+      const scale = getBranchScaleForState(e.owner, e.filePath, e.methodName, resolvedCoverage);
       testedWeight += scale * e.confidence;
     }
   }

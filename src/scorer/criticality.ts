@@ -3,6 +3,7 @@ import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { buildClassFileOwners, resolveReasonerOwnerFile } from '../types/method-owner';
+import { allCallables } from '../types/callable';
 
 function getComplexityWeight(method: { branchCount: number; externalCalls: string[] }): number {
   const branchWeight = Math.min(method.branchCount + 1, 10);
@@ -30,35 +31,15 @@ export function calculateCriticalityWeighting(
   let coveredWeight = 0;
 
   for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        const weight = getComplexityWeight(method);
-        const llmCriticality = getCriticalityFromLLM(reasonerOutput, cls.name, method.name);
-        const effectiveWeight = llmCriticality
-          ? weight * (llmCriticality === 'high' ? 2 : llmCriticality === 'medium' ? 1.5 : 1)
-          : weight;
-
-        totalWeight += effectiveWeight;
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
-        const hasTests = mc?.isCovered ?? false;
-        if (hasTests) {
-          const linePct = mc?.istanbul?.lineCoveragePercent;
-          const coverageFraction =
-            linePct !== undefined && mc?.coverageSource === 'istanbul' ? linePct / 100 : 1;
-          coveredWeight += effectiveWeight * coverageFraction;
-        }
-      }
-    }
-
-    for (const fn of mod.functions ?? []) {
-      const weight = getComplexityWeight(fn);
-      const llmCriticality = getCriticalityFromLLM(reasonerOutput, mod.filePath, fn.name);
+    for (const c of allCallables(mod)) {
+      const weight = getComplexityWeight(c.node);
+      const llmCriticality = getCriticalityFromLLM(reasonerOutput, c.owner, c.node.name);
       const effectiveWeight = llmCriticality
         ? weight * (llmCriticality === 'high' ? 2 : llmCriticality === 'medium' ? 1.5 : 1)
         : weight;
 
       totalWeight += effectiveWeight;
-      const mc = resolvedCoverage.getMethodCoverage(mod.filePath, fn.name, mod.filePath);
+      const mc = resolvedCoverage.getMethodCoverage(c.owner, c.node.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
       if (hasTests) {
         const linePct = mc?.istanbul?.lineCoveragePercent;
