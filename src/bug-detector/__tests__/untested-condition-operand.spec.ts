@@ -97,6 +97,7 @@ function makeCoverage(
     className: 'CalculatorController',
     methodName: 'calculate',
     qualifiedName: 'CalculatorController.calculate',
+    ownerKind: 'class',
     filePath: 'src/calculator.controller.ts',
     staticTests: [],
     isCovered,

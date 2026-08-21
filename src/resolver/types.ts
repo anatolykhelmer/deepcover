@@ -71,6 +71,9 @@ export interface MethodCoverage {
   /** Human-facing `ClassName.methodName` (or `filePath.fnName` for standalone
    *  functions) — the internal Map key is file-qualified instead (task 021). */
   qualifiedName: string;
+  /** 'class' for methods, 'module' for standalone functions — replaces the old
+   *  key-format inference (`key === qualifiedName`). */
+  ownerKind: 'class' | 'module';
   filePath: string;
   staticTests: string[];
   istanbul?: IstanbulMethodMetrics;
@@ -81,7 +84,7 @@ export interface MethodCoverage {
 
 /**
  * Class methods are keyed `filePath:ClassName.methodName`; standalone functions
- * `filePath.fnName`, where the owner already is the module path.
+ * `filePath:fnName` (see `CoverageKey` in types/callable.ts).
  *
  * `filePath` is required on every accessor. It used to be optional, which let a
  * call site silently fall back to a `ClassName.methodName` index — correct until
