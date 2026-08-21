@@ -8,8 +8,8 @@ import {
   CallExpression,
   VariableStatement,
 } from 'ts-morph';
-import type { FunctionNode, ParamNode } from '../types/code-model';
-import { collectBranches } from './branch-analyzer';
+import type { FunctionNode } from '../types/code-model';
+import { assembleCallableNode, buildParamNodes } from './callable-common';
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 
@@ -60,54 +60,17 @@ function getExportedVariableFunctions(stmt: VariableStatement): FunctionCandidat
 
 function analyzeFunction(candidate: FunctionCandidate, functionNames: Set<string>): FunctionNode {
   const { name, node } = candidate;
-  const params: ParamNode[] = node.getParameters().map((p) => ({
-    name: p.getName(),
-    type: p.getTypeNode()?.getText() ?? 'unknown',
-    isOptional: p.isOptional(),
-  }));
+  const params = buildParamNodes(node);
   const paramToType = new Map(params.map((param) => [param.name, param.type]));
-  const returnType = node.getReturnTypeNode()?.getText() ?? 'void';
-
   const body = node.getBody();
-  const branches = body ? collectBranches(body, params.map((p) => p.name)) : [];
-  const branchCount = branches.length;
-  const hasAsyncOps = node.isAsync() || (body ? hasAwait(body) : false);
-  const throwsErrors = body ? hasThrow(body) : false;
-  const externalCalls = body ? collectExternalCalls(body, paramToType) : [];
-  const internalCalls = body ? collectInternalCalls(body, functionNames, name) : [];
-
-  return {
+  return assembleCallableNode({
     name,
     visibility: 'public',
+    node,
     params,
-    returnType,
-    branches,
-    branchCount,
-    throwsErrors,
-    hasAsyncOps,
-    externalCalls,
-    internalCalls,
-    startLine: node.getStartLineNumber(),
-    endLine: node.getEndLineNumber(),
-  };
-}
-
-function hasAwait(node: Node): boolean {
-  let found = false;
-  node.forEachChild((child) => {
-    if (Node.isAwaitExpression(child)) found = true;
-    else found = found || hasAwait(child);
+    externalCalls: body ? collectExternalCalls(body, paramToType) : [],
+    internalCalls: body ? collectInternalCalls(body, functionNames, name) : [],
   });
-  return found;
-}
-
-function hasThrow(node: Node): boolean {
-  let found = false;
-  node.forEachChild((child) => {
-    if (Node.isThrowStatement(child)) found = true;
-    else found = found || hasThrow(child);
-  });
-  return found;
 }
 
 function collectExternalCalls(body: Node, paramToType: Map<string, string>): string[] {
