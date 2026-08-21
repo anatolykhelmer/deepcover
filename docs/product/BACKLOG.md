@@ -25,7 +25,6 @@
 | BL-013 | Integration tests must not swallow extract failures | Stop `catch { return }` in integration specs so missing/broken fixtures fail the suite instead of passing. | 2026-08-18 |
 | BL-014 | Run should score when reasoner-output is already filled | In agent-template mode `run` stops after the reason stage even when a filled `reasoner-output.json` is sitting on disk, so the user gets no score from the flagship command. | 2026-08-18 |
 | BL-015 | Dedupe extractMethodFromTarget | One helper next to `matchers.ts` now; eventually persist `calledMethod` from ts-morph at extract time instead of re-regexing `AssertionNode.target`. | 2026-08-18 |
-| BL-017 | Rename className to owner in getBranchScaleForState | `state-coverage.ts`'s `getBranchScaleForState` still names its parameter `className`, but since BL-001 it can receive a module filePath for standalone-function-owned catalog entries (correct behavior, misleading name). Also collapse the `affectedMethods: string[]` parameter to a single `methodName` — every call site now passes a one-element array. | 2026-08-19 |
 
 ## In Progress
 
@@ -35,10 +34,11 @@
 
 ## Done
 
-| ID | Title | Completed |
-|----|-------|-----------|
-| BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 |
-| BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 |
+| ID | Title | Completed | Notes |
+|----|-------|-----------|-------|
+| BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
+| BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
+| BL-017 | Rename className to owner in getBranchScaleForState | 2026-08-21 | Subsumed by BL-003 |
 
 ## Dropped
 
@@ -47,6 +47,13 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-21 — BL-003 Task 7 complete; BL-017 subsumed
+- Completed Task 7 (final verification) on branch `callable-node`: full type-check clean, all 554 tests passing, residual grep scan shows zero missed migrations.
+- Behavior changes implemented and user-approved:
+  1. **Unhandled-error-path bug detector scope widened**: previously scanned class methods only; now also scans standalone functions (pinned by regression tests).
+  2. **Resolver hardening**: `lookup()`'s standalone-function probe is gated on `className === filePath` to prevent hallucinated class-method names from borrowing a same-named function's coverage (pinned by regression test).
+- **BL-017 subsumed by BL-003 Task 3**: `getBranchScaleForState` parameter rename (`className` → `owner`) and collapse (`affectedMethods: string[]` → single `methodName`) completed as part of the core `CallableNode` refactor. BL-017 → Done.
 
 ### 2026-08-21 — BL-003 (designing)
 - Started BL-003 on branch `callable-node` (off main after PR #6 merge). Brainstorming the design spec; status → designing.
