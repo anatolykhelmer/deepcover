@@ -111,7 +111,25 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-## What's new in 0.6.0 (unreleased)
+## What's new in 0.6.1 (unreleased)
+
+### Bug detection
+
+The `unhandled-error-path` detector now also scans standalone functions, not
+just class methods — a function with a `try/catch` or that throws, and no
+test that provokes the error path, now surfaces a signal the same way a
+method does. This is new output on existing analyses; nothing else about
+`potentialBugs` changed.
+
+### Coverage resolution
+
+A criticality or assertion-quality rating naming a class method that does not
+exist could, in a narrow case, silently pick up the coverage of a same-named
+standalone function declared in the same file instead of being dropped. Fixed
+— such a lookup now correctly resolves to nothing, matching every other
+fail-closed path in the resolver.
+
+## What's new in 0.6.0
 
 ### Config files are validated
 

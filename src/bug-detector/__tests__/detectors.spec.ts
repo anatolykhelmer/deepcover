@@ -154,6 +154,75 @@ describe('UnhandledErrorPathDetector', () => {
     const signals = detector.detect(codeModel, makeCoverage());
     expect(signals).toHaveLength(0);
   });
+
+  it('detects standalone function with throwsErrors and no error-path test', () => {
+    const codeModel = makeCodeModel({
+      modules: [{
+        filePath: 'src/utils/api-client.ts',
+        classes: [],
+        functions: [{
+          name: 'fetchUserData', visibility: 'public', params: [{ name: 'userId', type: 'string', isOptional: false }],
+          returnType: 'Promise<UserData>',
+          branches: [],
+          branchCount: 2, throwsErrors: true, hasAsyncOps: true,
+          externalCalls: ['fetch'], internalCalls: [], startLine: 5, endLine: 15,
+        }],
+      }],
+      testInventory: {
+        testFiles: [{ filePath: '__tests__/api-client.spec.ts', describes: [{
+          name: 'api-client',
+          tests: [{ name: 'should fetch user successfully', targetMethod: 'fetchUserData',
+            assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toEqual' }],
+            mocks: ['fetch'], isAsync: true }],
+        }] }],
+        coverage: { fetchUserData: ['should fetch user successfully'] },
+      },
+    });
+    const coverage = makeCoverage(new Map([
+      ['src/utils/api-client.ts.fetchUserData', { isCovered: true, staticTests: ['should fetch user successfully'] }],
+    ]));
+    const signals = detector.detect(codeModel, coverage);
+    expect(signals).toHaveLength(1);
+    expect(signals[0].pattern).toBe('unhandled-error-path');
+    expect(signals[0].className).toBe('src/utils/api-client.ts');
+    expect(signals[0].methodName).toBe('fetchUserData');
+    expect(signals[0].evidence).toBe('Function throws errors but no test provokes the error path');
+  });
+
+  it('does not flag standalone function when test has throws assertion', () => {
+    const codeModel = makeCodeModel({
+      modules: [{
+        filePath: 'src/utils/validator.ts',
+        classes: [],
+        functions: [{
+          name: 'validateEmail', visibility: 'public', params: [{ name: 'email', type: 'string', isOptional: false }],
+          returnType: 'boolean',
+          branches: [{ type: 'guard', condition: '!email.includes("@")', guardExit: 'throw', lineNumber: 3 }],
+          branchCount: 2, throwsErrors: true, hasAsyncOps: false,
+          externalCalls: [], internalCalls: [], startLine: 1, endLine: 10,
+        }],
+      }],
+      testInventory: {
+        testFiles: [{ filePath: '__tests__/validator.spec.ts', describes: [{
+          name: 'validator',
+          tests: [
+            { name: 'should validate good email', targetMethod: 'validateEmail',
+              assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBe' }],
+              mocks: [], isAsync: false },
+            { name: 'should throw on invalid email', targetMethod: 'validateEmail',
+              assertions: [{ type: 'throws', target: 'validateEmail', matcherUsed: 'toThrow' }],
+              mocks: [], isAsync: false },
+          ],
+        }] }],
+        coverage: { validateEmail: ['should validate good email', 'should throw on invalid email'] },
+      },
+    });
+    const coverage = makeCoverage(new Map([
+      ['src/utils/validator.ts.validateEmail', { isCovered: true, staticTests: ['should validate good email', 'should throw on invalid email'] }],
+    ]));
+    const signals = detector.detect(codeModel, coverage);
+    expect(signals).toHaveLength(0);
+  });
 });
 
 describe('UncheckedNullableDetector', () => {

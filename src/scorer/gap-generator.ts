@@ -3,6 +3,7 @@ import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { StateCatalog, StateCatalogEntry } from './state-catalog';
 import type { PrioritizedGap } from './types';
+import { allCallables } from '../types/callable';
 
 const RISK_ORDER = { high: 0, medium: 1, low: 2 } as const;
 
@@ -35,67 +36,33 @@ export function generateGaps(
   const gaps: PrioritizedGap[] = [];
 
   for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        const mc = resolvedCoverage.getMethodCoverage(cls.name, method.name, mod.filePath);
-        const hasTests = mc?.isCovered ?? false;
-        const risk = getMethodRisk(method, reasonerOutput, cls.name, method.name);
-
-        if (!hasTests) {
-          gaps.push({
-            rank: 0,
-            className: cls.name,
-            methodName: method.name,
-            scenario: 'has no test coverage',
-            risk,
-            reason: `Method ${method.name} is untested`,
-            suggestedTest: suggestTest(cls.name, method.name, 'when called'),
-          });
-        } else if (mc?.istanbul) {
-          const { lineCoveragePercent, branchCoveragePercent } = mc.istanbul;
-          if (lineCoveragePercent < 50 || branchCoveragePercent < 50) {
-            gaps.push({
-              rank: 0,
-              className: cls.name,
-              methodName: method.name,
-              scenario: 'partially covered',
-              risk,
-              reason: `Method ${method.name} has Istanbul line ${lineCoveragePercent}% / branch ${branchCoveragePercent}% (below 50%)`,
-              suggestedTest: suggestTest(cls.name, method.name, 'to raise line and branch coverage above 50%'),
-            });
-          }
-        }
-      }
-
-    }
-
-    for (const fn of mod.functions ?? []) {
-      const className = mod.filePath;
-      const mc = resolvedCoverage.getMethodCoverage(className, fn.name, mod.filePath);
+    for (const c of allCallables(mod)) {
+      const mc = resolvedCoverage.getMethodCoverage(c.owner, c.node.name, mod.filePath);
       const hasTests = mc?.isCovered ?? false;
-      const risk = getMethodRisk(fn, reasonerOutput, className, fn.name);
+      const risk = getMethodRisk(c.node, reasonerOutput, c.owner, c.node.name);
+      const kindWord = c.ownerKind === 'class' ? 'Method' : 'Function';
 
       if (!hasTests) {
         gaps.push({
           rank: 0,
-          className,
-          methodName: fn.name,
+          className: c.owner,
+          methodName: c.node.name,
           scenario: 'has no test coverage',
           risk,
-          reason: `Function ${fn.name} is untested`,
-          suggestedTest: suggestTest(className, fn.name, 'when called'),
+          reason: `${kindWord} ${c.node.name} is untested`,
+          suggestedTest: suggestTest(c.owner, c.node.name, 'when called'),
         });
       } else if (mc?.istanbul) {
         const { lineCoveragePercent, branchCoveragePercent } = mc.istanbul;
         if (lineCoveragePercent < 50 || branchCoveragePercent < 50) {
           gaps.push({
             rank: 0,
-            className,
-            methodName: fn.name,
+            className: c.owner,
+            methodName: c.node.name,
             scenario: 'partially covered',
             risk,
-            reason: `Function ${fn.name} has Istanbul line ${lineCoveragePercent}% / branch ${branchCoveragePercent}% (below 50%)`,
-            suggestedTest: suggestTest(className, fn.name, 'to raise line and branch coverage above 50%'),
+            reason: `${kindWord} ${c.node.name} has Istanbul line ${lineCoveragePercent}% / branch ${branchCoveragePercent}% (below 50%)`,
+            suggestedTest: suggestTest(c.owner, c.node.name, 'to raise line and branch coverage above 50%'),
           });
         }
       }

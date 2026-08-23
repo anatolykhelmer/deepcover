@@ -1,4 +1,5 @@
 import type { ModuleNode } from './code-model';
+import { methodCoverageKey, type CoverageKey } from './callable';
 
 /**
  * Maps a class method's bare name to every class in scope that declares it,
@@ -93,8 +94,8 @@ export function resolveReasonerOwnerFile(owner: string, owners: ClassFileOwners)
 /** Internal coverage key for a class method, file-qualified so same-named
  *  classes in different files never collide (task 021). Human-facing output
  *  keeps `ClassName.methodName`. */
-export function classMethodKey(filePath: string, className: string, methodName: string): string {
-  return `${filePath}:${className}.${methodName}`;
+export function classMethodKey(filePath: string, className: string, methodName: string): CoverageKey {
+  return methodCoverageKey(filePath, className, methodName);
 }
 
 /**

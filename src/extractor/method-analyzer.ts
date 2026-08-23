@@ -6,8 +6,8 @@ import {
   PropertyAccessExpression,
   CallExpression,
 } from 'ts-morph';
-import type { MethodNode, ParamNode } from '../types/code-model';
-import { collectBranches } from './branch-analyzer';
+import type { MethodNode } from '../types/code-model';
+import { assembleCallableNode, buildParamNodes } from './callable-common';
 
 export function analyzeMethods(cls: ClassDeclaration, paramToType: Map<string, string>): MethodNode[] {
   const methods = cls.getInstanceMethods();
@@ -15,61 +15,21 @@ export function analyzeMethods(cls: ClassDeclaration, paramToType: Map<string, s
 }
 
 function analyzeMethod(method: MethodDeclaration, paramToType: Map<string, string>): MethodNode {
-  const name = method.getName();
-  const visibility = getVisibility(method);
-  const params: ParamNode[] = method.getParameters().map((p) => ({
-    name: p.getName(),
-    type: p.getTypeNode()?.getText() ?? 'unknown',
-    isOptional: p.isOptional(),
-  }));
-  const returnType = method.getReturnTypeNode()?.getText() ?? 'void';
-
   const body = method.getBody();
-  const branches = body ? collectBranches(body, params.map((p) => p.name)) : [];
-  const branchCount = branches.length;
-  const hasAsyncOps = method.isAsync() || (body ? hasAwait(body) : false);
-  const throwsErrors = body ? hasThrow(body) : false;
-  const externalCalls = body ? collectExternalCalls(body, paramToType) : [];
-  const internalCalls = body ? collectInternalCalls(body) : [];
-
-  return {
-    name,
-    visibility,
-    params,
-    returnType,
-    branches,
-    branchCount,
-    throwsErrors,
-    hasAsyncOps,
-    externalCalls,
-    internalCalls,
-    startLine: method.getStartLineNumber(),
-    endLine: method.getEndLineNumber(),
-  };
+  return assembleCallableNode({
+    name: method.getName(),
+    visibility: getVisibility(method),
+    node: method,
+    params: buildParamNodes(method),
+    externalCalls: body ? collectExternalCalls(body, paramToType) : [],
+    internalCalls: body ? collectInternalCalls(body) : [],
+  });
 }
 
 function getVisibility(method: MethodDeclaration): MethodNode['visibility'] {
   if (method.hasModifier(SyntaxKind.PrivateKeyword)) return 'private';
   if (method.hasModifier(SyntaxKind.ProtectedKeyword)) return 'protected';
   return 'public';
-}
-
-function hasAwait(node: Node): boolean {
-  let found = false;
-  node.forEachChild((child) => {
-    if (Node.isAwaitExpression(child)) found = true;
-    else found = found || hasAwait(child);
-  });
-  return found;
-}
-
-function hasThrow(node: Node): boolean {
-  let found = false;
-  node.forEachChild((child) => {
-    if (Node.isThrowStatement(child)) found = true;
-    else found = found || hasThrow(child);
-  });
-  return found;
 }
 
 function collectExternalCalls(body: Node, paramToType: Map<string, string>): string[] {

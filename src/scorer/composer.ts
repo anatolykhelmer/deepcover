@@ -6,6 +6,7 @@ import type { ScoreResult, SubScore, FunctionScore } from './types';
 import { generateGaps } from './gap-generator';
 import { classifyMatcher } from './matchers';
 import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../types/method-owner';
+import { allCallables } from '../types/callable';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -264,13 +265,8 @@ export function composeScore(
   }
 
   for (const mod of codeModel.modules) {
-    for (const cls of mod.classes) {
-      for (const method of cls.methods) {
-        perFunction.push(scoreCallable(cls.name, method, true, mod.filePath));
-      }
-    }
-    for (const fn of mod.functions ?? []) {
-      perFunction.push(scoreCallable(mod.filePath, fn, false, mod.filePath));
+    for (const c of allCallables(mod)) {
+      perFunction.push(scoreCallable(c.owner, c.node, c.ownerKind === 'class', mod.filePath));
     }
   }
 

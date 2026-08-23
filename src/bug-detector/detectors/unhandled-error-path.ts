@@ -3,6 +3,7 @@ import type { ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
 import { buildClassFileOwners } from '../../types/method-owner';
 import { findTestsForCallable } from '../find-tests';
+import { allCallables } from '../../types/callable';
 
 const ERROR_TEST_KEYWORDS = [
   'error', 'fail', 'throw', 'reject', 'exception', 'invalid',
@@ -17,27 +18,25 @@ export class UnhandledErrorPathDetector implements BugDetector {
     const signals: BugSignal[] = [];
     const classFileOwners = buildClassFileOwners(codeModel.modules);
     for (const mod of codeModel.modules) {
-      for (const cls of mod.classes) {
-        for (const method of cls.methods) {
-          const catchBranches = method.branches.filter((b) => b.type === 'try_catch');
-          if (catchBranches.length === 0 && !method.throwsErrors) continue;
+      for (const c of allCallables(mod)) {
+        const catchBranches = c.node.branches.filter((b) => b.type === 'try_catch');
+        if (catchBranches.length === 0 && !c.node.throwsErrors) continue;
 
-          const tests = findTestsForCallable(codeModel, method.name,
-            { owner: cls.name, filePath: mod.filePath, isClass: true }, classFileOwners);
-          const hasErrorTest = tests.some((t) => this.isErrorPathTest(t));
+        const tests = findTestsForCallable(codeModel, c.node.name,
+          { owner: c.owner, filePath: c.filePath, isClass: c.ownerKind === 'class' }, classFileOwners);
+        const hasErrorTest = tests.some((t) => this.isErrorPathTest(t));
 
-          if (!hasErrorTest) {
-            signals.push({
-              pattern: this.pattern,
-              className: cls.name,
-              methodName: method.name,
-              evidence: catchBranches.length > 0
-                ? `${catchBranches.length} catch block(s) at line(s) ${catchBranches.map((b) => b.lineNumber).join(', ')} with no error-path test`
-                : `Method throws errors but no test provokes the error path`,
-              sourceLocation: { file: mod.filePath, line: catchBranches[0]?.lineNumber ?? method.startLine },
-              confidence: this.calculateConfidence(catchBranches.length, method.throwsErrors, coverage, cls.name, method.name, mod.filePath),
-            });
-          }
+        if (!hasErrorTest) {
+          signals.push({
+            pattern: this.pattern,
+            className: c.owner,
+            methodName: c.node.name,
+            evidence: catchBranches.length > 0
+              ? `${catchBranches.length} catch block(s) at line(s) ${catchBranches.map((b) => b.lineNumber).join(', ')} with no error-path test`
+              : `${c.ownerKind === 'class' ? 'Method' : 'Function'} throws errors but no test provokes the error path`,
+            sourceLocation: { file: c.filePath, line: catchBranches[0]?.lineNumber ?? c.node.startLine },
+            confidence: this.calculateConfidence(catchBranches.length, c.node.throwsErrors, coverage, c.owner, c.node.name, c.filePath),
+          });
         }
       }
     }

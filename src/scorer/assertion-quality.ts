@@ -3,7 +3,7 @@ import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { getAssertionWeight } from './matchers';
-import { buildClassMethodOwners } from '../types/method-owner';
+import { buildClassMethodOwners, classMethodKey } from '../types/method-owner';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -99,7 +99,7 @@ export function calculateAssertionQuality(
     ownerFile: string
   ): boolean {
     if (resolverEmpty) {
-      const key = isClass ? `${ownerFile}:${owner}.${targetMethod}` : targetMethod;
+      const key = isClass ? classMethodKey(ownerFile, owner, targetMethod) : targetMethod;
       return (codeModel.testInventory.coverage[key]?.length ?? 0) > 0;
     }
     return resolvedCoverage.isMethodCovered(owner, targetMethod, ownerFile);

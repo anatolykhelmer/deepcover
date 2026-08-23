@@ -1,8 +1,7 @@
 import type {
   BranchNode,
   CodeModel,
-  FunctionNode,
-  MethodNode,
+  CallableNode,
   ParamNode,
   TestNode,
 } from '../../types/code-model';
@@ -10,6 +9,7 @@ import type { BinaryExprCoverage, ResolvedCoverage } from '../../resolver/types'
 import type { BugSignal, BugDetector } from '../types';
 import { buildClassFileOwners, type ClassFileOwners } from '../../types/method-owner';
 import { findTestsForCallable } from '../find-tests';
+import { allCallables } from '../../types/callable';
 
 /** Istanbul proved the operand was never evaluated — nothing to interpret. */
 const NEVER_EVALUATED_CONFIDENCE = 0.9;
@@ -40,14 +40,8 @@ export class UntestedConditionOperandDetector implements BugDetector {
     const classFileOwners = buildClassFileOwners(codeModel.modules);
 
     for (const mod of codeModel.modules) {
-      for (const cls of mod.classes) {
-        for (const method of cls.methods) {
-          signals.push(...this.inspect(codeModel, coverage, mod.filePath, cls.name, method, true, classFileOwners));
-        }
-      }
-      for (const fn of mod.functions ?? []) {
-        // Standalone functions are keyed by file path everywhere else in the pipeline.
-        signals.push(...this.inspect(codeModel, coverage, mod.filePath, mod.filePath, fn, false, classFileOwners));
+      for (const c of allCallables(mod)) {
+        signals.push(...this.inspect(codeModel, coverage, c.filePath, c.owner, c.node, c.ownerKind === 'class', classFileOwners));
       }
     }
 
@@ -59,7 +53,7 @@ export class UntestedConditionOperandDetector implements BugDetector {
     coverage: ResolvedCoverage,
     filePath: string,
     owner: string,
-    method: MethodNode | FunctionNode,
+    method: CallableNode,
     isClass: boolean,
     classFileOwners: ClassFileOwners
   ): BugSignal[] {

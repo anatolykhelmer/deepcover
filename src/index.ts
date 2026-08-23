@@ -18,6 +18,9 @@ export {
 } from './types/method-owner';
 export type { ClassFileOwners, ClassMethodOwners } from './types/method-owner';
 
+export { functionCoverageKey, methodCoverageKey, allCallables } from './types/callable';
+export type { CoverageKey, Callable } from './types/callable';
+
 export { runScorer } from './scorer';
 export type { ScorerOptions } from './scorer';
 export type { ScoreResult, ScoreWeights } from './scorer';

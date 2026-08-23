@@ -25,6 +25,7 @@ function coverageEntry(
     className,
     methodName,
     qualifiedName: `${className}.${methodName}`,
+    ownerKind: 'class',
     filePath,
     staticTests: [],
     isCovered: false,
