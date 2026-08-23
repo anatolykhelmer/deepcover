@@ -1,4 +1,4 @@
-import type { CallableNode, CodeModel, ModuleNode } from './code-model';
+import type { CallableNode, ModuleNode } from './code-model';
 
 /**
  * Unified in-memory identity of a callable, built ONLY here. Class methods keep
@@ -59,12 +59,6 @@ export function* allCallables(mod: ModuleNode): Generator<Callable> {
       qualifiedName: `${mod.filePath}.${fn.name}`,
       inventoryKey: fn.name,
     };
-  }
-}
-
-export function* allModelCallables(model: CodeModel): Generator<Callable> {
-  for (const mod of model.modules) {
-    yield* allCallables(mod);
   }
 }
 

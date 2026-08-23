@@ -163,7 +163,7 @@ describe('UnhandledErrorPathDetector', () => {
         functions: [{
           name: 'fetchUserData', visibility: 'public', params: [{ name: 'userId', type: 'string', isOptional: false }],
           returnType: 'Promise<UserData>',
-          branches: [{ type: 'try_catch', condition: 'catch (error)', lineNumber: 8 }],
+          branches: [],
           branchCount: 2, throwsErrors: true, hasAsyncOps: true,
           externalCalls: ['fetch'], internalCalls: [], startLine: 5, endLine: 15,
         }],
@@ -186,6 +186,7 @@ describe('UnhandledErrorPathDetector', () => {
     expect(signals[0].pattern).toBe('unhandled-error-path');
     expect(signals[0].className).toBe('src/utils/api-client.ts');
     expect(signals[0].methodName).toBe('fetchUserData');
+    expect(signals[0].evidence).toBe('Function throws errors but no test provokes the error path');
   });
 
   it('does not flag standalone function when test has throws assertion', () => {

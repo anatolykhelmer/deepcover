@@ -33,7 +33,7 @@ export class UnhandledErrorPathDetector implements BugDetector {
             methodName: c.node.name,
             evidence: catchBranches.length > 0
               ? `${catchBranches.length} catch block(s) at line(s) ${catchBranches.map((b) => b.lineNumber).join(', ')} with no error-path test`
-              : `Method throws errors but no test provokes the error path`,
+              : `${c.ownerKind === 'class' ? 'Method' : 'Function'} throws errors but no test provokes the error path`,
             sourceLocation: { file: c.filePath, line: catchBranches[0]?.lineNumber ?? c.node.startLine },
             confidence: this.calculateConfidence(catchBranches.length, c.node.throwsErrors, coverage, c.owner, c.node.name, c.filePath),
           });
