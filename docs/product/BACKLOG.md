@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-21
+> Last updated: 2026-08-23
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-003 | Callable + CoverageKey instead of class/function dual loops | **designing** — Collapse MethodNode/FunctionNode parallel universes into `CallableNode` + a single `CoverageKey` used by extractor, resolver, scorer, reasoner, and bug-detector. High priority, impact 4/effort 4. | | | 2026-08-18 |
+| | | _No items._ | | | |
 
 ## Ideas
 
@@ -30,7 +30,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| | | | |
+| BL-003 | Callable + CoverageKey instead of class/function dual loops | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) | `callable-node` |
 
 ## Done
 
@@ -47,6 +47,10 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-23 — BL-003 (PR open)
+- Implemented via subagent-driven-development across 7 plan tasks + 1 final-review fix wave (11 commits on `callable-node`); full suite green (554/554, 6 pre-existing skips), `tsc --noEmit` clean; whole-branch review: mergeable, no Critical/Important findings.
+- Pushed and opened [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) against `main`. Status → In Progress pending merge.
 
 ### 2026-08-21 — BL-003 Task 7 complete; BL-017 subsumed
 - Completed Task 7 (final verification) on branch `callable-node`: full type-check clean, all 554 tests passing, residual grep scan shows zero missed migrations.
