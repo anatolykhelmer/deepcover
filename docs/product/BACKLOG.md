@@ -43,7 +43,7 @@
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
 | BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | 2026-08-24 | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) merged |
-| BL-010 | Wire or delete dead config | 2026-08-25 | 11 commits on `config-honesty`; breaking, released as 0.7.0 |
+| BL-010 | Wire or delete dead config | 2026-08-25 | [PR #8](https://github.com/anatolykhelmer/deepcover/pull/8); breaking, released as 0.7.0 |
 | BL-017 | Rename className to owner in getBranchScaleForState | 2026-08-21 | Subsumed by BL-003 |
 
 ## Dropped
