@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-010 | Wire or delete dead config | `planned` — 6 tasks. Scope grew: also constrains `weights` to sum to 1 (aggregate composite is unclamped) and fixes a false comment in `config.ts`. | [spec](../superpowers/specs/2026-08-25-config-honesty-design.md) | [plan](../superpowers/plans/2026-08-25-config-honesty.md) | 2026-08-18 |
+| | | _No items._ | | | |
 
 ## Ideas
 
@@ -25,6 +25,10 @@
 | BL-014 | Run should score when reasoner-output is already filled | In agent-template mode `run` stops after the reason stage even when a filled `reasoner-output.json` is sitting on disk, so the user gets no score from the flagship command. | 2026-08-18 |
 | BL-015 | Dedupe extractMethodFromTarget | One helper next to `matchers.ts` now; eventually persist `calledMethod` from ts-morph at extract time instead of re-regexing `AssertionNode.target`. | 2026-08-18 |
 | BL-018 | Validate transitiveInferences against the dependency graph | `mutation-resilience` credits LLM-claimed call paths without checking they exist; `getTransitivePaths` answered this but was deleted in BL-010 (recoverable from git). Granularity mismatch to design: graph is class-level, inferences name `Class.method`. Same item: `confidence` is collected but excluded from the adjustment, so confident and hesitant inferences weigh the same. | 2026-08-25 |
+| BL-019 | Harden --bug-threshold like --min-score | BL-010 hardened `--min-score` (rejects unparseable and out-of-range, validates before the pipeline) but left `--bug-threshold` on `parseInt` two lines away in the same two functions: `--bug-threshold 5abc` silently gates at 5, `abc` never fires. It is also still resolved after the pipeline. Adjacent numeric parsers with opposite strictness and no reason. | 2026-08-25 |
+| BL-020 | Decouple run.spec tests from the repo's own config | Five pre-existing tests in `run.spec.ts` (:30-73, :118-141) pass `--root PROJECT_ROOT`, so since BL-010 they load `deepcover.config.ts`'s `thresholds.composite: 60`. Tests whose subjects are report formatting and `--bug-threshold` will flip to exit 1 if the repo's own score drifts below 60, failing with a message about the wrong thing. Nothing fails today. Fix: isolated root, as BL-010's new tests already do. | 2026-08-25 |
+| BL-021 | Single source for the maxInfluence default | The 0.2/20 default now lives in five places: `scorer/index.ts:48`, `extract-stage.ts:99`, and three sub-scorer signature defaults. The three `= 20` parameter defaults are unreachable in production (`runScorer` always passes a value) — dead defaults that drift. Changing the scorer default alone would make the agent README quote a cap the scorer does not apply. One exported constant fixes all of it. | 2026-08-25 |
+| BL-022 | Agent README misstates non-round influence caps | `extract-readme.ts:10` uses `Math.round(maxInfluence * 100)`, so `0.125` tells the agent "±13%" while the scorer caps at 12.5 points — a rounding error in the one sentence whose purpose is accuracy, in text that instructs an LLM. | 2026-08-25 |
 
 ## In Progress
 
@@ -39,6 +43,7 @@
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
 | BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | 2026-08-24 | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) merged |
+| BL-010 | Wire or delete dead config | 2026-08-25 | 11 commits on `config-honesty`; breaking, released as 0.7.0 |
 | BL-017 | Rename className to owner in getBranchScaleForState | 2026-08-21 | Subsumed by BL-003 |
 
 ## Dropped
@@ -48,6 +53,15 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-25 — BL-010 done; BL-019..BL-022 added
+- Implemented via subagent-driven-development across 6 tasks (11 commits on `config-honesty`); final whole-branch review returned MERGE AFTER FIXES with three blocking items, all fixed and re-reviewed clean. Full suite 597 passing / 6 pre-existing skips, `tsc --noEmit` clean.
+- **Released as 0.7.0, not 0.6.1.** The final review caught that `v0.6.1` was already tagged and published while the README filed this branch's breaking changes under "0.6.1 (unreleased)" — users on the published 0.6.1 would have read rules that did not apply to them.
+- Three breaking changes: `weights` must sum to 1 (so any single-weight override now throws, since the defaults already sum to 1); `--min-score` rejects unparseable and out-of-range values instead of silently not gating (`60abc` used to truncate to 60); a config with `thresholds.composite` now gates where it did not.
+- **Key finding, discovered only because the field stopped being dead:** `llmAdjustment` is bounded per sub-scorer at assertion-quality [-10,+10], criticality [-10,+2] asymmetric, mutation-resilience one-sided and the only one reaching the cap, state-coverage always exactly 0. So `maxInfluence` at its 0.2 default binds one sub-score of four. Shipped as-is — the field does change behavior, and deleting a field that works would be worse — but the README now states the per-scorer bounds rather than the old blanket "±20% for each sub-score", which was false for state coverage in both directions.
+- Two `--min-score` holes were found by review rather than by the plan: an unparseable flag silently discarded a configured CI gate (a failing build reported as passing), and validation ran after the full pipeline including a paid LLM stage. Both fixed; resolution now lives in one `src/cli/min-score.ts` called from both gate sites, so the hand-copy drift that caused the first one is unrepresentable.
+- Repo's own score is 52/100 against its own `thresholds.composite: 60`, so `npm run deepcover` now exits 1. Left alone deliberately — that is information about the repo, not a defect in the gate.
+- BL-019..BL-022 opened from findings triaged as non-blocking by the final review.
 
 ### 2026-08-25 — BL-010 (planned)
 - Wrote the 6-task implementation plan (`docs/superpowers/plans/2026-08-25-config-honesty.md`); status → planned.
