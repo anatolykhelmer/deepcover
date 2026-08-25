@@ -129,6 +129,27 @@ standalone function declared in the same file instead of being dropped. Fixed
 — such a lookup now correctly resolves to nothing, matching every other
 fail-closed path in the resolver.
 
+### Config and CLI
+
+- `weights` must now sum to `1`, checked after merging with your config's
+  values and defaults; a mistyped or partial override that doesn't restate
+  all four now throws instead of silently skewing the composite.
+- `reasoner.maxInfluence` is now threaded to assertion quality and
+  criticality weighting, in addition to mutation resilience (see
+  [Configuration](#configuration) for how far each sub-score can actually
+  move at a given setting — the default only visibly binds mutation
+  resilience). State coverage is deliberately unaffected.
+- `thresholds.composite` is now the default for `--min-score` on `analyze`,
+  `score`, and `run` — set it once in the config instead of passing the flag
+  everywhere. A `--min-score` flag still overrides it. Precedence: flag >
+  config > no gate.
+- `--min-score` now validates its argument: a value that isn't a finite
+  number throws instead of being silently coerced. Notably `--min-score
+  60abc` used to be read as `60`; it now fails with an error naming the bad
+  value instead of gating at a number you didn't type. The flag's own
+  `'0'` default was removed since `thresholds.composite` (or no gate) now
+  takes over when it's omitted.
+
 ## What's new in 0.6.0
 
 ### Config files are validated
@@ -422,7 +443,7 @@ One-shot: extract, reason, and analyze in sequence. Equivalent to running the th
 | `--output <dir>` | Artifact directory | `.deepcover` |
 | `--no-llm` | Skip the reason stage (deterministic only) | false |
 | `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
-| `--min-score <n>` | Exit `1` if the composite score is below this | — |
+| `--min-score <n>` | Exit `1` if the composite score is below this | `thresholds.composite` |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 | `--bugs` | Enable bug analysis across all three stages | off |
 
@@ -484,7 +505,7 @@ or use `deepcover run` for one-shot.
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
 | `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
-| `--min-score <n>` | Exit `1` if the composite score is below this | — |
+| `--min-score <n>` | Exit `1` if the composite score is below this | `thresholds.composite` |
 | `--bugs` | Enable bug-finding (detectors + optional reasoner bugs) | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 
@@ -496,7 +517,7 @@ below threshold. Same requirement as `analyze`: it reads artifacts already in `.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
-| `--min-score <n>` | Minimum passing score (0-100) | 0 |
+| `--min-score <n>` | Minimum passing score (0-100) | `thresholds.composite` |
 | `--bugs` | Enable bug-finding analysis | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 
@@ -610,7 +631,7 @@ export default {
     provider: 'cursor',       // 'cursor' | 'anthropic' | 'mock' | 'none'
     // model: 'claude-sonnet-4-20250514',  // when provider is anthropic
     // apiKey: process.env.ANTHROPIC_API_KEY,
-    maxInfluence: 0.2,        // cap LLM adjustment at ±20%
+    maxInfluence: 0.2,        // caps how far the reasoner can move a score (see below)
   },
   weights: {
     assertionQuality: 0.30,
@@ -625,6 +646,29 @@ export default {
 ```
 
 Also supports `.js` and `.json` config files.
+
+`thresholds.composite` sets the project's default pass mark: `analyze`, `score`,
+and `run` exit `1` when the composite falls below it. A `--min-score` flag on the
+command line overrides it for that invocation. With neither set, no gate applies.
+
+`reasoner.maxInfluence` caps how far the reasoner may move **assertion quality**,
+**mutation resilience**, and **criticality weighting** — each sub-score's LLM
+adjustment is clamped to ±`maxInfluence` × 100 points. In practice that clamp is
+the binding constraint only for mutation resilience: its adjustment scales with
+the number of LLM-confirmed transitive coverage inferences and is one-sided (the
+reasoner can only raise it), so enough confirmations reach the cap at any
+configured value, including the default. Assertion quality and criticality
+weighting are each a mean of per-judgment contributions that is mathematically
+bounded at roughly ±10 points before any clamp runs, so their default ±20-point
+cap (`maxInfluence: 0.2`) is never actually reached — `maxInfluence` only
+visibly constrains either one once configured below roughly 0.1. It does **not**
+govern state coverage, which is bounded differently: that score cannot exceed
+overall Istanbul branch coverage by more than 10 points, tying LLM-discovered
+states to runtime evidence rather than to a configurable budget.
+
+The four `weights` must sum to `1`. They are spent directly in the composite
+score, so any other total pushes results off the 0–100 scale. Because the
+defaults already sum to 1, overriding one weight means restating all four.
 
 The config is validated when it loads, and an invalid config stops the run with
 exit code 1 before any work happens. Unknown keys are errors — if DeepCover
