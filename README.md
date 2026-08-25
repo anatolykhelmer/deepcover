@@ -111,7 +111,7 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-## What's new in 0.6.1 (unreleased)
+## What's new in 0.7.0 (unreleased)
 
 ### Bug detection
 
@@ -146,9 +146,15 @@ fail-closed path in the resolver.
 - `--min-score` now validates its argument: a value that isn't a finite
   number throws instead of being silently coerced. Notably `--min-score
   60abc` used to be read as `60`; it now fails with an error naming the bad
-  value instead of gating at a number you didn't type. The flag's own
-  `'0'` default was removed since `thresholds.composite` (or no gate) now
-  takes over when it's omitted.
+  value instead of gating at a number you didn't type. It must also be
+  within `0..100` — the same bound `thresholds.composite` has always had —
+  so `--min-score -5` no longer replaces a configured gate with one that can
+  never fire. `0` and `100` remain valid: "never gate" and "must be
+  perfect" are real settings. The flag's own `'0'` default was removed since
+  `thresholds.composite` (or no gate) now takes over when it's omitted.
+- `--min-score` is now resolved and validated **before** the pipeline runs on
+  `analyze`, `score`, and `run`, so a typo fails immediately rather than
+  after extraction, a paid LLM call, and a printed report.
 
 ## What's new in 0.6.0
 
@@ -180,7 +186,7 @@ honoured.
 
 A partially specified section now keeps the defaults for the fields it does not
 mention; previously `weights: { assertionQuality: 0.5 }` silently dropped the
-other three weights. (Historical note, as of 0.6.1: this example itself no
+other three weights. (Historical note, as of 0.7.0: this example itself no
 longer runs as of the weights change documented above — `weights` must now
 sum to `1` after merging with defaults, and `{ assertionQuality: 0.5 }`
 merged with the other three defaults sums to `1.2`, so it throws. See
