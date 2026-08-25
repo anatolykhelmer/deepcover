@@ -11,9 +11,8 @@ import { z } from 'zod';
  *
  * Ranges follow the documented semantics in README "Configuration":
  * `maxInfluence` and the weights are fractions, `thresholds.composite` is a
- * 0–100 score. The four weights are NOT constrained to sum to 1 — no scorer
- * reads them yet (BL-010), and enforcing a sum here would invent a rule the
- * code does not implement.
+ * 0–100 score. The weights must also sum to 1, but that is checked after the
+ * merge with the defaults rather than here — see `assertWeightsSumToOne`.
  */
 export const DeepCoverConfigSchema = z.strictObject({
   include: z.array(z.string()).optional(),
@@ -127,6 +126,42 @@ function mergeWithDefaults(config: DeepCoverConfig): DeepCoverConfig {
   };
 }
 
+/**
+ * Weights are spent directly in the composite sum (`composer.ts`), and the
+ * aggregate composite is not clamped the way the per-method one is. Weights
+ * summing to 2 therefore yield a score up to 200, which flows into reports and
+ * into whatever gates on them.
+ *
+ * Checked after the merge, not in the schema: an absent weight is filled from
+ * DEFAULT_CONFIG, so only the merged object reflects what the scorer receives.
+ * The tolerance absorbs float addition — 0.4 + 0.3 + 0.2 + 0.1 is
+ * 0.9999999999999999, and rejecting that would be indefensible.
+ */
+const WEIGHT_SUM_TOLERANCE = 1e-9;
+
+function assertWeightsSumToOne(config: DeepCoverConfig, configPath: string): void {
+  const w = config.weights;
+  if (!w) return;
+
+  const entries: [string, number][] = [
+    ['assertionQuality', w.assertionQuality ?? 0],
+    ['stateCoverage', w.stateCoverage ?? 0],
+    ['mutationResilience', w.mutationResilience ?? 0],
+    ['criticalityWeighting', w.criticalityWeighting ?? 0],
+  ];
+  const sum = entries.reduce((acc, [, v]) => acc + v, 0);
+  if (Math.abs(sum - 1) <= WEIGHT_SUM_TOLERANCE) return;
+
+  // Printing every effective weight matters: because the defaults already sum
+  // to 1, overriding a single weight breaks the sum, and the user needs to see
+  // that the merge — not their one line — produced the total.
+  const shown = entries.map(([k, v]) => `  ${k}: ${v}`).join('\n');
+  throw new ConfigError(
+    `Invalid config in ${configPath}: weights must sum to 1, but these sum to ${sum}:\n${shown}\n\n` +
+      `Weights are spent directly in the composite score, so a different total produces scores off the 0-100 scale.\n${HOW_TO_RECOVER}`,
+  );
+}
+
 export function loadConfig(rootDir: string): DeepCoverConfig {
   const candidates = [
     'deepcover.config.ts',
@@ -150,7 +185,9 @@ export function loadConfig(rootDir: string): DeepCoverConfig {
       );
     }
 
-    return mergeWithDefaults(result.data);
+    const merged = mergeWithDefaults(result.data);
+    assertWeightsSumToOne(merged, configPath);
+    return merged;
   }
 
   return DEFAULT_CONFIG;
