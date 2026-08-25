@@ -33,6 +33,20 @@ describe('analyze command', () => {
     });
   }
 
+  function writeConfig(config: unknown): void {
+    fs.writeFileSync(path.join(tmpDir, 'deepcover.config.json'), JSON.stringify(config));
+  }
+
+  /** `runAnalyze` throws on a non-zero exit; these gate tests care about the code itself. */
+  function analyzeExitCode(args: string[]): number {
+    try {
+      runAnalyze(args);
+      return 0;
+    } catch (err) {
+      return (err as { status?: number }).status ?? -1;
+    }
+  }
+
   it('produces a terminal report from artifacts alone', () => {
     const output = runAnalyze([]);
     expect(output).toContain('Composite Score');
@@ -75,6 +89,17 @@ describe('analyze command', () => {
       stdio: 'pipe',
     });
     expect(typeof (JSON.parse(passing) as ScoreResult).composite).toBe('number');
+  });
+
+  it('gates on thresholds.composite from the config when no flag is given', () => {
+    // 100 is above any score this fixture reaches, so the gate must fire.
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(analyzeExitCode([])).toBe(1);
+  });
+
+  it('lets the flag override a config threshold', () => {
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(analyzeExitCode(['--min-score', '0'])).toBe(0);
   });
 
   it('never calls an LLM — no API key required', () => {

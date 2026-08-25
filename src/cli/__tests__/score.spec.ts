@@ -35,6 +35,10 @@ describe('score command', () => {
     return { stdout: result.stdout ?? '', stderr: result.stderr ?? '', exitCode: result.status ?? -1 };
   }
 
+  function writeConfig(config: unknown): void {
+    fs.writeFileSync(path.join(tmpDir, 'deepcover.config.json'), JSON.stringify(config));
+  }
+
   function parseScore(stdout: string): number {
     const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -62,5 +66,26 @@ describe('score command', () => {
 
   it('exits 0 when the score meets --min-score', () => {
     expect(runScore(['--min-score', '0']).exitCode).toBe(0);
+  });
+
+  it('gates on thresholds.composite from the config when no flag is given', () => {
+    // 100 is above any score this fixture reaches, so the gate must fire.
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(runScore([]).exitCode).toBe(1);
+  });
+
+  it('lets the flag override a config threshold', () => {
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(runScore(['--min-score', '0']).exitCode).toBe(0);
+  });
+
+  it('does not gate when neither flag nor config sets a threshold', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    expect(runScore([]).exitCode).toBe(0);
+  });
+
+  it('gates on the flag when there is no config threshold', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    expect(runScore(['--min-score', '100']).exitCode).toBe(1);
   });
 });

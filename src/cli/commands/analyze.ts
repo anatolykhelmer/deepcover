@@ -54,7 +54,12 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
     }
 
     const composite = Math.round(result.composite);
-    if (options.minScore !== undefined && composite < parseInt(options.minScore, 10)) {
+    // Flag beats config: a project-wide threshold lives in the repo, a one-off
+    // override on the command line.
+    const minScore = options.minScore !== undefined
+      ? parseInt(options.minScore, 10)
+      : config.thresholds?.composite;
+    if (minScore !== undefined && composite < minScore) {
       process.exitCode = 1;
       return;
     }
