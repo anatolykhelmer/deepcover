@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-010 | Wire or delete dead config | `designing` → spec approved. Scope grew: also constrains `weights` to sum to 1 (aggregate composite is unclamped) and fixes a false comment in `config.ts`. | [spec](../superpowers/specs/2026-08-25-config-honesty-design.md) | | 2026-08-18 |
+| BL-010 | Wire or delete dead config | `planned` — 6 tasks. Scope grew: also constrains `weights` to sum to 1 (aggregate composite is unclamped) and fixes a false comment in `config.ts`. | [spec](../superpowers/specs/2026-08-25-config-honesty-design.md) | [plan](../superpowers/plans/2026-08-25-config-honesty.md) | 2026-08-18 |
 
 ## Ideas
 
@@ -48,6 +48,11 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-25 — BL-010 (planned)
+- Wrote the 6-task implementation plan (`docs/superpowers/plans/2026-08-25-config-honesty.md`); status → planned.
+- Task order puts the scorer signature change before the plumbing that feeds it, so each task's tests run against a complete unit.
+- Verified during planning: the repo's own `deepcover.config.ts` has weights summing to exactly 1.0, so the new constraint does not break it; and no CI workflow runs DeepCover on this repo, so wiring its `thresholds.composite: 60` cannot break CI. The `npm run deepcover` script will start gating at 60 — the plan treats a resulting exit 1 as information to report, not a reason to edit the config.
 
 ### 2026-08-25 — BL-010 (designing), BL-018 added
 - Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-25-config-honesty-design.md`); BL-010 → Ready, status `designing`.
