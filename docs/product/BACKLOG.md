@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-23
+> Last updated: 2026-08-25
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| | | _No items._ | | | |
+| BL-010 | Wire or delete dead config | `designing` → spec approved. Scope grew: also constrains `weights` to sum to 1 (aggregate composite is unclamped) and fixes a false comment in `config.ts`. | [spec](../superpowers/specs/2026-08-25-config-honesty-design.md) | | 2026-08-18 |
 
 ## Ideas
 
@@ -19,18 +19,18 @@
 | BL-007 | Few-shot examples in prompts | Add 2-3 concrete good-vs-bad examples to each Reasoner system prompt to improve output quality. | 2026-08-18 |
 | BL-008 | HTML report | Add a rich HTML report output with expandable per-function breakdowns and dependency graph visualization. | 2026-08-18 |
 | BL-009 | Vitest support | Add a working Vitest analysis path so DeepCover is not Jest-only for TypeScript projects. | 2026-08-18 |
-| BL-010 | Wire or delete dead config | Either implement `reasoner.maxInfluence` / `thresholds.composite` and use `getTransitivePaths` in scoring, or remove them so the API does not lie. | 2026-08-18 |
 | BL-011 | Surface reasoner job failures instead of empty arrays | Replace silent `runJob` → `[]` + bracket scrapers with structured job results (and tests); prefer provider JSON mode when available. | 2026-08-18 |
 | BL-012 | Split test-analyzer.ts by concern | Break the ~1050-line Jest inventory god module into focused modules with a thin `analyzeTestFile` orchestrator. | 2026-08-18 |
 | BL-013 | Integration tests must not swallow extract failures | Stop `catch { return }` in integration specs so missing/broken fixtures fail the suite instead of passing. | 2026-08-18 |
 | BL-014 | Run should score when reasoner-output is already filled | In agent-template mode `run` stops after the reason stage even when a filled `reasoner-output.json` is sitting on disk, so the user gets no score from the flagship command. | 2026-08-18 |
 | BL-015 | Dedupe extractMethodFromTarget | One helper next to `matchers.ts` now; eventually persist `calledMethod` from ts-morph at extract time instead of re-regexing `AssertionNode.target`. | 2026-08-18 |
+| BL-018 | Validate transitiveInferences against the dependency graph | `mutation-resilience` credits LLM-claimed call paths without checking they exist; `getTransitivePaths` answered this but was deleted in BL-010 (recoverable from git). Granularity mismatch to design: graph is class-level, inferences name `Class.method`. Same item: `confidence` is collected but excluded from the adjustment, so confident and hesitant inferences weigh the same. | 2026-08-25 |
 
 ## In Progress
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-003 | Callable + CoverageKey instead of class/function dual loops | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) | `callable-node` |
+| | | _No items._ | |
 
 ## Done
 
@@ -38,6 +38,7 @@
 |----|-------|-----------|-------|
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
 | BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
+| BL-003 | Callable + CoverageKey instead of class/function dual loops | 2026-08-24 | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) merged |
 | BL-017 | Rename className to owner in getBranchScaleForState | 2026-08-21 | Subsumed by BL-003 |
 
 ## Dropped
@@ -47,6 +48,20 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-25 — BL-010 (designing), BL-018 added
+- Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-25-config-honesty-design.md`); BL-010 → Ready, status `designing`.
+- Per-field decisions: `thresholds.composite` becomes the default for `--min-score` (flag overrides); `reasoner.maxInfluence` is threaded into the three scorers that already implement the cap as a hardcoded `20`; the three unused `dependency-graph` exports are deleted.
+- `maxInfluence` deliberately does **not** govern `stateCoverage` — that guard is an absolute ceiling tied to Istanbul branch coverage, not a delta cap, and merging the two semantics under one key would replace one lie with another.
+- Scope grew during design on two findings. The `config.ts` comment claiming no scorer reads `weights` is false — they reach `composeScore` and are spent in the composite sum. And because the aggregate composite is unclamped (unlike the per-method one), weights summing to 2 yield a score up to 200; BL-002 declined a sum constraint on the now-disproven grounds that the weights were unread. BL-010 adds the constraint, validated post-merge and failing hard per BL-002's philosophy. Consequence accepted: any partial `weights` override now fails, since the defaults already sum to 1.
+- BL-018 split out for the transitive-inference validation that BL-010 originally proposed — it changes reported numbers and needs its own design for the class-vs-method granularity mismatch.
+
+### 2026-08-24 — Backlog groom
+- Deleted 6 orphan spec/plan pairs (2026-03 to 2026-08-17) that predated the backlog migration and had no corresponding entries.
+- All 11 Ideas items lack specs/plans; ready for promotion to Ready + design work.
+
+### 2026-08-24 — BL-003 (merged)
+- PR #7 merged to main (8a0f521). Status → Done.
 
 ### 2026-08-23 — BL-003 (PR open)
 - Implemented via subagent-driven-development across 7 plan tasks + 1 final-review fix wave (11 commits on `callable-node`); full suite green (554/554, 6 pre-existing skips), `tsc --noEmit` clean; whole-branch review: mergeable, no Critical/Important findings.
