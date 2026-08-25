@@ -675,7 +675,12 @@ describe('maxInfluence cap', () => {
     model.testInventory.coverage = {};
     const output: ReasonerOutput = {
       ...emptyReasonerOutput(),
-      // Many high ratings drive llmAdjustment well past any cap.
+      // criticality.ts averages across all attributable ratings (line 77), so
+      // N identical 'high' ratings always yield exactly -10 regardless of N —
+      // the wide=20 call below never clamps. The 20-element array is
+      // decorative (kept for parity with the sibling tests in this block,
+      // which use the same array to build their ReasonerOutput); a single
+      // rating would produce the identical -10.
       criticalityRatings: Array.from({ length: 20 }, () => ({
         className: 'ItemService',
         methodName: 'getAll',
@@ -695,6 +700,11 @@ describe('maxInfluence cap', () => {
 
   it('criticality: omitting the cap keeps the historical 20', () => {
     const model = oneMethodModel();
+    // Same fix as the sibling test above: `getAll` must be untested for the
+    // 'high' ratings to produce a non-zero adjustment. With the original
+    // covered fixture, both sides below always computed to exactly 0 — the
+    // toEqual held for any default (5, 0, 100, ...) and guarded nothing.
+    model.testInventory.coverage = {};
     const output: ReasonerOutput = {
       ...emptyReasonerOutput(),
       criticalityRatings: Array.from({ length: 20 }, () => ({
@@ -707,9 +717,42 @@ describe('maxInfluence cap', () => {
     };
     const resolved = resolvedFor(model);
 
-    expect(calculateCriticalityWeighting(model, output, resolved)).toEqual(
-      calculateCriticalityWeighting(model, output, resolved, 20),
-    );
+    const omitted = calculateCriticalityWeighting(model, output, resolved);
+    const explicit20 = calculateCriticalityWeighting(model, output, resolved, 20);
+
+    expect(omitted.llmAdjustment).toBe(-10);
+    expect(omitted).toEqual(explicit20);
+  });
+
+  it('assertion-quality: a custom cap clamps tighter than the default', () => {
+    // assertion-quality's llmAdjustment is a confidence-weighted average of
+    // per-test judgments (weak=-10, medium=0, strong=+10; see
+    // qualityToAdjustment in assertion-quality.ts), so with confidence=1 a
+    // single 'strong' judgment on the covered 'weak' test already yields the
+    // formula's ceiling of exactly +10 — no input can push the raw,
+    // pre-clamp value past that (unlike criticality/mutation-resilience,
+    // whose raw values can exceed 20). That ceiling sits below the default
+    // cap of 20, so the default itself never clamps here; a narrower cap of 5
+    // does, which is what this test exercises. This is also why there is no
+    // companion "omitting the cap keeps the historical 20" test for
+    // assertion-quality: there is no reachable input that would make the
+    // omitted-vs-explicit-20 comparison hit the actual clamp boundary, so
+    // such a test would hold for any default >= 10 and would not
+    // meaningfully guard the literal value 20.
+    const model = oneMethodModel();
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      assertionJudgments: [
+        { testName: 'weak', quality: 'strong', reasoning: 'x', confidence: 1 },
+      ],
+    };
+    const resolved = resolvedFor(model);
+
+    const wide = calculateAssertionQuality(model, output, resolved, 20);
+    const narrow = calculateAssertionQuality(model, output, resolved, 5);
+
+    expect(wide.llmAdjustment).toBe(10);
+    expect(narrow.llmAdjustment).toBe(5);
   });
 
   it('mutation-resilience: the cap bounds the adjustment and stays one-sided', () => {
