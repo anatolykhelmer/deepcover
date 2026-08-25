@@ -78,7 +78,7 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 - **Extractor** — Deterministic AST analysis: classes, methods, branches, dependencies, assertions, mocks
 - **Coverage Resolver** — Merges static AST analysis with Jest/Istanbul runtime data into unified, class-qualified coverage
 - **Reasoner** — LLM semantic analysis with enriched prompts: domain states (with branch conditions + test names + state taxonomy), assertion quality (with target method info), criticality (with blast radius from dependency graph), transitive coverage (with mock detection + intra-class call graph)
-- **Scorer** — Deterministic formula: 4 sub-scores with bounded LLM influence (±20%)
+- **Scorer** — Deterministic formula: 4 sub-scores, 3 of them with LLM influence capped by `reasoner.maxInfluence` (default ±20 points)
 
 ## Quick Start
 
@@ -180,7 +180,11 @@ honoured.
 
 A partially specified section now keeps the defaults for the fields it does not
 mention; previously `weights: { assertionQuality: 0.5 }` silently dropped the
-other three weights.
+other three weights. (Historical note, as of 0.6.1: this example itself no
+longer runs as of the weights change documented above — `weights` must now
+sum to `1` after merging with defaults, and `{ assertionQuality: 0.5 }`
+merged with the other three defaults sums to `1.2`, so it throws. See
+[Configuration](#configuration).)
 
 ### State coverage
 
@@ -550,7 +554,15 @@ Four sub-scores combined with configurable weights:
 | Mutation Resilience | 25% | Would tests catch subtle code changes? (branch coverage + assertion specificity) |
 | Criticality Weighting | 15% | Is the important code tested? (blast radius + business criticality) |
 
-The LLM can adjust each sub-score by at most ±20%, scaled by its confidence. Without LLM (`--no-llm`), you get the deterministic base scores only.
+The LLM's adjustment to each sub-score is capped by `reasoner.maxInfluence`
+(default `0.2`, i.e. ±20 points) and scaled by its confidence — except state
+coverage, which the LLM never adjusts directly; its number comes from
+resolver-confirmed states, not a confidence-weighted nudge. Assertion quality
+and criticality weighting are, by how their formulas average per-judgment
+contributions, naturally bounded well inside that cap in practice; only
+mutation resilience routinely reaches it. See
+[Configuration](#configuration) for the exact bound on each. Without LLM
+(`--no-llm`), you get the deterministic base scores only.
 
 **Smart weight redistribution:** When a sub-score doesn't apply (e.g. state coverage when the Reasoner has no discovered states), its weight is redistributed proportionally to the applicable sub-scores.
 
@@ -658,13 +670,19 @@ the binding constraint only for mutation resilience: its adjustment scales with
 the number of LLM-confirmed transitive coverage inferences and is one-sided (the
 reasoner can only raise it), so enough confirmations reach the cap at any
 configured value, including the default. Assertion quality and criticality
-weighting are each a mean of per-judgment contributions that is mathematically
-bounded at roughly ±10 points before any clamp runs, so their default ±20-point
-cap (`maxInfluence: 0.2`) is never actually reached — `maxInfluence` only
-visibly constrains either one once configured below roughly 0.1. It does **not**
-govern state coverage, which is bounded differently: that score cannot exceed
-overall Istanbul branch coverage by more than 10 points, tying LLM-discovered
-states to runtime evidence rather than to a configurable budget.
+weighting are each a mean of per-judgment contributions, which is
+mathematically bounded before any clamp runs — assertion quality within
+roughly ±10 points, criticality weighting asymmetrically within roughly
+-10 to +2 points (a confirmed-high-and-untested rating pulls it down by up
+to 10; a confirmed-low-and-covered rating pulls it up by at most 2). Their
+default ±20-point cap (`maxInfluence: 0.2`) is never actually reached
+either way — `maxInfluence` only visibly constrains assertion quality's or
+criticality's downward moves once configured below roughly 0.1, and
+criticality's upward moves below roughly 0.02. It does **not** govern state
+coverage, which the LLM cannot move directly at all: when Istanbul branch
+data is available, that score is capped at overall Istanbul branch coverage
++ 10 points, tying LLM-discovered states to runtime evidence rather than to
+a configurable budget; without Istanbul data, no such cap applies.
 
 The four `weights` must sum to `1`. They are spent directly in the composite
 score, so any other total pushes results off the 0–100 scale. Because the
