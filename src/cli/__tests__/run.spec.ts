@@ -72,6 +72,47 @@ describe('run command', () => {
     expect(exitCode).toBe(1);
   });
 
+  /**
+   * `run` resolves the composite gate at its own call site, separate from the one
+   * `analyze`/`score` share. Nothing else in the suite exercises it, so this is
+   * where a lost config fallback would go unnoticed.
+   */
+  describe('composite threshold from config', () => {
+    let root: string;
+
+    beforeEach(() => {
+      // Own root, not PROJECT_ROOT: the repo's own config sets thresholds.composite,
+      // which would otherwise decide the outcome of these tests.
+      root = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-run-threshold-'));
+      fs.cpSync(path.join(PROJECT_ROOT, FIXTURE), path.join(root, 'module'), { recursive: true });
+    });
+
+    afterEach(() => {
+      fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    function runWithConfig(config: unknown, args: string[]): number {
+      fs.writeFileSync(path.join(root, 'deepcover.config.json'), JSON.stringify(config));
+      return runCli([
+        'run', '--root', root, '--module', 'module',
+        '--no-llm', '--output', path.join(root, '.deepcover'), ...args,
+      ]).exitCode;
+    }
+
+    it('gates on thresholds.composite when no flag is given', () => {
+      // 100 is above any score this fixture reaches, so the gate must fire.
+      expect(runWithConfig({ thresholds: { composite: 100 } }, [])).toBe(1);
+    });
+
+    it('lets the flag override a config threshold', () => {
+      expect(runWithConfig({ thresholds: { composite: 100 } }, ['--min-score', '0'])).toBe(0);
+    });
+
+    it('does not gate when neither flag nor config sets a threshold', () => {
+      expect(runWithConfig({ reasoner: { provider: 'mock' } }, [])).toBe(0);
+    });
+  });
+
   // Pins the direction of `highRisk >= threshold` and its `&& options.bugs` guard in
   // run.ts:160-167 — an inverted comparison or `&&` becoming `||` must fail these.
   describe('--bug-threshold gate', () => {

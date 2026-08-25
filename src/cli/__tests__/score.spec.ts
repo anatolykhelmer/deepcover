@@ -88,4 +88,17 @@ describe('score command', () => {
     writeConfig({ reasoner: { provider: 'mock' } });
     expect(runScore(['--min-score', '100']).exitCode).toBe(1);
   });
+
+  /**
+   * Now that the flag suppresses a configured threshold, a flag that does not
+   * parse must stop the run rather than degrade to "no gate": silently dropping
+   * a gate the repo asked for reports a failing build as passing. `parseInt`
+   * alone is not enough — it reads '8O' as 8 and gates at 8.
+   */
+  it('rejects a malformed --min-score instead of silently dropping the config gate', () => {
+    writeConfig({ thresholds: { composite: 100 } });
+    const { exitCode, stderr } = runScore(['--min-score', '8O']);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--min-score expects a number, got '8O'");
+  });
 });

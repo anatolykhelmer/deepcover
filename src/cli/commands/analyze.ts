@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { Command, Option } from 'commander';
 import { loadConfig } from '../config';
+import { resolveMinScore } from '../min-score';
 import { assertNoLegacyFlags, type LegacyFlagCarrier } from '../legacy-flags';
 import { formatTerminalReport, formatScore } from '../formatters/terminal';
 import { resolvePaths } from '../../pipeline/loaders';
@@ -54,11 +55,7 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
     }
 
     const composite = Math.round(result.composite);
-    // Flag beats config: a project-wide threshold lives in the repo, a one-off
-    // override on the command line.
-    const minScore = options.minScore !== undefined
-      ? parseInt(options.minScore, 10)
-      : config.thresholds?.composite;
+    const minScore = resolveMinScore(options.minScore, config);
     if (minScore !== undefined && composite < minScore) {
       process.exitCode = 1;
       return;
