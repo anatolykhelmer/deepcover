@@ -43,6 +43,7 @@ export const runCommand = new Command('run')
         llm: options.llm,
         reasoner,
         ...(config.weights && { weights: config.weights as ScoreWeights }),
+        ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
       });
 
       for (const note of result.notes) console.error(note);

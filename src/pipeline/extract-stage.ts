@@ -22,6 +22,8 @@ export interface ExtractStageOptions {
   module?: string;
   file?: string;
   bugs: boolean;
+  /** Fraction (0-1) from `reasoner.maxInfluence`, quoted in the agent instructions. */
+  maxInfluence?: number;
 }
 
 export interface ExtractStageResult {
@@ -91,7 +93,11 @@ export function runExtractStage(opts: ExtractStageOptions): ExtractStageResult {
   const methodCount =
     allClasses.reduce((n, c) => n + c.methods.length, 0) +
     codeModel.modules.reduce((n, m) => n + (m.functions?.length ?? 0), 0);
-  write('README.md', generateReadme({ classCount: allClasses.length, methodCount }));
+  write('README.md', generateReadme({
+    classCount: allClasses.length,
+    methodCount,
+    maxInfluence: opts.maxInfluence ?? 0.2,
+  }));
 
   const testDirs = new Set<string>();
   for (const tf of codeModel.testInventory.testFiles) {

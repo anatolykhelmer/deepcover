@@ -118,6 +118,39 @@ describe('runAnalyzeStage', () => {
     expect(result.potentialBugs.some((b) => b.description.includes('Validation not asserted'))).toBe(true);
   });
 
+  it('passes maxInfluence through to the scorer', () => {
+    // `extract` writes an empty reasoner-output.json template, so overwrite it
+    // with enough confirmed transitive inferences (30 → 60 points uncapped) to
+    // exceed both caps under test.
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'reasoner-output.json'),
+      JSON.stringify({
+        discoveredStates: [],
+        assertionJudgments: [],
+        criticalityRatings: [],
+        transitiveInferences: Array.from({ length: 30 }, () => ({
+          from: 'A.a',
+          through: 'B.b',
+          to: 'C.c',
+          coveredTransitively: true,
+          caveat: '',
+          confidence: 1,
+        })),
+      }),
+    );
+
+    const tight = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false, maxInfluence: 0.02 });
+    const loose = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false, maxInfluence: 0.2 });
+    const omitted = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+
+    // Assert the adjustment directly rather than the composite: the composite
+    // also passes through weight redistribution and clamping, which could mask
+    // the difference.
+    expect(tight.result.subScores.mutationResilience.llmAdjustment).toBe(2);
+    expect(loose.result.subScores.mutationResilience.llmAdjustment).toBe(20);
+    expect(omitted.result.subScores.mutationResilience.llmAdjustment).toBe(20);
+  });
+
   it('notes that --bugs is deterministic-only without LLM findings', () => {
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: true });
     expect(notes.join('\n')).toContain('deepcover reason --bugs');

@@ -39,6 +39,7 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
       deepcoverDir: paths.deepcoverDir,
       bugs: !!options.bugs,
       ...(config.weights && { weights: config.weights as ScoreWeights }),
+      ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
     });
 
     for (const note of notes) console.error(note);

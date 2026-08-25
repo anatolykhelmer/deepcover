@@ -16,6 +16,8 @@ export interface RunPipelineOptions {
   llm: boolean;
   reasoner: ResolvedReasoner;
   weights?: ScoreWeights;
+  /** Fraction (0-1) from `reasoner.maxInfluence`; caps the reasoner's score influence. */
+  maxInfluence?: number;
 }
 
 export interface RunPipelineResult {
@@ -44,6 +46,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunPipeline
     ...(opts.module && { module: opts.module }),
     ...(opts.file && { file: opts.file }),
     bugs: opts.bugs,
+    ...(opts.maxInfluence !== undefined && { maxInfluence: opts.maxInfluence }),
   });
   notes.push(...extract.notes);
 
@@ -73,6 +76,7 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunPipeline
     deepcoverDir: paths.deepcoverDir,
     bugs: opts.bugs,
     ...(opts.weights && { weights: opts.weights }),
+    ...(opts.maxInfluence !== undefined && { maxInfluence: opts.maxInfluence }),
   });
   notes.push(...analyze.notes);
 
