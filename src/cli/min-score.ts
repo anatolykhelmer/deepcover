@@ -31,5 +31,21 @@ export function resolveMinScore(
         'Remove the flag to use thresholds.composite from your config.',
     );
   }
+  if (parsed < 0 || parsed > 100) {
+    // Same reasoning, same failure: the composite is always 0..100, so a gate
+    // outside that range is one that can never fire (below 0) or one that can
+    // never pass (above 100). The out-of-range flag still suppresses
+    // `thresholds.composite`, so accepting it would again turn a configured
+    // gate into a failing build reported as passing.
+    //
+    // The bound matches `thresholds.composite` in the config schema, which is
+    // `z.number().min(0).max(100)`: the flag that overrides the config must not
+    // accept what the config would reject. `0` and `100` are both inside it —
+    // "never gate" and "must be perfect" are real settings, not typos.
+    throw new Error(
+      `--min-score expects a number between 0 and 100, got '${flag}'. ` +
+        'The composite score is always in that range, so a gate outside it can never be met.',
+    );
+  }
   return parsed;
 }

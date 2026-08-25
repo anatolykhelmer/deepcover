@@ -49,4 +49,39 @@ describe('resolveMinScore', () => {
       expect(resolveMinScore('59.5', GATED_AT_60)).toBe(59.5);
     });
   });
+
+  /**
+   * The composite is always 0..100 and `thresholds.composite` is bounded to the
+   * same range by the config schema, so the flag that *overrides* the config
+   * must not accept what the config would reject. An out-of-range flag still
+   * suppresses the configured threshold, so accepting it silently replaces a
+   * real gate with one that can never fire.
+   */
+  describe('out-of-range flag', () => {
+    it.each([
+      ['-5', 'a gate below 0 no composite can ever fall under — suppresses the config gate and always passes'],
+      ['-0.5', 'just under the lower bound'],
+      ['101', 'a gate above 100 no composite can ever reach — always fails'],
+      ['100.5', 'just over the upper bound'],
+      ['1000', 'far above the range'],
+    ])('throws on %p (%s)', (flag) => {
+      expect(() => resolveMinScore(flag, GATED_AT_60)).toThrow(
+        /--min-score expects a number between 0 and 100/,
+      );
+    });
+
+    it('names the offending value so the user can see what was rejected', () => {
+      expect(() => resolveMinScore('-5', GATED_AT_60)).toThrow(
+        "--min-score expects a number between 0 and 100, got '-5'",
+      );
+    });
+
+    it('accepts the lower boundary 0 — a deliberate "never gate" setting', () => {
+      expect(resolveMinScore('0', GATED_AT_60)).toBe(0);
+    });
+
+    it('accepts the upper boundary 100 — a deliberate "must be perfect" setting', () => {
+      expect(resolveMinScore('100', GATED_AT_60)).toBe(100);
+    });
+  });
 });

@@ -34,6 +34,10 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
 
     const paths = resolvePaths({ root: options.root });
     const config = loadConfig(paths.rootDir);
+    // Resolved up front, next to the config it falls back to, and held for the
+    // gate below: a bad `--min-score` must not be discovered only after the
+    // report has already been printed to stdout.
+    const minScore = resolveMinScore(options.minScore, config);
 
     const { result, notes } = runAnalyzeStage({
       rootDir: paths.rootDir,
@@ -55,7 +59,6 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
     }
 
     const composite = Math.round(result.composite);
-    const minScore = resolveMinScore(options.minScore, config);
     if (minScore !== undefined && composite < minScore) {
       process.exitCode = 1;
       return;

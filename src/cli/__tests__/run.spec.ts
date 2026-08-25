@@ -73,6 +73,50 @@ describe('run command', () => {
   });
 
   /**
+   * A bad `--min-score` must be caught before the pipeline runs, not after.
+   * `run` extracts, calls the reasoner, and prints the whole report before it
+   * reaches the gate, so a check at the gate site would reject the flag only
+   * after the expensive work was done and success was already on stdout.
+   */
+  describe('--min-score is validated before any work', () => {
+    it.each([
+      ['8O', 'unparseable'],
+      ['-5', 'out of range'],
+    ])('rejects %p (%s) with no report on stdout and no artifacts written', (flag) => {
+      const outDir = path.join(tmpDir, '.deepcover');
+
+      const { stdout, stderr, exitCode } = runCli([
+        'run', '--root', PROJECT_ROOT, '--module', FIXTURE,
+        '--no-llm', '--min-score', flag, '--output', outDir,
+      ]);
+
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain(`got '${flag}'`);
+      // The report never printed — the whole point of failing early.
+      expect(stdout.trim()).toBe('');
+      expect(stdout).not.toContain('Composite Score');
+      // The extract stage mkdirs this directory as its first act, so its absence
+      // proves the pipeline never started rather than merely printing nothing.
+      expect(fs.existsSync(outDir)).toBe(false);
+    });
+
+    it('does the work and prints the report when the same flag is valid', () => {
+      // Guards the assertions above against passing for the wrong reason: this
+      // invocation differs only in the flag's value.
+      const outDir = path.join(tmpDir, '.deepcover');
+
+      const { stdout, exitCode } = runCli([
+        'run', '--root', PROJECT_ROOT, '--module', FIXTURE,
+        '--no-llm', '--min-score', '0', '--output', outDir,
+      ]);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('Composite Score');
+      expect(fs.existsSync(outDir)).toBe(true);
+    });
+  });
+
+  /**
    * `run` resolves the composite gate at its own call site, separate from the one
    * `analyze`/`score` share. Nothing else in the suite exercises it, so this is
    * where a lost config fallback would go unnoticed.
