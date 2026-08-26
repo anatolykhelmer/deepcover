@@ -21,6 +21,9 @@ export type { ClassFileOwners, ClassMethodOwners } from './types/method-owner';
 export { functionCoverageKey, methodCoverageKey, allCallables } from './types/callable';
 export type { CoverageKey, Callable } from './types/callable';
 
+export { testsInFile, allTests, testInScopeOf } from './types/test-inventory';
+export type { TestScope } from './types/test-inventory';
+
 export { runScorer } from './scorer';
 export type { ScorerOptions } from './scorer';
 export type { ScoreResult, ScoreWeights } from './scorer';
