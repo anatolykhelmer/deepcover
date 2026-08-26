@@ -4,6 +4,7 @@ import type { ResolvedCoverage } from '../resolver/types';
 import type { SubScore } from './types';
 import { getAssertionWeight } from './matchers';
 import { buildClassMethodOwners, classMethodKey } from '../types/method-owner';
+import { allTests } from '../types/test-inventory';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -119,50 +120,46 @@ export function calculateAssertionQuality(
   let totalAssertions = 0;
   const countedAssertions = new Set<string>();
 
-  for (const file of testFiles) {
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        const target = test.targetMethod ?? undefined;
-        if (!target) continue;
-        if (failedTestNames.has(test.name)) continue;
-        const resolved = resolveOwner(target, test.targetClass, test.targetClassFile);
-        if (!resolved) continue;
-        if (!targetMethodCovered(resolved.owner, target, resolved.isClass, resolved.ownerFile)) continue;
+  for (const test of allTests(testFiles)) {
+    const target = test.targetMethod ?? undefined;
+    if (!target) continue;
+    if (failedTestNames.has(test.name)) continue;
+    const resolved = resolveOwner(target, test.targetClass, test.targetClassFile);
+    if (!resolved) continue;
+    if (!targetMethodCovered(resolved.owner, target, resolved.isClass, resolved.ownerFile)) continue;
 
-        let assertions = test.assertions;
-        const runtimeAc = resolvedCoverage.hasRuntimeData
-          ? getRuntimeAssertionCount(resolvedCoverage, resolved.owner, target, test.name, resolved.ownerFile)
-          : undefined;
-        if (runtimeAc !== undefined && runtimeAc !== assertions.length) {
-          assertions = assertions.slice(0, Math.min(assertions.length, runtimeAc));
-        }
-        for (let i = 0; i < assertions.length; i++) {
-          const assertion = assertions[i];
-          const key = `${test.name}:${i}`;
-          if (countedAssertions.has(key)) continue;
-          countedAssertions.add(key);
-          const w = getAssertionWeight(assertion.matcherUsed);
-          weightedScore += w;
-          totalAssertions += 1;
+    let assertions = test.assertions;
+    const runtimeAc = resolvedCoverage.hasRuntimeData
+      ? getRuntimeAssertionCount(resolvedCoverage, resolved.owner, target, test.name, resolved.ownerFile)
+      : undefined;
+    if (runtimeAc !== undefined && runtimeAc !== assertions.length) {
+      assertions = assertions.slice(0, Math.min(assertions.length, runtimeAc));
+    }
+    for (let i = 0; i < assertions.length; i++) {
+      const assertion = assertions[i];
+      const key = `${test.name}:${i}`;
+      if (countedAssertions.has(key)) continue;
+      countedAssertions.add(key);
+      const w = getAssertionWeight(assertion.matcherUsed);
+      weightedScore += w;
+      totalAssertions += 1;
 
-          const transitiveMethod = extractMethodFromTarget(assertion.target);
-          if (transitiveMethod && transitiveMethod !== target) {
-            // Transitive credit is scoped to the same test's own resolved owner —
-            // a class-owned transitive method only counts if that same class
-            // declares it too, not any class anywhere with a matching name.
-            const transOwners = classMethodOwners.get(transitiveMethod);
-            const transitiveAllowed =
-              transOwners && transOwners.size > 0
-                ? resolved.isClass && transOwners.has(resolved.owner)
-                : functionOwner.has(transitiveMethod);
-            if (transitiveAllowed) {
-              const transitiveKey = `${test.name}:${i}:transitive:${transitiveMethod}`;
-              if (!countedAssertions.has(transitiveKey)) {
-                countedAssertions.add(transitiveKey);
-                weightedScore += w;
-                totalAssertions += 1;
-              }
-            }
+      const transitiveMethod = extractMethodFromTarget(assertion.target);
+      if (transitiveMethod && transitiveMethod !== target) {
+        // Transitive credit is scoped to the same test's own resolved owner —
+        // a class-owned transitive method only counts if that same class
+        // declares it too, not any class anywhere with a matching name.
+        const transOwners = classMethodOwners.get(transitiveMethod);
+        const transitiveAllowed =
+          transOwners && transOwners.size > 0
+            ? resolved.isClass && transOwners.has(resolved.owner)
+            : functionOwner.has(transitiveMethod);
+        if (transitiveAllowed) {
+          const transitiveKey = `${test.name}:${i}:transitive:${transitiveMethod}`;
+          if (!countedAssertions.has(transitiveKey)) {
+            countedAssertions.add(transitiveKey);
+            weightedScore += w;
+            totalAssertions += 1;
           }
         }
       }
@@ -177,13 +174,9 @@ export function calculateAssertionQuality(
   const judgments = reasonerOutput.assertionJudgments;
 
   const moduleTestNames = new Set<string>();
-  for (const file of testFiles) {
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        if (shouldCountTest(test)) {
-          moduleTestNames.add(test.name);
-        }
-      }
+  for (const test of allTests(testFiles)) {
+    if (shouldCountTest(test)) {
+      moduleTestNames.add(test.name);
     }
   }
 
