@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-023 | Extract scoped test-inventory traversal | Designed 2026-08-26. Pure behaviour-preserving extraction: `allTests`/`testsInFile`/`testInScopeOf`/`TestScope` in `types/test-inventory.ts`, 8 sites migrate, `reasoner/scope.ts` explicitly excluded. `CallableScope` deleted in favour of a `ownerKind`-shaped `TestScope` that `Callable` satisfies structurally. Additive public export → minor. | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) | [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | 2026-08-26 |
+| | | _No items._ | | | |
 
 ## Ideas
 
@@ -34,12 +34,13 @@
 | BL-026 | Single source for criticality derivation | `getCriticality` (`composer.ts`) and `getMethodRisk` (`gap-generator.ts`) are identical bodies (LLM rating lookup, else `branchCount + externalCalls` thresholds); `criticality.ts`'s `getCriticalityFromLLM` is the same lookup without the fallback. Drift here would label the same method differently in the per-method score vs. the gap ranking. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-027 | Generic array-job runner in reasoner | The 4 reasoner jobs (domain states, assertion quality, criticality, transitive coverage) share an identical parse→validate→degrade-to-`[]` body, differing only in prompt pair and Zod schema. A private `runArrayJob<T>` helper collapses 4 six-line bodies to 4 one-liners; the `bugFinding` job stays separate (object shape, different failure semantics). Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-028 | Move reasonerScope out of cli/ into reasoner/scope.ts | The `{ module, wholeRepo: !module && !file }` construction is duplicated in `extract-stage.ts` and `run-pipeline.ts` because `pipeline/` cannot import `cli/` (documented layering rule), which is where the one existing helper (`cli/reasoner-scope.ts`) lives. Relocating it next to `ReasonerScope` removes the duplication at its source. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-029 | Extractor and scope gate resolve duplicate class names against different maps | `resolveClassMethodKey` breaks ties with `ClassMethodOwners` (files declaring that class *with that method*); `testInScopeOf` uses `ClassFileOwners` (files declaring that class name *at all*). They can disagree. Live repro: `a/svc.ts` has `class Svc { create() }`, `b/svc.ts` has `class Svc { ship() }`, a spec imports `Svc` from `b/` and calls `create` — the extractor credits `a/svc.ts:Svc.create` (scores covered, `untested: []`) while the gate resolves the test to `b/svc.ts` and rejects it, so the method gets zero assertions. Pre-existing: head and base are byte-identical on the fixture. Found by BL-023's final whole-branch review. | 2026-08-26 |
 
 ## In Progress
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| | | _No items._ | |
+| BL-023 | Extract scoped test-inventory traversal | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) / [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | `scoped-test-inventory` |
 
 ## Done
 
@@ -58,6 +59,15 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-26 — BL-023 implemented (pending merge)
+- Executed via subagent-driven-development across the 7 planned tasks plus one final-review fix wave; 7 commits on `scoped-test-inventory`. Every per-task review came back clean on the first pass — no fix rounds.
+- Suite: 623 tests / 617 passing / 6 skipped, vs. 610 / 602 / 8 on `main`. The +13 is the new `test-inventory.spec.ts`; the 2 skip→pass shift is `reporter-entry.spec.ts` gating itself on a built `dist/`, which exists in the working checkout and not in the fresh comparison worktree. Environment, not code. `tsc --noEmit` clean.
+- **The evidence that the refactor is behaviour-preserving is a differential harness, not the suite.** The final review ran both versions of the library over 8 fixtures plus the repo's own `src/` and byte-compared every output the migration could move: `testInventory.coverage`, all four reasoner prompts with and without runtime folding, `resolveCoverage` keys, all 51 bug signals, and the full `ScoreResult` including 118 `perFunction` entries — 1.53 MB of JSON, byte-identical. It then proved the harness was not vacuous by breaking the gate in a throwaway worktree (66 and 128 differing lines).
+- **One real finding, and it was about a shape the old code could not have.** `testInScopeOf` gated on the negative (`ownerKind !== 'class'`). Under the old `isClass: boolean` there were only two states; `ownerKind` is a growable union, so adding a third kind would have kept `tsc` green at all 8 call sites while silently admitting every test for that kind — the exact failure the gate exists to prevent, reintroduced by the fix for it. Inverted to `=== 'module'` so an unknown kind falls through and fails closed, with a cast-constructed test pinning it (verified to fail against the un-inverted condition).
+- Declined: backfilling `Co-Authored-By` on the six code commits. The convention is not enforced on `main` (8 of the last 24 commits lack it) and a history rewrite for a trailer is net-negative.
+- Two defects in the plan text, both caught by implementers rather than by review, neither affecting code: it claimed three `continue`s in the `extractor/index.ts` loop (there are two — the third belongs to an unrelated loop above), and its grep expectation said zero hits for `ownerKind === 'class'` when three legitimate pre-existing hits remain in key-selection and display-text logic. The intended assertion — no `isClass:` scope projection survives — does hold at zero.
+- BL-029 opened from the review's live repro of the `ClassMethodOwners`/`ClassFileOwners` asymmetry.
 
 ### 2026-08-26 — BL-023 planned
 - 7-task plan written (`docs/superpowers/plans/2026-08-26-scoped-test-inventory.md`); status → planned. Branch `scoped-test-inventory`.
