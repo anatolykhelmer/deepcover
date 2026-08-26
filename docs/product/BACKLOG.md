@@ -60,6 +60,12 @@
 
 ## Decision Log
 
+### 2026-08-26 — BL-010 scope corrected by PR #8 review
+- Review found three more silent no-ops in the same schema that BL-010 missed: `include`, `exclude`, and `testPattern` were validated by Zod and read by no call site, even though `extractCodeModel` already supported all three. `include` reached the extractor only from `--module`/`--file` via `resolvePaths`.
+- Wired rather than deleted or carved out (bb394bc). `include` follows the same flag > config precedence as the score threshold; `exclude` and `testPattern` pass straight through. Fourth breaking change in 0.7.0: anyone with these fields in a config had them ignored and will now have them applied.
+- The spec's "every field either changes behavior or leaves" was scoped to the three fields BL-010 named rather than to an inventory of the schema — which is exactly how these three survived a design pass whose whole subject was dead config. Spec amended with a dated note.
+- Also split the out-of-range `--min-score` message by direction: a negative gate can never *fire* (silent pass, the dangerous case) while one above 100 can never *pass*; describing both as "can never be met" buried the one that matters.
+
 ### 2026-08-26 — BL-023..BL-028 added from finding-reusable-modules audit
 - Ran a whole-`src/` finding-reusable-modules audit (72 non-spec files, ~8.3k LOC). 7 candidates survived skeptical validation; 1 (`extractMethodFromTarget` dedup) was already tracked as BL-015 and skipped. The other 6 filed here as Ideas.
 - Two native-API rejections verified by execution rather than assumed: ts-morph 27.0.2's `getFirstAncestor`/`getDescendantsOfKind` are exact behavioral matches for this repo's hand-written `hasAwait`/`hasThrow`/ancestor-walk helpers — confirmed against a throwaway in-memory `ts-morph` `Project`, so no backlog item was opened for those; call sites should just switch to the native calls directly.
