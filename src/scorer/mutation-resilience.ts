@@ -19,7 +19,7 @@ function extractMethodFromTarget(target: string): string | null {
  * The text-match path scans every test in the inventory. To prevent a same-named
  * method on an unrelated class — or the same class name declared in another file —
  * from inflating this method's specificity score (task 021), scoping is enforced
- * via `testInScopeOf`, which admits all tests for standalone functions but gating
+ * via `testInScopeOf`, which admits all tests for standalone functions but gates
  * class methods to those with resolved ownership.
  */
 function tallyAssertionSpecificity(

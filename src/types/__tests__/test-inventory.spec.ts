@@ -102,4 +102,20 @@ describe('testInScopeOf', () => {
     expect(testInScopeOf(makeTest('formats'), fnScope, uniqueOwners)).toBe(true);
     expect(testInScopeOf(makeTest('x', { targetClass: 'Unrelated' }), fnScope, uniqueOwners)).toBe(true);
   });
+
+  // Pins fail-closed behavior against a future third `ownerKind`: `'module'` is
+  // the one enumerated exception to the class-scoping rule, so anything else —
+  // including a kind that doesn't exist yet — must be gated like a class, not
+  // admitted like a module. The cast is deliberate: the type forbids this state
+  // today, which is exactly what this test is guarding.
+  it('fails closed for an unrecognized ownerKind instead of admitting it', () => {
+    const unknownScope = {
+      owner: 'OrderService', filePath: 'src/order.ts', ownerKind: 'namespace',
+    } as unknown as TestScope;
+    // Targets an unrelated class: a fail-closed gate rejects it. A gate that
+    // merely checks `!== 'class'` would instead treat 'namespace' as exempt,
+    // same as 'module', and wrongly admit it.
+    const test = makeTest('creates', { targetClass: 'UserService' });
+    expect(testInScopeOf(test, unknownScope, uniqueOwners)).toBe(false);
+  });
 });

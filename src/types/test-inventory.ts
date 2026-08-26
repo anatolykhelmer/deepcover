@@ -47,13 +47,20 @@ export interface TestScope {
  * Module-owned callables (standalone functions) have no comparable per-test
  * class signal, so the gate admits everything for them. That is a narrower,
  * documented, pre-existing limitation, and this is the only place it lives.
+ *
+ * The check below matches positively on `'module'` rather than negatively on
+ * `'class'`, so it fails closed by construction. `ownerKind` is a growable
+ * union; `'module'` is the one enumerated exception to the class-scoping rule,
+ * and everything else — including a kind added later, such as a `'namespace'`
+ * on `Callable` — falls through to the class branch and is gated, rather than
+ * silently admitted the way a `!== 'class'` check would admit it.
  */
 export function testInScopeOf(
   test: TestNode,
   scope: TestScope,
   classFileOwners: ClassFileOwners,
 ): boolean {
-  if (scope.ownerKind !== 'class') return true;
+  if (scope.ownerKind === 'module') return true;
   if (test.targetClass !== scope.owner) return false;
   return (
     resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) ===
