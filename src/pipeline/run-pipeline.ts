@@ -18,6 +18,16 @@ export interface RunPipelineOptions {
   weights?: ScoreWeights;
   /** Fraction (0-1) from `reasoner.maxInfluence`; caps the reasoner's score influence. */
   maxInfluence?: number;
+  /**
+   * From `include` in the config. `--module`/`--file` derive their own `include`
+   * in `resolvePaths` and win over this, matching the flag > config precedence
+   * the score threshold uses.
+   */
+  include?: string[];
+  /** From `exclude` in the config. */
+  exclude?: string[];
+  /** From `testPattern` in the config. */
+  testPattern?: string[];
 }
 
 export interface RunPipelineResult {
@@ -43,6 +53,11 @@ export async function runPipeline(opts: RunPipelineOptions): Promise<RunPipeline
 
   const extract = runExtractStage({
     ...paths,
+    // `paths.include` is set only by --module/--file, so spreading the config's
+    // include after it would let config silently override an explicit flag.
+    ...(paths.include === undefined && opts.include && { include: opts.include }),
+    ...(opts.exclude && { exclude: opts.exclude }),
+    ...(opts.testPattern && { testPattern: opts.testPattern }),
     ...(opts.module && { module: opts.module }),
     ...(opts.file && { file: opts.file }),
     bugs: opts.bugs,

@@ -155,6 +155,12 @@ fail-closed path in the resolver.
 - `--min-score` is now resolved and validated **before** the pipeline runs on
   `analyze`, `score`, and `run`, so a typo fails immediately rather than
   after extraction, a paid LLM call, and a printed report.
+- **`include`, `exclude`, and `testPattern` now actually apply.** They were
+  accepted by the config schema and read by nothing, so `include:
+  ['src/foo.ts']` silently analysed the default `**/*.ts` set instead. If you
+  have any of these in your config today, this release starts honouring them
+  — check that they say what you meant. `--module` and `--file` override
+  `include`, matching the flag > config precedence used elsewhere.
 
 ## What's new in 0.6.0
 
@@ -645,6 +651,11 @@ Create `deepcover.config.ts` in your project root:
 
 ```typescript
 export default {
+  // Which files to analyse. Omit to use the defaults shown.
+  include: ['**/*.ts'],
+  exclude: ['**/*.spec.ts', '**/*.test.ts', '**/node_modules/**'],
+  testPattern: ['**/*.spec.ts', '**/*.test.ts'],
+
   reasoner: {
     provider: 'cursor',       // 'cursor' | 'anthropic' | 'mock' | 'none'
     // model: 'claude-sonnet-4-20250514',  // when provider is anthropic
@@ -664,6 +675,12 @@ export default {
 ```
 
 Also supports `.js` and `.json` config files.
+
+`include`, `exclude`, and `testPattern` are glob arrays deciding which files the
+extractor reads and which of them count as tests. Each replaces its default
+wholesale rather than extending it — narrowing `include` means narrowing it. A
+`--module` or `--file` flag overrides `include` for that invocation, the same
+flag-beats-config precedence the score threshold uses.
 
 `thresholds.composite` sets the project's default pass mark: `analyze`, `score`,
 and `run` exit `1` when the composite falls below it. A `--min-score` flag on the

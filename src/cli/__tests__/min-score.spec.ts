@@ -76,6 +76,15 @@ describe('resolveMinScore', () => {
       );
     });
 
+    it('describes the two directions by their opposite consequences', () => {
+      // Conflating them buries the dangerous one: a negative gate is the silent
+      // pass this function exists to prevent, not a gate that "can never be met".
+      expect(() => resolveMinScore('-5', GATED_AT_60)).toThrow(/can never fire/);
+      expect(() => resolveMinScore('-5', GATED_AT_60)).toThrow(/would pass/);
+      expect(() => resolveMinScore('101', GATED_AT_60)).toThrow(/can never pass/);
+      expect(() => resolveMinScore('101', GATED_AT_60)).toThrow(/would fail/);
+    });
+
     it('accepts the lower boundary 0 — a deliberate "never gate" setting', () => {
       expect(resolveMinScore('0', GATED_AT_60)).toBe(0);
     });

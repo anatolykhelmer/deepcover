@@ -51,6 +51,9 @@ export const runCommand = new Command('run')
         reasoner,
         ...(config.weights && { weights: config.weights as ScoreWeights }),
         ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
+        ...(config.include && { include: config.include }),
+        ...(config.exclude && { exclude: config.exclude }),
+        ...(config.testPattern && { testPattern: config.testPattern }),
       });
 
       for (const note of result.notes) console.error(note);

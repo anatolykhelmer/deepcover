@@ -28,6 +28,11 @@ export const extractCommand = new Command('extract')
 
       const result = runExtractStage({
         ...paths,
+        // `paths.include` is set only by --module/--file, so spreading the
+        // config's include after it would let config override an explicit flag.
+        ...(paths.include === undefined && config.include && { include: config.include }),
+        ...(config.exclude && { exclude: config.exclude }),
+        ...(config.testPattern && { testPattern: config.testPattern }),
         ...(options.module && { module: options.module }),
         ...(options.file && { file: options.file }),
         bugs: !!options.bugs,

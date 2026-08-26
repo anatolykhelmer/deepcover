@@ -42,9 +42,16 @@ export function resolveMinScore(
     // `z.number().min(0).max(100)`: the flag that overrides the config must not
     // accept what the config would reject. `0` and `100` are both inside it —
     // "never gate" and "must be perfect" are real settings, not typos.
+    // The two directions fail in opposite ways, and conflating them buries the
+    // dangerous one: a negative gate is the silent pass this whole function
+    // exists to prevent, so it must not be described as "can never be met".
+    const consequence =
+      parsed < 0
+        ? 'so a negative gate can never fire — the build would pass no matter how low the score.'
+        : 'so a gate above 100 can never pass — the build would fail no matter how high the score.';
     throw new Error(
       `--min-score expects a number between 0 and 100, got '${flag}'. ` +
-        'The composite score is always in that range, so a gate outside it can never be met.',
+        `The composite score is always in that range, ${consequence}`,
     );
   }
   return parsed;

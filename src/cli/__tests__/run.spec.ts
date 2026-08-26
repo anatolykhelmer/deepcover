@@ -213,3 +213,78 @@ describe('run command', () => {
     }
   });
 });
+
+/**
+ * `include` / `exclude` / `testPattern` were accepted by the schema and read by
+ * nobody until BL-010's follow-up. These pin that they now reach the extractor,
+ * and that an explicit --module still wins over a config `include`.
+ */
+describe('run honours the config path fields', () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    // A self-contained project so the repo's own deepcover.config.ts cannot
+    // decide the outcome.
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-paths-'));
+    fs.mkdirSync(path.join(projectDir, 'src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'kept.ts'),
+      'export class Kept {\n  run(a: number): number {\n    if (a > 0) return a;\n    return 0;\n  }\n}\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'dropped.ts'),
+      'export class Dropped {\n  run(a: number): number {\n    if (a > 0) return a;\n    return 0;\n  }\n}\n',
+    );
+  });
+
+  afterEach(() => {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(config: unknown): void {
+    fs.writeFileSync(path.join(projectDir, 'deepcover.config.json'), JSON.stringify(config));
+  }
+
+  function extractedClasses(): string[] {
+    const model = JSON.parse(
+      fs.readFileSync(path.join(projectDir, '.deepcover', 'code-model.json'), 'utf-8'),
+    );
+    return model.modules.flatMap((m: { classes: { name: string }[] }) => m.classes.map((c) => c.name));
+  }
+
+  it('narrows the analysed sources to config.include', () => {
+    writeConfig({ include: ['src/kept.ts'] });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses()).toEqual(['Kept']);
+  });
+
+  it('drops config.exclude matches from the model', () => {
+    writeConfig({ exclude: ['src/dropped.ts', '**/node_modules/**'] });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses()).toEqual(['Kept']);
+  });
+
+  it('lets an explicit --module override config.include', () => {
+    // Config points at kept.ts alone; the flag asks for the whole src directory.
+    // Flag > config, matching how the score threshold resolves.
+    writeConfig({ include: ['src/kept.ts'] });
+    const { exitCode } = runCli([
+      'run', '--root', projectDir, '--module', 'src', '--no-llm', '--format', 'score',
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses().sort()).toEqual(['Dropped', 'Kept']);
+  });
+
+  it('analyses everything when the config sets no path fields', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses().sort()).toEqual(['Dropped', 'Kept']);
+  });
+});

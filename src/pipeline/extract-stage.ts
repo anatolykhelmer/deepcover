@@ -19,6 +19,10 @@ export interface ExtractStageOptions {
   rootDir: string;
   deepcoverDir: string;
   include?: string[];
+  /** From `exclude` in the config; absent falls back to the extractor's defaults. */
+  exclude?: string[];
+  /** From `testPattern` in the config; absent falls back to the extractor's defaults. */
+  testPattern?: string[];
   module?: string;
   file?: string;
   bugs: boolean;
@@ -46,6 +50,8 @@ export function runExtractStage(opts: ExtractStageOptions): ExtractStageResult {
   const codeModel = extractCodeModel({
     rootDir: opts.rootDir,
     ...(opts.include && { include: opts.include }),
+    ...(opts.exclude && { exclude: opts.exclude }),
+    ...(opts.testPattern && { testPattern: opts.testPattern }),
   });
 
   const scope = {
