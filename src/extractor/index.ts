@@ -14,6 +14,7 @@ import type {
   TestFileNode,
 } from '../types/code-model';
 import { buildClassMethodOwners, resolveClassMethodKey } from '../types/method-owner';
+import { allTests } from '../types/test-inventory';
 
 export interface TsMorphProjectOptions {
   skipAddingFilesFromTsConfig?: boolean;
@@ -120,33 +121,29 @@ export function extractCodeModel(options: ExtractOptions): CodeModel {
     coverage[key].push(testName);
   };
 
-  for (const testFile of testFiles) {
-    for (const describe of testFile.describes) {
-      for (const test of describe.tests) {
-        if (!test.targetMethod) continue;
+  for (const test of allTests(testFiles)) {
+    if (!test.targetMethod) continue;
 
-        const owners = classMethodOwners.get(test.targetMethod);
-        if (owners && owners.size > 0) {
-          // Class-owned method: only credit the class (and, when the class name is
-          // declared in several files, the specific file) this test actually resolved
-          // to — fail closed (drop it) when that can't be determined, since a
-          // same-named method on an unrelated class must never share coverage.
-          const key = resolveClassMethodKey(
-            test.targetMethod,
-            test.targetClass ?? null,
-            test.targetClassFile ?? null,
-            classMethodOwners
-          );
-          if (key) {
-            addCoverage(key, test.name);
-          }
-          continue;
-        }
-
-        if (functionNames.has(test.targetMethod)) {
-          addCoverage(test.targetMethod, test.name);
-        }
+    const owners = classMethodOwners.get(test.targetMethod);
+    if (owners && owners.size > 0) {
+      // Class-owned method: only credit the class (and, when the class name is
+      // declared in several files, the specific file) this test actually resolved
+      // to — fail closed (drop it) when that can't be determined, since a
+      // same-named method on an unrelated class must never share coverage.
+      const key = resolveClassMethodKey(
+        test.targetMethod,
+        test.targetClass ?? null,
+        test.targetClassFile ?? null,
+        classMethodOwners
+      );
+      if (key) {
+        addCoverage(key, test.name);
       }
+      continue;
+    }
+
+    if (functionNames.has(test.targetMethod)) {
+      addCoverage(test.targetMethod, test.name);
     }
   }
 
