@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-023 | Extract scoped test-inventory traversal | Designed 2026-08-26. Pure behaviour-preserving extraction: `allTests`/`testsInFile`/`testInScopeOf`/`TestScope` in `types/test-inventory.ts`, 8 sites migrate, `reasoner/scope.ts` explicitly excluded. `CallableScope` deleted in favour of a `ownerKind`-shaped `TestScope` that `Callable` satisfies structurally. Additive public export → minor. | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) | | 2026-08-26 |
+| BL-023 | Extract scoped test-inventory traversal | Designed 2026-08-26. Pure behaviour-preserving extraction: `allTests`/`testsInFile`/`testInScopeOf`/`TestScope` in `types/test-inventory.ts`, 8 sites migrate, `reasoner/scope.ts` explicitly excluded. `CallableScope` deleted in favour of a `ownerKind`-shaped `TestScope` that `Callable` satisfies structurally. Additive public export → minor. | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) | [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | 2026-08-26 |
 
 ## Ideas
 
@@ -58,6 +58,12 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-26 — BL-023 planned
+- 7-task plan written (`docs/superpowers/plans/2026-08-26-scoped-test-inventory.md`); status → planned. Branch `scoped-test-inventory`.
+- Task order is new-module-first, then one task per consumer layer, so every task after the first has an existing suite as its characterization gate and can be rejected without blocking its neighbours. Task 2 must move `find-tests.ts` and all 5 detectors together — deleting `CallableScope` breaks its importers otherwise.
+- Detector `inspect()` bodies stay untouched: four detectors get `this.inspect(codeModel, c.node, c, …)`, passing the node and the scope from the same `Callable`. The redundancy is deliberate — collapsing it is BL-024's `detect()` skeleton, and leaving the seam keeps task 2 a retype rather than a restructure. `untested-condition-operand` is the exception: it carries `isClass` as a positional param, so it takes `c: Callable` plus a one-line destructure that leaves the rest of its body alone.
+- Verified against source while planning: all `continue` statements at all four collapsed sites sit at the innermost per-test level, so the loop collapse cannot silently change what they skip. Recorded as the plan's one real review risk anyway — it is checked by reading, not by the suite.
 
 ### 2026-08-26 — BL-023 designed
 - Spec approved: `docs/superpowers/specs/2026-08-26-scoped-test-inventory-design.md`. BL-023 → Ready.
