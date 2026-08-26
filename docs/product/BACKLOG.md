@@ -1,6 +1,6 @@
 # Product Backlog
 
-> Last updated: 2026-08-25
+> Last updated: 2026-08-26
 > Repo: deep-cover
 
 ## Ready
@@ -29,6 +29,12 @@
 | BL-020 | Decouple run.spec tests from the repo's own config | Five pre-existing tests in `run.spec.ts` (:30-73, :118-141) pass `--root PROJECT_ROOT`, so since BL-010 they load `deepcover.config.ts`'s `thresholds.composite: 60`. Tests whose subjects are report formatting and `--bug-threshold` will flip to exit 1 if the repo's own score drifts below 60, failing with a message about the wrong thing. Nothing fails today. Fix: isolated root, as BL-010's new tests already do. | 2026-08-25 |
 | BL-021 | Single source for the maxInfluence default | The 0.2/20 default now lives in five places: `scorer/index.ts:48`, `extract-stage.ts:99`, and three sub-scorer signature defaults. The three `= 20` parameter defaults are unreachable in production (`runScorer` always passes a value) — dead defaults that drift. Changing the scorer default alone would make the agent README quote a cap the scorer does not apply. One exported constant fixes all of it. | 2026-08-25 |
 | BL-022 | Agent README misstates non-round influence caps | `extract-readme.ts:10` uses `Math.round(maxInfluence * 100)`, so `0.125` tells the agent "±13%" while the scorer caps at 12.5 points — a rounding error in the one sentence whose purpose is accuracy, in text that instructs an LLM. | 2026-08-25 |
+| BL-023 | Extract scoped test-inventory traversal | `testFiles→describes→tests` is looped at 8 sites, and the task-021 class-scope gate (`test.targetClass === owner` + resolved-file match) is reimplemented identically in `composer.ts`, `mutation-resilience.ts`, and `bug-detector/find-tests.ts`. Extract `allTests`/`testInScopeOf` to `types/test-inventory.ts`, mirroring `allCallables`. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-024 | Shared base for callable-walking bug detectors | All 5 detectors in `bug-detector/detectors/` open `detect()` with the identical `classFileOwners` + `allCallables(mod)` + `CallableScope` construction skeleton. A `CallableDetector` base class makes the scope-identity construction unrepresentable-wrong for a 6th detector. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-025 | Unify CLI report-and-gate tail (analyze/run) | `analyze.ts` and `run.ts` duplicate ~22 lines of format switch + `minScore`/`bugThreshold` gating + exit code, and have already diverged: `analyze` validates `--format` up front, `run` does not, so `deepcover run --format jsonn` silently prints a terminal report instead of erroring. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-026 | Single source for criticality derivation | `getCriticality` (`composer.ts`) and `getMethodRisk` (`gap-generator.ts`) are identical bodies (LLM rating lookup, else `branchCount + externalCalls` thresholds); `criticality.ts`'s `getCriticalityFromLLM` is the same lookup without the fallback. Drift here would label the same method differently in the per-method score vs. the gap ranking. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-027 | Generic array-job runner in reasoner | The 4 reasoner jobs (domain states, assertion quality, criticality, transitive coverage) share an identical parse→validate→degrade-to-`[]` body, differing only in prompt pair and Zod schema. A private `runArrayJob<T>` helper collapses 4 six-line bodies to 4 one-liners; the `bugFinding` job stays separate (object shape, different failure semantics). Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-028 | Move reasonerScope out of cli/ into reasoner/scope.ts | The `{ module, wholeRepo: !module && !file }` construction is duplicated in `extract-stage.ts` and `run-pipeline.ts` because `pipeline/` cannot import `cli/` (documented layering rule), which is where the one existing helper (`cli/reasoner-scope.ts`) lives. Relocating it next to `ReasonerScope` removes the duplication at its source. Found by a finding-reusable-modules audit. | 2026-08-26 |
 
 ## In Progress
 
@@ -53,6 +59,12 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-26 — BL-023..BL-028 added from finding-reusable-modules audit
+- Ran a whole-`src/` finding-reusable-modules audit (72 non-spec files, ~8.3k LOC). 7 candidates survived skeptical validation; 1 (`extractMethodFromTarget` dedup) was already tracked as BL-015 and skipped. The other 6 filed here as Ideas.
+- Two native-API rejections verified by execution rather than assumed: ts-morph 27.0.2's `getFirstAncestor`/`getDescendantsOfKind` are exact behavioral matches for this repo's hand-written `hasAwait`/`hasThrow`/ancestor-walk helpers — confirmed against a throwaway in-memory `ts-morph` `Project`, so no backlog item was opened for those; call sites should just switch to the native calls directly.
+- BL-023 (scoped test-inventory traversal) and BL-024 (callable-detector base) are the two with real correctness stakes — both guard the task-021 cross-class-attribution rule, currently reimplemented by hand at 3 and 5 sites respectively. BL-025 (CLI report-and-gate) already has a live symptom: `run --format jsonn` silently falls back instead of erroring, unlike `analyze`.
+- Explicitly rejected as false positives (see audit's "Do not combine"): a unified JSON-artifact loader (six sites, six different deliberate failure policies), a shared prompt test-file serializer (three prompts, each projecting different fields on purpose), and a blanket CLI try/catch wrapper (per-command try boundaries are load-bearing, per BL-002's ordering fixes).
 
 ### 2026-08-25 — BL-010 done; BL-019..BL-022 added
 - Implemented via subagent-driven-development across 6 tasks (11 commits on `config-honesty`); final whole-branch review returned MERGE AFTER FIXES with three blocking items, all fixed and re-reviewed clean. Full suite 597 passing / 6 pre-existing skips, `tsc --noEmit` clean.
