@@ -1,12 +1,13 @@
-import type { CodeModel } from '../types/code-model';
+import type { CodeModel, TestFileNode } from '../types/code-model';
 import type { ReasonerOutput } from '../reasoner/types';
 import type { ResolvedCoverage } from '../resolver/types';
 import type { StateCatalog } from './state-catalog';
 import type { ScoreResult, SubScore, FunctionScore } from './types';
 import { generateGaps } from './gap-generator';
 import { classifyMatcher } from './matchers';
-import { buildClassFileOwners, resolveTestClassFile, type ClassFileOwners } from '../types/method-owner';
-import { allCallables } from '../types/callable';
+import { buildClassFileOwners, type ClassFileOwners } from '../types/method-owner';
+import { allCallables, type Callable } from '../types/callable';
+import { allTests, testInScopeOf, type TestScope } from '../types/test-inventory';
 
 function extractMethodFromTarget(target: string): string | null {
   const match = target.match(/\.(\w+)\s*\(/);
@@ -39,50 +40,37 @@ function tallyAssertion(tally: AssertionTally, matcherUsed: string): void {
  * merely happen to execute the method count at half weight.
  *
  * The "written against a call to it" path text-scans every assertion in the
- * whole test inventory, so for a class method it must additionally require the
- * test's resolved `targetClass` to match `owner` AND resolve to this module's
- * own file — otherwise a same-named method on an unrelated class, or the same
- * class name in another file, gets full-weight credit here just because some
- * other test happens to call `.methodName(...)`. Standalone functions
- * (`isClass: false`) have no comparable per-test class signal and keep the
- * previous unscoped match.
+ * whole test inventory, so it must gate every test through `testInScopeOf` —
+ * otherwise a same-named method on an unrelated class, or the same class name
+ * in another file, gets full-weight credit here just because some other test
+ * happens to call `.methodName(...)`.
  */
 function tallyAssertionsForMethod(
-  codeModel: CodeModel,
+  testFiles: TestFileNode[],
   methodName: string,
   testNames: string[],
-  owner: string,
-  isClass: boolean,
-  filePath: string,
+  scope: TestScope,
   classFileOwners: ClassFileOwners
 ): AssertionTally {
   const direct = emptyTally();
   const transitive = emptyTally();
 
-  const testTargetsThisClass = (test: { targetClass?: string | null; targetClassFile?: string | null }): boolean =>
-    test.targetClass === owner &&
-    resolveTestClassFile(test.targetClass, test.targetClassFile ?? null, classFileOwners) === filePath;
-
-  for (const file of codeModel.testInventory.testFiles) {
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        // `testNames` is already file-scoped, but test NAMES are global — two
-        // specs may both use it('creates'), so looking a test node back up by
-        // name must still require it to target this class's own file.
-        const inScope = !isClass || testTargetsThisClass(test);
-        const directMatch = inScope && test.targetMethod === methodName && testNames.includes(test.name);
-        const transitiveMatch =
-          !directMatch && inScope && test.targetMethod !== methodName && testNames.includes(test.name);
-        if (directMatch) {
-          for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
-        } else if (transitiveMatch) {
-          for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
-        } else if (inScope) {
-          for (const a of test.assertions) {
-            if (extractMethodFromTarget(a.target) === methodName) {
-              tallyAssertion(direct, a.matcherUsed);
-            }
-          }
+  for (const test of allTests(testFiles)) {
+    // `testNames` is already file-scoped, but test NAMES are global — two
+    // specs may both use it('creates'), so looking a test node back up by
+    // name must still require it to target this class's own file.
+    const inScope = testInScopeOf(test, scope, classFileOwners);
+    const directMatch = inScope && test.targetMethod === methodName && testNames.includes(test.name);
+    const transitiveMatch =
+      !directMatch && inScope && test.targetMethod !== methodName && testNames.includes(test.name);
+    if (directMatch) {
+      for (const a of test.assertions) tallyAssertion(direct, a.matcherUsed);
+    } else if (transitiveMatch) {
+      for (const a of test.assertions) tallyAssertion(transitive, a.matcherUsed);
+    } else if (inScope) {
+      for (const a of test.assertions) {
+        if (extractMethodFromTarget(a.target) === methodName) {
+          tallyAssertion(direct, a.matcherUsed);
         }
       }
     }
@@ -195,6 +183,7 @@ export function composeScore(
 ): ScoreResult {
   const w = redistributeWeights(subScores, weights);
   const classFileOwners = buildClassFileOwners(codeModel.modules);
+  const testFiles = codeModel.testInventory.testFiles;
   const composite =
     subScores.assertionQuality.final * w.assertionQuality +
     subScores.stateCoverage.final * w.stateCoverage +
@@ -214,12 +203,8 @@ export function composeScore(
    * was decided per-entry at catalog build time, so a static state counts as
    * tested only when this method itself is covered.
    */
-  function scoreCallable(
-    owner: string,
-    callable: { name: string; branchCount: number; externalCalls: string[] },
-    isClass: boolean,
-    filePath: string
-  ): FunctionScore {
+  function scoreCallable(c: Callable): FunctionScore {
+    const { owner, filePath, node: callable } = c;
     const mc = resolvedCoverage.getMethodCoverage(owner, callable.name, filePath);
     const testNames = resolvedCoverage.getTestsForMethod(owner, callable.name, filePath);
 
@@ -227,7 +212,7 @@ export function composeScore(
     const totalStates = methodEntries.length;
     const testedStates = methodEntries.filter((e) => e.isTested).length;
 
-    const tally = tallyAssertionsForMethod(codeModel, callable.name, testNames, owner, isClass, filePath, classFileOwners);
+    const tally = tallyAssertionsForMethod(testFiles, callable.name, testNames, c, classFileOwners);
 
     const untested: string[] = [];
     if (!mc?.isCovered) {
@@ -266,7 +251,7 @@ export function composeScore(
 
   for (const mod of codeModel.modules) {
     for (const c of allCallables(mod)) {
-      perFunction.push(scoreCallable(c.owner, c.node, c.ownerKind === 'class', mod.filePath));
+      perFunction.push(scoreCallable(c));
     }
   }
 
