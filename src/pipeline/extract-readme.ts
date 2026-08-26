@@ -1,4 +1,13 @@
-export function generateReadme({ classCount, methodCount }: { classCount: number; methodCount: number }): string {
+export function generateReadme({
+  classCount,
+  methodCount,
+  maxInfluence,
+}: {
+  classCount: number;
+  methodCount: number;
+  maxInfluence: number;
+}): string {
+  const capPercent = Math.round(maxInfluence * 100);
   return `# DeepCover — Agent Instructions
 
 This directory contains everything you need to perform an LLM-powered code coverage analysis.
@@ -73,7 +82,7 @@ Combine all 4 jobs into \`reasoner-output.json\`:
 }
 \`\`\`
 
-Every item **must** have a \`confidence\` score (0–1). Be honest — the scorer caps LLM influence at ±20%.
+Every item **must** have a \`confidence\` score (0–1). Be honest — the scorer caps LLM influence at ±${capPercent}%.
 Focus on the **most critical** gaps. 5 high-quality insights beat 50 generic ones.
 
 ## Running the final analysis

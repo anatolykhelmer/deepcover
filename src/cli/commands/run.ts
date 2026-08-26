@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { Command } from 'commander';
 import { loadConfig } from '../config';
+import { resolveMinScore } from '../min-score';
 import { formatTerminalReport, formatScore } from '../formatters/terminal';
 import { resolvePaths } from '../../pipeline/loaders';
 import { runPipeline } from '../../pipeline/run-pipeline';
@@ -32,6 +33,12 @@ export const runCommand = new Command('run')
     try {
       const paths = resolvePaths({ root: options.root });
       const config = loadConfig(paths.rootDir);
+      // Resolved up front, next to the config it falls back to, and held for the
+      // gate below. `run` extracts, calls a paid LLM, and prints a full report
+      // before it ever reaches that gate, so validating there would reject
+      // `--min-score 8O` only after the work was done and success was printed —
+      // the same "worse than not checking at all" ordering `extract` avoids.
+      const minScore = resolveMinScore(options.minScore, config);
       const reasoner = resolveReasoner(config);
 
       const result = await runPipeline({
@@ -43,6 +50,10 @@ export const runCommand = new Command('run')
         llm: options.llm,
         reasoner,
         ...(config.weights && { weights: config.weights as ScoreWeights }),
+        ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
+        ...(config.include && { include: config.include }),
+        ...(config.exclude && { exclude: config.exclude }),
+        ...(config.testPattern && { testPattern: config.testPattern }),
       });
 
       for (const note of result.notes) console.error(note);
@@ -61,7 +72,7 @@ export const runCommand = new Command('run')
       }
 
       const composite = Math.round(result.score.composite);
-      if (options.minScore !== undefined && composite < parseInt(options.minScore, 10)) {
+      if (minScore !== undefined && composite < minScore) {
         process.exitCode = 1;
         return;
       }

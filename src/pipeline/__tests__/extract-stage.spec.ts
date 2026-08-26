@@ -150,6 +150,52 @@ describe('runExtractStage', () => {
     expect(second.notes.join('\n')).toContain('could not be parsed');
   });
 
+  it('states the configured influence cap in the agent instructions', () => {
+    const paths = resolvePaths({ root: PROJECT_ROOT, module: FIXTURE, output: path.join(tmpDir, '.deepcover') });
+    runExtractStage({ ...paths, module: FIXTURE, bugs: false, maxInfluence: 0.1 });
+
+    const readme = fs.readFileSync(path.join(tmpDir, '.deepcover', 'README.md'), 'utf-8');
+    expect(readme).toContain('±10%');
+    expect(readme).not.toContain('±20%');
+  });
+
+  it('falls back to the default cap in the instructions when none is configured', () => {
+    const paths = resolvePaths({ root: PROJECT_ROOT, module: FIXTURE, output: path.join(tmpDir, '.deepcover') });
+    runExtractStage({ ...paths, module: FIXTURE, bugs: false });
+
+    const readme = fs.readFileSync(path.join(tmpDir, '.deepcover', 'README.md'), 'utf-8');
+    expect(readme).toContain('±20%');
+  });
+
+  it('forwards exclude to the extractor, dropping matched sources from the model', () => {
+    const paths = resolvePaths({ root: PROJECT_ROOT, module: FIXTURE, output: path.join(tmpDir, '.deepcover') });
+    const baseline = runExtractStage({ ...paths, module: FIXTURE, bugs: false });
+    expect(baseline.codeModel.modules.some((m) => m.filePath.endsWith('source.ts'))).toBe(true);
+
+    const narrowed = runExtractStage({
+      ...paths,
+      module: FIXTURE,
+      bugs: false,
+      exclude: [`${FIXTURE}/source.ts`, '**/node_modules/**'],
+    });
+    expect(narrowed.codeModel.modules.some((m) => m.filePath.endsWith('source.ts'))).toBe(false);
+  });
+
+  it('forwards testPattern to the extractor, changing which files count as tests', () => {
+    const paths = resolvePaths({ root: PROJECT_ROOT, module: FIXTURE, output: path.join(tmpDir, '.deepcover') });
+    const baseline = runExtractStage({ ...paths, module: FIXTURE, bugs: false });
+    expect(baseline.codeModel.testInventory.testFiles.length).toBeGreaterThan(1);
+
+    const narrowed = runExtractStage({
+      ...paths,
+      module: FIXTURE,
+      bugs: false,
+      testPattern: [`${FIXTURE}/strong-tests.spec.ts`],
+    });
+    expect(narrowed.codeModel.testInventory.testFiles).toHaveLength(1);
+    expect(narrowed.codeModel.testInventory.testFiles[0]!.filePath).toContain('strong-tests');
+  });
+
   it('boosts the unhandled-error-path bug-signal confidence when Istanbul coverage becomes available', () => {
     // Pins the extract-stage call site: computeBugSignals(codeModel, rootDir, deepcoverDir)
     // takes two adjacent `string` params, and swapping them would silently break

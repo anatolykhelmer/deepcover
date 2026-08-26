@@ -72,6 +72,91 @@ describe('run command', () => {
     expect(exitCode).toBe(1);
   });
 
+  /**
+   * A bad `--min-score` must be caught before the pipeline runs, not after.
+   * `run` extracts, calls the reasoner, and prints the whole report before it
+   * reaches the gate, so a check at the gate site would reject the flag only
+   * after the expensive work was done and success was already on stdout.
+   */
+  describe('--min-score is validated before any work', () => {
+    it.each([
+      ['8O', 'unparseable'],
+      ['-5', 'out of range'],
+    ])('rejects %p (%s) with no report on stdout and no artifacts written', (flag) => {
+      const outDir = path.join(tmpDir, '.deepcover');
+
+      const { stdout, stderr, exitCode } = runCli([
+        'run', '--root', PROJECT_ROOT, '--module', FIXTURE,
+        '--no-llm', '--min-score', flag, '--output', outDir,
+      ]);
+
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain(`got '${flag}'`);
+      // The report never printed — the whole point of failing early.
+      expect(stdout.trim()).toBe('');
+      expect(stdout).not.toContain('Composite Score');
+      // The extract stage mkdirs this directory as its first act, so its absence
+      // proves the pipeline never started rather than merely printing nothing.
+      expect(fs.existsSync(outDir)).toBe(false);
+    });
+
+    it('does the work and prints the report when the same flag is valid', () => {
+      // Guards the assertions above against passing for the wrong reason: this
+      // invocation differs only in the flag's value.
+      const outDir = path.join(tmpDir, '.deepcover');
+
+      const { stdout, exitCode } = runCli([
+        'run', '--root', PROJECT_ROOT, '--module', FIXTURE,
+        '--no-llm', '--min-score', '0', '--output', outDir,
+      ]);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('Composite Score');
+      expect(fs.existsSync(outDir)).toBe(true);
+    });
+  });
+
+  /**
+   * `run` resolves the composite gate at its own call site, separate from the one
+   * `analyze`/`score` share. Nothing else in the suite exercises it, so this is
+   * where a lost config fallback would go unnoticed.
+   */
+  describe('composite threshold from config', () => {
+    let root: string;
+
+    beforeEach(() => {
+      // Own root, not PROJECT_ROOT: the repo's own config sets thresholds.composite,
+      // which would otherwise decide the outcome of these tests.
+      root = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-run-threshold-'));
+      fs.cpSync(path.join(PROJECT_ROOT, FIXTURE), path.join(root, 'module'), { recursive: true });
+    });
+
+    afterEach(() => {
+      fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    function runWithConfig(config: unknown, args: string[]): number {
+      fs.writeFileSync(path.join(root, 'deepcover.config.json'), JSON.stringify(config));
+      return runCli([
+        'run', '--root', root, '--module', 'module',
+        '--no-llm', '--output', path.join(root, '.deepcover'), ...args,
+      ]).exitCode;
+    }
+
+    it('gates on thresholds.composite when no flag is given', () => {
+      // 100 is above any score this fixture reaches, so the gate must fire.
+      expect(runWithConfig({ thresholds: { composite: 100 } }, [])).toBe(1);
+    });
+
+    it('lets the flag override a config threshold', () => {
+      expect(runWithConfig({ thresholds: { composite: 100 } }, ['--min-score', '0'])).toBe(0);
+    });
+
+    it('does not gate when neither flag nor config sets a threshold', () => {
+      expect(runWithConfig({ reasoner: { provider: 'mock' } }, [])).toBe(0);
+    });
+  });
+
   // Pins the direction of `highRisk >= threshold` and its `&& options.bugs` guard in
   // run.ts:160-167 — an inverted comparison or `&&` becoming `||` must fail these.
   describe('--bug-threshold gate', () => {
@@ -126,5 +211,80 @@ describe('run command', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * `include` / `exclude` / `testPattern` were accepted by the schema and read by
+ * nobody until BL-010's follow-up. These pin that they now reach the extractor,
+ * and that an explicit --module still wins over a config `include`.
+ */
+describe('run honours the config path fields', () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    // A self-contained project so the repo's own deepcover.config.ts cannot
+    // decide the outcome.
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-paths-'));
+    fs.mkdirSync(path.join(projectDir, 'src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'kept.ts'),
+      'export class Kept {\n  run(a: number): number {\n    if (a > 0) return a;\n    return 0;\n  }\n}\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'dropped.ts'),
+      'export class Dropped {\n  run(a: number): number {\n    if (a > 0) return a;\n    return 0;\n  }\n}\n',
+    );
+  });
+
+  afterEach(() => {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(config: unknown): void {
+    fs.writeFileSync(path.join(projectDir, 'deepcover.config.json'), JSON.stringify(config));
+  }
+
+  function extractedClasses(): string[] {
+    const model = JSON.parse(
+      fs.readFileSync(path.join(projectDir, '.deepcover', 'code-model.json'), 'utf-8'),
+    );
+    return model.modules.flatMap((m: { classes: { name: string }[] }) => m.classes.map((c) => c.name));
+  }
+
+  it('narrows the analysed sources to config.include', () => {
+    writeConfig({ include: ['src/kept.ts'] });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses()).toEqual(['Kept']);
+  });
+
+  it('drops config.exclude matches from the model', () => {
+    writeConfig({ exclude: ['src/dropped.ts', '**/node_modules/**'] });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses()).toEqual(['Kept']);
+  });
+
+  it('lets an explicit --module override config.include', () => {
+    // Config points at kept.ts alone; the flag asks for the whole src directory.
+    // Flag > config, matching how the score threshold resolves.
+    writeConfig({ include: ['src/kept.ts'] });
+    const { exitCode } = runCli([
+      'run', '--root', projectDir, '--module', 'src', '--no-llm', '--format', 'score',
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses().sort()).toEqual(['Dropped', 'Kept']);
+  });
+
+  it('analyses everything when the config sets no path fields', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    const { exitCode } = runCli(['run', '--root', projectDir, '--no-llm', '--format', 'score']);
+
+    expect(exitCode).toBe(0);
+    expect(extractedClasses().sort()).toEqual(['Dropped', 'Kept']);
   });
 });

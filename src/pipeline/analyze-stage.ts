@@ -18,6 +18,8 @@ export interface AnalyzeStageOptions {
   deepcoverDir: string;
   bugs: boolean;
   weights?: ScoreWeights;
+  /** Fraction (0-1) from `reasoner.maxInfluence`; the scorer converts to points. */
+  maxInfluence?: number;
 }
 
 export interface AnalyzeStageResult {
@@ -107,6 +109,7 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, jestData);
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
     ...(opts.weights && { weights: opts.weights }),
+    ...(opts.maxInfluence !== undefined && { maxInfluence: opts.maxInfluence }),
     enableBugs: opts.bugs,
   });
 

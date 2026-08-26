@@ -22,14 +22,21 @@ export const extractCommand = new Command('extract')
 
       // Loaded up front, before any work: an invalid config aborts the run, and
       // aborting after the artifacts are written and success is printed would be
-      // worse than not checking at all. Only the "Next:" hint below needs it.
+      // worse than not checking at all. Read below for the influence cap the
+      // agent instructions quote and for the "Next:" hint.
       const config = loadConfig(paths.rootDir);
 
       const result = runExtractStage({
         ...paths,
+        // `paths.include` is set only by --module/--file, so spreading the
+        // config's include after it would let config override an explicit flag.
+        ...(paths.include === undefined && config.include && { include: config.include }),
+        ...(config.exclude && { exclude: config.exclude }),
+        ...(config.testPattern && { testPattern: config.testPattern }),
         ...(options.module && { module: options.module }),
         ...(options.file && { file: options.file }),
         bugs: !!options.bugs,
+        ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
       });
 
       for (const note of result.notes) console.error(note);

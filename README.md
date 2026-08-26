@@ -78,7 +78,7 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 - **Extractor** — Deterministic AST analysis: classes, methods, branches, dependencies, assertions, mocks
 - **Coverage Resolver** — Merges static AST analysis with Jest/Istanbul runtime data into unified, class-qualified coverage
 - **Reasoner** — LLM semantic analysis with enriched prompts: domain states (with branch conditions + test names + state taxonomy), assertion quality (with target method info), criticality (with blast radius from dependency graph), transitive coverage (with mock detection + intra-class call graph)
-- **Scorer** — Deterministic formula: 4 sub-scores with bounded LLM influence (±20%)
+- **Scorer** — Deterministic formula: 4 sub-scores, 3 of them with LLM influence capped by `reasoner.maxInfluence` (default ±20 points)
 
 ## Quick Start
 
@@ -111,7 +111,7 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-## What's new in 0.6.1 (unreleased)
+## What's new in 0.7.0 (unreleased)
 
 ### Bug detection
 
@@ -128,6 +128,39 @@ exist could, in a narrow case, silently pick up the coverage of a same-named
 standalone function declared in the same file instead of being dropped. Fixed
 — such a lookup now correctly resolves to nothing, matching every other
 fail-closed path in the resolver.
+
+### Config and CLI
+
+- `weights` must now sum to `1`, checked after merging with your config's
+  values and defaults; a mistyped or partial override that doesn't restate
+  all four now throws instead of silently skewing the composite.
+- `reasoner.maxInfluence` is now threaded to assertion quality and
+  criticality weighting, in addition to mutation resilience (see
+  [Configuration](#configuration) for how far each sub-score can actually
+  move at a given setting — the default only visibly binds mutation
+  resilience). State coverage is deliberately unaffected.
+- `thresholds.composite` is now the default for `--min-score` on `analyze`,
+  `score`, and `run` — set it once in the config instead of passing the flag
+  everywhere. A `--min-score` flag still overrides it. Precedence: flag >
+  config > no gate.
+- `--min-score` now validates its argument: a value that isn't a finite
+  number throws instead of being silently coerced. Notably `--min-score
+  60abc` used to be read as `60`; it now fails with an error naming the bad
+  value instead of gating at a number you didn't type. It must also be
+  within `0..100` — the same bound `thresholds.composite` has always had —
+  so `--min-score -5` no longer replaces a configured gate with one that can
+  never fire. `0` and `100` remain valid: "never gate" and "must be
+  perfect" are real settings. The flag's own `'0'` default was removed since
+  `thresholds.composite` (or no gate) now takes over when it's omitted.
+- `--min-score` is now resolved and validated **before** the pipeline runs on
+  `analyze`, `score`, and `run`, so a typo fails immediately rather than
+  after extraction, a paid LLM call, and a printed report.
+- **`include`, `exclude`, and `testPattern` now actually apply.** They were
+  accepted by the config schema and read by nothing, so `include:
+  ['src/foo.ts']` silently analysed the default `**/*.ts` set instead. If you
+  have any of these in your config today, this release starts honouring them
+  — check that they say what you meant. `--module` and `--file` override
+  `include`, matching the flag > config precedence used elsewhere.
 
 ## What's new in 0.6.0
 
@@ -159,7 +192,11 @@ honoured.
 
 A partially specified section now keeps the defaults for the fields it does not
 mention; previously `weights: { assertionQuality: 0.5 }` silently dropped the
-other three weights.
+other three weights. (Historical note, as of 0.7.0: this example itself no
+longer runs as of the weights change documented above — `weights` must now
+sum to `1` after merging with defaults, and `{ assertionQuality: 0.5 }`
+merged with the other three defaults sums to `1.2`, so it throws. See
+[Configuration](#configuration).)
 
 ### State coverage
 
@@ -422,7 +459,7 @@ One-shot: extract, reason, and analyze in sequence. Equivalent to running the th
 | `--output <dir>` | Artifact directory | `.deepcover` |
 | `--no-llm` | Skip the reason stage (deterministic only) | false |
 | `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
-| `--min-score <n>` | Exit `1` if the composite score is below this | — |
+| `--min-score <n>` | Exit `1` if the composite score is below this | `thresholds.composite` |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 | `--bugs` | Enable bug analysis across all three stages | off |
 
@@ -484,7 +521,7 @@ or use `deepcover run` for one-shot.
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
 | `--format <fmt>` | Output: `terminal`, `json`, or `score` | `terminal` |
-| `--min-score <n>` | Exit `1` if the composite score is below this | — |
+| `--min-score <n>` | Exit `1` if the composite score is below this | `thresholds.composite` |
 | `--bugs` | Enable bug-finding (detectors + optional reasoner bugs) | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 
@@ -496,7 +533,7 @@ below threshold. Same requirement as `analyze`: it reads artifacts already in `.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--root <path>` | Project root directory | Current directory |
-| `--min-score <n>` | Minimum passing score (0-100) | 0 |
+| `--min-score <n>` | Minimum passing score (0-100) | `thresholds.composite` |
 | `--bugs` | Enable bug-finding analysis | off |
 | `--bug-threshold <n>` | Exit `1` if high-risk bugs >= n (requires `--bugs`) | — |
 
@@ -529,7 +566,15 @@ Four sub-scores combined with configurable weights:
 | Mutation Resilience | 25% | Would tests catch subtle code changes? (branch coverage + assertion specificity) |
 | Criticality Weighting | 15% | Is the important code tested? (blast radius + business criticality) |
 
-The LLM can adjust each sub-score by at most ±20%, scaled by its confidence. Without LLM (`--no-llm`), you get the deterministic base scores only.
+The LLM's adjustment to each sub-score is capped by `reasoner.maxInfluence`
+(default `0.2`, i.e. ±20 points) and scaled by its confidence — except state
+coverage, which the LLM never adjusts directly; its number comes from
+resolver-confirmed states, not a confidence-weighted nudge. Assertion quality
+and criticality weighting are, by how their formulas average per-judgment
+contributions, naturally bounded well inside that cap in practice; only
+mutation resilience routinely reaches it. See
+[Configuration](#configuration) for the exact bound on each. Without LLM
+(`--no-llm`), you get the deterministic base scores only.
 
 **Smart weight redistribution:** When a sub-score doesn't apply (e.g. state coverage when the Reasoner has no discovered states), its weight is redistributed proportionally to the applicable sub-scores.
 
@@ -606,11 +651,16 @@ Create `deepcover.config.ts` in your project root:
 
 ```typescript
 export default {
+  // Which files to analyse. Omit to use the defaults shown.
+  include: ['**/*.ts'],
+  exclude: ['**/*.spec.ts', '**/*.test.ts', '**/node_modules/**'],
+  testPattern: ['**/*.spec.ts', '**/*.test.ts'],
+
   reasoner: {
     provider: 'cursor',       // 'cursor' | 'anthropic' | 'mock' | 'none'
     // model: 'claude-sonnet-4-20250514',  // when provider is anthropic
     // apiKey: process.env.ANTHROPIC_API_KEY,
-    maxInfluence: 0.2,        // cap LLM adjustment at ±20%
+    maxInfluence: 0.2,        // caps how far the reasoner can move a score (see below)
   },
   weights: {
     assertionQuality: 0.30,
@@ -625,6 +675,41 @@ export default {
 ```
 
 Also supports `.js` and `.json` config files.
+
+`include`, `exclude`, and `testPattern` are glob arrays deciding which files the
+extractor reads and which of them count as tests. Each replaces its default
+wholesale rather than extending it — narrowing `include` means narrowing it. A
+`--module` or `--file` flag overrides `include` for that invocation, the same
+flag-beats-config precedence the score threshold uses.
+
+`thresholds.composite` sets the project's default pass mark: `analyze`, `score`,
+and `run` exit `1` when the composite falls below it. A `--min-score` flag on the
+command line overrides it for that invocation. With neither set, no gate applies.
+
+`reasoner.maxInfluence` caps how far the reasoner may move **assertion quality**,
+**mutation resilience**, and **criticality weighting** — each sub-score's LLM
+adjustment is clamped to ±`maxInfluence` × 100 points. In practice that clamp is
+the binding constraint only for mutation resilience: its adjustment scales with
+the number of LLM-confirmed transitive coverage inferences and is one-sided (the
+reasoner can only raise it), so enough confirmations reach the cap at any
+configured value, including the default. Assertion quality and criticality
+weighting are each a mean of per-judgment contributions, which is
+mathematically bounded before any clamp runs — assertion quality within
+roughly ±10 points, criticality weighting asymmetrically within roughly
+-10 to +2 points (a confirmed-high-and-untested rating pulls it down by up
+to 10; a confirmed-low-and-covered rating pulls it up by at most 2). Their
+default ±20-point cap (`maxInfluence: 0.2`) is never actually reached
+either way — `maxInfluence` only visibly constrains assertion quality's or
+criticality's downward moves once configured below roughly 0.1, and
+criticality's upward moves below roughly 0.02. It does **not** govern state
+coverage, which the LLM cannot move directly at all: when Istanbul branch
+data is available, that score is capped at overall Istanbul branch coverage
++ 10 points, tying LLM-discovered states to runtime evidence rather than to
+a configurable budget; without Istanbul data, no such cap applies.
+
+The four `weights` must sum to `1`. They are spent directly in the composite
+score, so any other total pushes results off the 0–100 scale. Because the
+defaults already sum to 1, overriding one weight means restating all four.
 
 The config is validated when it loads, and an invalid config stops the run with
 exit code 1 before any work happens. Unknown keys are errors — if DeepCover

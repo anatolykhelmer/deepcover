@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { Command, Option } from 'commander';
 import { loadConfig } from '../config';
+import { resolveMinScore } from '../min-score';
 import { assertNoLegacyFlags, type LegacyFlagCarrier } from '../legacy-flags';
 import { formatTerminalReport, formatScore } from '../formatters/terminal';
 import { resolvePaths } from '../../pipeline/loaders';
@@ -33,12 +34,17 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
 
     const paths = resolvePaths({ root: options.root });
     const config = loadConfig(paths.rootDir);
+    // Resolved up front, next to the config it falls back to, and held for the
+    // gate below: a bad `--min-score` must not be discovered only after the
+    // report has already been printed to stdout.
+    const minScore = resolveMinScore(options.minScore, config);
 
     const { result, notes } = runAnalyzeStage({
       rootDir: paths.rootDir,
       deepcoverDir: paths.deepcoverDir,
       bugs: !!options.bugs,
       ...(config.weights && { weights: config.weights as ScoreWeights }),
+      ...(config.reasoner?.maxInfluence !== undefined && { maxInfluence: config.reasoner.maxInfluence }),
     });
 
     for (const note of notes) console.error(note);
@@ -53,7 +59,7 @@ export function runAnalyzeCommand(options: AnalyzeCommandOptions, commandName: s
     }
 
     const composite = Math.round(result.composite);
-    if (options.minScore !== undefined && composite < parseInt(options.minScore, 10)) {
+    if (minScore !== undefined && composite < minScore) {
       process.exitCode = 1;
       return;
     }

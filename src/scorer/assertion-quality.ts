@@ -41,7 +41,8 @@ function getRuntimeAssertionCount(
 export function calculateAssertionQuality(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
-  resolvedCoverage: ResolvedCoverage
+  resolvedCoverage: ResolvedCoverage,
+  maxAdjustment: number = 20
 ): SubScore {
   let base = 0;
   const testFiles = codeModel.testInventory.testFiles;
@@ -203,7 +204,7 @@ export function calculateAssertionQuality(
     if (testNameToJudgment.size > 0) {
       const avgConfidence = totalConfidence / testNameToJudgment.size;
       llmAdjustment = (sumAdjustment / testNameToJudgment.size) * (avgConfidence / 1);
-      llmAdjustment = Math.max(-20, Math.min(20, llmAdjustment));
+      llmAdjustment = Math.max(-maxAdjustment, Math.min(maxAdjustment, llmAdjustment));
     }
   }
 

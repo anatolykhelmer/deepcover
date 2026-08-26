@@ -21,6 +21,13 @@ export * from './types';
 export interface ScorerOptions {
   weights?: ScoreWeights;
   enableBugs?: boolean;
+  /**
+   * Fraction (0-1) capping how far the reasoner may move a sub-score.
+   * Converted to points here, the single place the two units meet.
+   * Does not govern state coverage — that is bounded by Istanbul branch
+   * coverage instead (see `state-coverage.ts`).
+   */
+  maxInfluence?: number;
 }
 
 function runScorer(
@@ -38,7 +45,9 @@ function runScorer(
         ? { weights: options as ScoreWeights }
         : (options as ScorerOptions);
 
-  const assertionQuality = calculateAssertionQuality(codeModel, reasonerOutput, resolvedCoverage);
+  const maxAdjustment = (opts.maxInfluence ?? 0.2) * 100;
+
+  const assertionQuality = calculateAssertionQuality(codeModel, reasonerOutput, resolvedCoverage, maxAdjustment);
   const catalog = buildStateCatalog(codeModel, reasonerOutput, resolvedCoverage);
   if (catalog.droppedAmbiguous > 0) {
     console.warn(
@@ -46,8 +55,8 @@ function runScorer(
     );
   }
   const stateCoverage = calculateStateCoverage(catalog, resolvedCoverage);
-  const mutationResilience = calculateMutationResilience(codeModel, reasonerOutput, resolvedCoverage);
-  const criticalityWeighting = calculateCriticalityWeighting(codeModel, reasonerOutput, resolvedCoverage);
+  const mutationResilience = calculateMutationResilience(codeModel, reasonerOutput, resolvedCoverage, maxAdjustment);
+  const criticalityWeighting = calculateCriticalityWeighting(codeModel, reasonerOutput, resolvedCoverage, maxAdjustment);
 
   const subScores = { assertionQuality, stateCoverage, mutationResilience, criticalityWeighting };
   const scoreResult = composeScore(subScores, codeModel, reasonerOutput, resolvedCoverage, catalog, opts.weights);

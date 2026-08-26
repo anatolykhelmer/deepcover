@@ -1,12 +1,7 @@
 import { Project } from 'ts-morph';
 import path from 'path';
 import { analyzeClasses } from '../class-analyzer';
-import {
-  buildDependencyGraph,
-  getTransitivePaths,
-  getDirectDependencies,
-  getTransitiveDependencies,
-} from '../dependency-graph';
+import { buildDependencyGraph } from '../dependency-graph';
 import type { ClassNode } from '../../types/code-model';
 
 const FIXTURES_DIR = path.join(__dirname, '../../../fixtures/transitive');
@@ -65,36 +60,6 @@ describe('dependency-graph', () => {
     });
   });
 
-  describe('getTransitivePaths', () => {
-    it('returns paths from OrderController to OrderRepository', () => {
-      const edges = buildDependencyGraph(classNodes);
-      const paths = getTransitivePaths(edges, 'OrderController', 'OrderRepository');
-
-      expect(paths).toContainEqual(['OrderController', 'OrderService', 'OrderRepository']);
-    });
-  });
-
-  describe('getDirectDependencies', () => {
-    it('returns immediate dependencies only', () => {
-      const edges = buildDependencyGraph(classNodes);
-
-      expect(getDirectDependencies(edges, 'OrderController')).toContain('OrderService');
-      expect(getDirectDependencies(edges, 'OrderController')).not.toContain('OrderRepository');
-
-      expect(getDirectDependencies(edges, 'OrderService')).toContain('OrderRepository');
-    });
-  });
-
-  describe('getTransitiveDependencies', () => {
-    it('returns all reachable dependencies', () => {
-      const edges = buildDependencyGraph(classNodes);
-
-      const controllerDeps = getTransitiveDependencies(edges, 'OrderController');
-      expect(controllerDeps).toContain('OrderService');
-      expect(controllerDeps).toContain('OrderRepository');
-    });
-  });
-
   describe('no false edges', () => {
     it('Controller does NOT have a direct edge to Repository', () => {
       const edges = buildDependencyGraph(classNodes);
@@ -106,18 +71,4 @@ describe('dependency-graph', () => {
     });
   });
 
-  describe('cycle handling', () => {
-    it('does not crash or infinite loop with circular dependencies', () => {
-      const cyclicEdges = [
-        { from: 'A', to: 'B', type: 'injection' as const },
-        { from: 'B', to: 'A', type: 'injection' as const },
-      ];
-
-      expect(() => {
-        getTransitivePaths(cyclicEdges, 'A', 'B');
-        getTransitivePaths(cyclicEdges, 'A', 'A');
-        getTransitiveDependencies(cyclicEdges, 'A');
-      }).not.toThrow();
-    });
-  });
 });

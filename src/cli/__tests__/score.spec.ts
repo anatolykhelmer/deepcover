@@ -35,6 +35,10 @@ describe('score command', () => {
     return { stdout: result.stdout ?? '', stderr: result.stderr ?? '', exitCode: result.status ?? -1 };
   }
 
+  function writeConfig(config: unknown): void {
+    fs.writeFileSync(path.join(tmpDir, 'deepcover.config.json'), JSON.stringify(config));
+  }
+
   function parseScore(stdout: string): number {
     const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -62,5 +66,39 @@ describe('score command', () => {
 
   it('exits 0 when the score meets --min-score', () => {
     expect(runScore(['--min-score', '0']).exitCode).toBe(0);
+  });
+
+  it('gates on thresholds.composite from the config when no flag is given', () => {
+    // 100 is above any score this fixture reaches, so the gate must fire.
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(runScore([]).exitCode).toBe(1);
+  });
+
+  it('lets the flag override a config threshold', () => {
+    writeConfig({ thresholds: { composite: 100 } });
+    expect(runScore(['--min-score', '0']).exitCode).toBe(0);
+  });
+
+  it('does not gate when neither flag nor config sets a threshold', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    expect(runScore([]).exitCode).toBe(0);
+  });
+
+  it('gates on the flag when there is no config threshold', () => {
+    writeConfig({ reasoner: { provider: 'mock' } });
+    expect(runScore(['--min-score', '100']).exitCode).toBe(1);
+  });
+
+  /**
+   * Now that the flag suppresses a configured threshold, a flag that does not
+   * parse must stop the run rather than degrade to "no gate": silently dropping
+   * a gate the repo asked for reports a failing build as passing. `parseInt`
+   * alone is not enough — it reads '8O' as 8 and gates at 8.
+   */
+  it('rejects a malformed --min-score instead of silently dropping the config gate', () => {
+    writeConfig({ thresholds: { composite: 100 } });
+    const { exitCode, stderr } = runScore(['--min-score', '8O']);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--min-score expects a number, got '8O'");
   });
 });

@@ -170,6 +170,60 @@ describe('loadConfig rejects invalid config', () => {
     const dir = jsonDir({ resoner: {} });
     expect(() => loadConfig(dir)).toThrow(/delete it to run with defaults/);
   });
+
+  it('accepts weights that sum to exactly 1', () => {
+    const dir = jsonDir({
+      weights: {
+        assertionQuality: 0.4,
+        stateCoverage: 0.3,
+        mutationResilience: 0.2,
+        criticalityWeighting: 0.1,
+      },
+    });
+    expect(loadConfig(dir).weights?.assertionQuality).toBe(0.4);
+  });
+
+  it('accepts a float-imprecise sum within tolerance', () => {
+    // 0.4 + 0.3 + 0.2 + 0.1 is 0.9999999999999999 in IEEE-754.
+    const sum = 0.4 + 0.3 + 0.2 + 0.1;
+    expect(sum).not.toBe(1);
+    const dir = jsonDir({
+      weights: {
+        assertionQuality: 0.4,
+        stateCoverage: 0.3,
+        mutationResilience: 0.2,
+        criticalityWeighting: 0.1,
+      },
+    });
+    expect(() => loadConfig(dir)).not.toThrow();
+  });
+
+  it('throws when weights sum above 1', () => {
+    const dir = jsonDir({
+      weights: {
+        assertionQuality: 0.5,
+        stateCoverage: 0.5,
+        mutationResilience: 0.5,
+        criticalityWeighting: 0.5,
+      },
+    });
+    expect(() => loadConfig(dir)).toThrow(ConfigError);
+    expect(() => loadConfig(dir)).toThrow(/sum to 1/);
+  });
+
+  it('throws when a partial override breaks the sum, showing the merged weights', () => {
+    // The defaults already sum to 1, so overriding one weight alone always breaks it.
+    // The message must show all four effective values or the user cannot see why.
+    const dir = jsonDir({ weights: { assertionQuality: 0.5 } });
+    expect(() => loadConfig(dir)).toThrow(/assertionQuality: 0\.5/);
+    expect(() => loadConfig(dir)).toThrow(/stateCoverage: 0\.3/);
+    expect(() => loadConfig(dir)).toThrow(/1\.2/);
+  });
+
+  it('accepts a config with no weights section at all', () => {
+    const dir = jsonDir({ reasoner: { provider: 'mock' } });
+    expect(() => loadConfig(dir)).not.toThrow();
+  });
 });
 
 describe('loadConfig merge', () => {
@@ -189,11 +243,15 @@ describe('loadConfig merge', () => {
     return dir;
   }
 
-  it('keeps the other three default weights when one is overridden', () => {
-    const config = loadConfig(jsonDir({ weights: { assertionQuality: 0.5 } }));
+  it('keeps the other two default weights when two are overridden', () => {
+    // A single-weight override always breaks the sum-to-1 rule, since the
+    // defaults already sum to 1 (see 'throws when a partial override breaks
+    // the sum' above) — so this exercises the merge with two overrides that
+    // keep the total at 1, leaving the remaining two at their defaults.
+    const config = loadConfig(jsonDir({ weights: { assertionQuality: 0.5, stateCoverage: 0.1 } }));
     expect(config.weights).toEqual({
       assertionQuality: 0.5,
-      stateCoverage: DEFAULT_CONFIG.weights!.stateCoverage,
+      stateCoverage: 0.1,
       mutationResilience: DEFAULT_CONFIG.weights!.mutationResilience,
       criticalityWeighting: DEFAULT_CONFIG.weights!.criticalityWeighting,
     });
@@ -220,7 +278,9 @@ describe('loadConfig merge', () => {
   });
 
   it('does not mutate DEFAULT_CONFIG across calls', () => {
-    loadConfig(jsonDir({ weights: { assertionQuality: 0.99 } }));
+    // Must still sum to 1 (see 'throws when weights sum above 1'), so this
+    // compensates the assertionQuality override with criticalityWeighting.
+    loadConfig(jsonDir({ weights: { assertionQuality: 0.4, criticalityWeighting: 0.05 } }));
     expect(DEFAULT_CONFIG.weights!.assertionQuality).toBe(0.3);
     const second = loadConfig(jsonDir({}));
     expect(second.weights!.assertionQuality).toBe(0.3);

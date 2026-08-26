@@ -6,6 +6,7 @@ import { calculateStateCoverage } from '../state-coverage';
 import { buildStateCatalog } from '../state-catalog';
 import { calculateMutationResilience } from '../mutation-resilience';
 import { calculateCriticalityWeighting } from '../criticality';
+import { runScorer } from '..';
 
 const PROJECT_ROOT = '/project';
 
@@ -618,5 +619,187 @@ describe('sub-score calculators', () => {
       expect(score.final).toBeGreaterThanOrEqual(0);
       expect(score.final).toBeLessThanOrEqual(100);
     });
+  });
+});
+
+describe('maxInfluence cap', () => {
+  /**
+   * One method with one weak test. The base score is irrelevant here — these
+   * tests only compare llmAdjustment across caps. Written out in full rather
+   * than cast, matching every other model literal in this file.
+   */
+  function oneMethodModel(): CodeModel {
+    return {
+      modules: [
+        {
+          filePath: '/src/item.service.ts',
+          classes: [
+            {
+              name: 'ItemService',
+              type: 'service',
+              methods: [{ name: 'getAll', visibility: 'public', params: [], returnType: 'Item[]', branches: [], branchCount: 0, throwsErrors: false, hasAsyncOps: false, externalCalls: [], internalCalls: [], startLine: 1, endLine: 1 }],
+              dependencies: [],
+              states: [],
+            },
+          ],
+        },
+      ],
+      dependencyGraph: [],
+      testInventory: {
+        testFiles: [
+          {
+            filePath: '/test/item.spec.ts',
+            describes: [
+              {
+                name: 'ItemService',
+                tests: [
+                  { name: 'weak', targetMethod: 'getAll', assertions: [{ type: 'value_check', target: 'result', matcherUsed: 'toBeDefined' }], mocks: [], isAsync: false, targetClass: 'ItemService' },
+                ],
+              },
+            ],
+          },
+        ],
+        coverage: { '/src/item.service.ts:ItemService.getAll': ['weak'] },
+      },
+    };
+  }
+
+  it('criticality: a custom cap clamps tighter than the default', () => {
+    const model = oneMethodModel();
+    // The shared fixture marks `getAll` as covered (by the 'weak' test), which
+    // means a 'high' rating never triggers the untested-high penalty (see
+    // criticality.ts: `r.criticality === 'high' && !hasTests`). This test's
+    // whole point is to compare llmAdjustment magnitudes under different
+    // caps, so `getAll` must be untested here to produce a non-zero
+    // adjustment for the cap to actually bite.
+    model.testInventory.coverage = {};
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      // criticality.ts averages across all attributable ratings (line 77), so
+      // N identical 'high' ratings always yield exactly -10 regardless of N —
+      // the wide=20 call below never clamps. The 20-element array is
+      // decorative (kept for parity with the sibling tests in this block,
+      // which use the same array to build their ReasonerOutput); a single
+      // rating would produce the identical -10.
+      criticalityRatings: Array.from({ length: 20 }, () => ({
+        className: 'ItemService',
+        methodName: 'getAll',
+        criticality: 'high' as const,
+        reasoning: 'x',
+        confidence: 1,
+      })),
+    };
+    const resolved = resolvedFor(model);
+
+    const wide = calculateCriticalityWeighting(model, output, resolved, 20);
+    const narrow = calculateCriticalityWeighting(model, output, resolved, 5);
+
+    expect(Math.abs(narrow.llmAdjustment)).toBeLessThan(Math.abs(wide.llmAdjustment));
+    expect(Math.abs(narrow.llmAdjustment)).toBeLessThanOrEqual(5);
+  });
+
+  it('criticality: omitting the cap keeps the historical 20', () => {
+    const model = oneMethodModel();
+    // Same fix as the sibling test above: `getAll` must be untested for the
+    // 'high' ratings to produce a non-zero adjustment. With the original
+    // covered fixture, both sides below always computed to exactly 0 — the
+    // toEqual held for any default (5, 0, 100, ...) and guarded nothing.
+    model.testInventory.coverage = {};
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      criticalityRatings: Array.from({ length: 20 }, () => ({
+        className: 'ItemService',
+        methodName: 'getAll',
+        criticality: 'high' as const,
+        reasoning: 'x',
+        confidence: 1,
+      })),
+    };
+    const resolved = resolvedFor(model);
+
+    const omitted = calculateCriticalityWeighting(model, output, resolved);
+    const explicit20 = calculateCriticalityWeighting(model, output, resolved, 20);
+
+    expect(omitted.llmAdjustment).toBe(-10);
+    expect(omitted).toEqual(explicit20);
+  });
+
+  it('assertion-quality: a custom cap clamps tighter than the default', () => {
+    // assertion-quality's llmAdjustment is a confidence-weighted average of
+    // per-test judgments (weak=-10, medium=0, strong=+10; see
+    // qualityToAdjustment in assertion-quality.ts), so with confidence=1 a
+    // single 'strong' judgment on the covered 'weak' test already yields the
+    // formula's ceiling of exactly +10 — no input can push the raw,
+    // pre-clamp value past that (unlike criticality/mutation-resilience,
+    // whose raw values can exceed 20). That ceiling sits below the default
+    // cap of 20, so the default itself never clamps here; a narrower cap of 5
+    // does, which is what this test exercises. This is also why there is no
+    // companion "omitting the cap keeps the historical 20" test for
+    // assertion-quality: there is no reachable input that would make the
+    // omitted-vs-explicit-20 comparison hit the actual clamp boundary, so
+    // such a test would hold for any default >= 10 and would not
+    // meaningfully guard the literal value 20.
+    const model = oneMethodModel();
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      assertionJudgments: [
+        { testName: 'weak', quality: 'strong', reasoning: 'x', confidence: 1 },
+      ],
+    };
+    const resolved = resolvedFor(model);
+
+    const wide = calculateAssertionQuality(model, output, resolved, 20);
+    const narrow = calculateAssertionQuality(model, output, resolved, 5);
+
+    expect(wide.llmAdjustment).toBe(10);
+    expect(narrow.llmAdjustment).toBe(5);
+  });
+
+  it('mutation-resilience: the cap bounds the adjustment and stays one-sided', () => {
+    const model = oneMethodModel();
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      // 30 confirmed inferences would give 60 points uncapped.
+      transitiveInferences: Array.from({ length: 30 }, () => ({
+        from: 'A.a',
+        through: 'B.b',
+        to: 'C.c',
+        coveredTransitively: true,
+        caveat: '',
+        confidence: 1,
+      })),
+    };
+    const resolved = resolvedFor(model);
+
+    expect(calculateMutationResilience(model, output, resolved, 6).llmAdjustment).toBe(6);
+    expect(calculateMutationResilience(model, output, resolved).llmAdjustment).toBe(20);
+    // One-sided: no confirmed inferences means no adjustment, never a penalty.
+    const none = calculateMutationResilience(model, emptyReasonerOutput(), resolved, 6);
+    expect(none.llmAdjustment).toBe(0);
+  });
+
+  it('runScorer converts the maxInfluence fraction into a points cap', () => {
+    const model = oneMethodModel();
+    const output: ReasonerOutput = {
+      ...emptyReasonerOutput(),
+      transitiveInferences: Array.from({ length: 30 }, () => ({
+        from: 'A.a',
+        through: 'B.b',
+        to: 'C.c',
+        coveredTransitively: true,
+        caveat: '',
+        confidence: 1,
+      })),
+    };
+    const resolved = resolvedFor(model);
+
+    const tight = runScorer(model, output, resolved, { maxInfluence: 0.05 });
+    const loose = runScorer(model, output, resolved, { maxInfluence: 0.2 });
+    const omitted = runScorer(model, output, resolved, {});
+
+    expect(tight.subScores.mutationResilience.llmAdjustment).toBe(5);
+    expect(loose.subScores.mutationResilience.llmAdjustment).toBe(20);
+    // Default must reproduce today's behavior exactly.
+    expect(omitted.subScores.mutationResilience.llmAdjustment).toBe(20);
   });
 });

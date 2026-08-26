@@ -25,7 +25,8 @@ function getCriticalityFromLLM(
 export function calculateCriticalityWeighting(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
-  resolvedCoverage: ResolvedCoverage
+  resolvedCoverage: ResolvedCoverage,
+  maxAdjustment: number = 20
 ): SubScore {
   let totalWeight = 0;
   let coveredWeight = 0;
@@ -75,7 +76,7 @@ export function calculateCriticalityWeighting(
       }
     }
     llmAdjustment = llmAdjustment / attributable.length;
-    llmAdjustment = Math.max(-20, Math.min(20, llmAdjustment));
+    llmAdjustment = Math.max(-maxAdjustment, Math.min(maxAdjustment, llmAdjustment));
   }
 
   const confidence = attributable.length > 0 ? totalConfidence / attributable.length : 0;

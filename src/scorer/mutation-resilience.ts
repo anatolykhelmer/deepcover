@@ -67,7 +67,8 @@ function tallyAssertionSpecificity(
 export function calculateMutationResilience(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,
-  resolvedCoverage: ResolvedCoverage
+  resolvedCoverage: ResolvedCoverage,
+  maxAdjustment: number = 20
 ): SubScore {
   const testFiles = codeModel.testInventory.testFiles;
 
@@ -129,7 +130,7 @@ export function calculateMutationResilience(
       totalConfidence += inf.confidence;
     }
     if (confirmed.length > 0) {
-      llmAdjustment = Math.min(20, confirmed.length * 2);
+      llmAdjustment = Math.min(maxAdjustment, confirmed.length * 2);
       totalConfidence /= confirmed.length;
     }
   }
