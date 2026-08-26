@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| | | _No items._ | | | |
+| BL-023 | Extract scoped test-inventory traversal | Designed 2026-08-26. Pure behaviour-preserving extraction: `allTests`/`testsInFile`/`testInScopeOf`/`TestScope` in `types/test-inventory.ts`, 8 sites migrate, `reasoner/scope.ts` explicitly excluded. `CallableScope` deleted in favour of a `ownerKind`-shaped `TestScope` that `Callable` satisfies structurally. Additive public export → minor. | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) | | 2026-08-26 |
 
 ## Ideas
 
@@ -29,7 +29,6 @@
 | BL-020 | Decouple run.spec tests from the repo's own config | Five pre-existing tests in `run.spec.ts` (:30-73, :118-141) pass `--root PROJECT_ROOT`, so since BL-010 they load `deepcover.config.ts`'s `thresholds.composite: 60`. Tests whose subjects are report formatting and `--bug-threshold` will flip to exit 1 if the repo's own score drifts below 60, failing with a message about the wrong thing. Nothing fails today. Fix: isolated root, as BL-010's new tests already do. | 2026-08-25 |
 | BL-021 | Single source for the maxInfluence default | The 0.2/20 default now lives in five places: `scorer/index.ts:48`, `extract-stage.ts:99`, and three sub-scorer signature defaults. The three `= 20` parameter defaults are unreachable in production (`runScorer` always passes a value) — dead defaults that drift. Changing the scorer default alone would make the agent README quote a cap the scorer does not apply. One exported constant fixes all of it. | 2026-08-25 |
 | BL-022 | Agent README misstates non-round influence caps | `extract-readme.ts:10` uses `Math.round(maxInfluence * 100)`, so `0.125` tells the agent "±13%" while the scorer caps at 12.5 points — a rounding error in the one sentence whose purpose is accuracy, in text that instructs an LLM. | 2026-08-25 |
-| BL-023 | Extract scoped test-inventory traversal | `testFiles→describes→tests` is looped at 8 sites, and the task-021 class-scope gate (`test.targetClass === owner` + resolved-file match) is reimplemented identically in `composer.ts`, `mutation-resilience.ts`, and `bug-detector/find-tests.ts`. Extract `allTests`/`testInScopeOf` to `types/test-inventory.ts`, mirroring `allCallables`. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-024 | Shared base for callable-walking bug detectors | All 5 detectors in `bug-detector/detectors/` open `detect()` with the identical `classFileOwners` + `allCallables(mod)` + `CallableScope` construction skeleton. A `CallableDetector` base class makes the scope-identity construction unrepresentable-wrong for a 6th detector. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-025 | Unify CLI report-and-gate tail (analyze/run) | `analyze.ts` and `run.ts` duplicate ~22 lines of format switch + `minScore`/`bugThreshold` gating + exit code, and have already diverged: `analyze` validates `--format` up front, `run` does not, so `deepcover run --format jsonn` silently prints a terminal report instead of erroring. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-026 | Single source for criticality derivation | `getCriticality` (`composer.ts`) and `getMethodRisk` (`gap-generator.ts`) are identical bodies (LLM rating lookup, else `branchCount + externalCalls` thresholds); `criticality.ts`'s `getCriticalityFromLLM` is the same lookup without the fallback. Drift here would label the same method differently in the per-method score vs. the gap ranking. Found by a finding-reusable-modules audit. | 2026-08-26 |
@@ -59,6 +58,16 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-26 — BL-023 designed
+- Spec approved: `docs/superpowers/specs/2026-08-26-scoped-test-inventory-design.md`. BL-023 → Ready.
+- The three hand-written task-021 gates were compared clause by clause and are **semantically identical**, including the unscoped-for-standalone-functions branch. So this is a pure extraction with no divergence to adjudicate — the value is that the documented limitation becomes one decision with one comment instead of three copies free to drift.
+- Design found what the backlog entry missed: `CallableScope` is a lossy restatement of `Callable`, and `{ owner, filePath, isClass: c.ownerKind === 'class' }` is hand-written at **7** sites, every one of them fed by `allCallables`. Retyping the scope's third field to `ownerKind` makes `Callable` satisfy it structurally, so all 7 translations vanish and `CallableScope` is deleted. Deleting the *skeleton* around them stays BL-024's job; the line is drawn there deliberately.
+- `allTests` yields a bare `TestNode`, not a `Callable`-style record: no site reads the `describe` block for anything but `.tests`, and only `runtime-matcher` needs the test file's path — which it already has. Input is `TestFileNode[]` rather than `TestInventory`, since `coverage` is never touched.
+- Migration is 8 of the 9 traversal sites. `reasoner/scope.ts` is excluded on purpose — a `.some()` over one file, already two levels, with short-circuit.
+- Also verified not a defect: `reasoner/scope.ts`'s owner check never resolves a file, unlike the three real gates. It decides which test files reach the LLM, so over-inclusion costs tokens, not correctness. No backlog item opened.
+- Exported from `src/index.ts` beside `allCallables`. `export * from './types/code-model'` already publishes `TestNode`/`TestFileNode`/`TestInventory`, so consumers building on the public `CodeModel` currently get a correct callable walk and no test walk — and re-derive the task-021 gate off-repo where no suite can catch it. Additive, so minor rather than patch.
+- Two implementation traps recorded in the spec: the three gates use `continue` inside a triple loop, so collapsing the loops changes what `continue` skips (mechanical here, but must be read, not just tested); and `find-tests` must stay a loop rather than `[...allTests()].filter(...)`, which would materialise the whole inventory once per callable across five detectors.
 
 ### 2026-08-26 — BL-010 scope corrected by PR #8 review
 - Review found three more silent no-ops in the same schema that BL-010 missed: `include`, `exclude`, and `testPattern` were validated by Zod and read by no call site, even though `extractCodeModel` already supported all three. `include` reached the extractor only from `--module`/`--file` via `resolvePaths`.
