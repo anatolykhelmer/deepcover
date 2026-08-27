@@ -40,7 +40,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-023 | Extract scoped test-inventory traversal | [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) / [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | `scoped-test-inventory` |
+| BL-023 | Extract scoped test-inventory traversal | [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) open; [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) / [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | `scoped-test-inventory` |
 
 ## Done
 
@@ -60,7 +60,11 @@
 
 ## Decision Log
 
-### 2026-08-26 — BL-023 implemented (pending merge)
+### 2026-08-26 — BL-023 PR open; 0.8.0
+- Pushed and opened [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) against `main`. Released as **0.8.0** — four additive public exports, nothing removed or changed.
+- **The `(unreleased)` marker on the 0.7.0 README heading was stale and is now dropped.** `v0.7.0` is tagged on `e594df6` and pushed to origin, so anyone reading the README at the released version was told it wasn't released yet. This is the identical defect PR #8's review caught for `v0.6.1` — twice now, which suggests the tag and the README heading want to move in one step rather than two.
+
+### 2026-08-26 — BL-023 implemented
 - Executed via subagent-driven-development across the 7 planned tasks plus one final-review fix wave; 7 commits on `scoped-test-inventory`. Every per-task review came back clean on the first pass — no fix rounds.
 - Suite: 623 tests / 617 passing / 6 skipped, vs. 610 / 602 / 8 on `main`. The +13 is the new `test-inventory.spec.ts`; the 2 skip→pass shift is `reporter-entry.spec.ts` gating itself on a built `dist/`, which exists in the working checkout and not in the fresh comparison worktree. Environment, not code. `tsc --noEmit` clean.
 - **The evidence that the refactor is behaviour-preserving is a differential harness, not the suite.** The final review ran both versions of the library over 8 fixtures plus the repo's own `src/` and byte-compared every output the migration could move: `testInventory.coverage`, all four reasoner prompts with and without runtime folding, `resolveCoverage` keys, all 51 bug signals, and the full `ScoreResult` including 118 `perFunction` entries — 1.53 MB of JSON, byte-identical. It then proved the harness was not vacuous by breaking the gate in a throwaway worktree (66 and 128 differing lines).
