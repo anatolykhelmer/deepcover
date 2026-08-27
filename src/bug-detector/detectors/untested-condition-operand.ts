@@ -1,7 +1,6 @@
 import type {
   BranchNode,
   CodeModel,
-  CallableNode,
   ParamNode,
   TestNode,
 } from '../../types/code-model';
@@ -9,7 +8,7 @@ import type { BinaryExprCoverage, ResolvedCoverage } from '../../resolver/types'
 import type { BugSignal, BugDetector } from '../types';
 import { buildClassFileOwners, type ClassFileOwners } from '../../types/method-owner';
 import { findTestsForCallable } from '../find-tests';
-import { allCallables } from '../../types/callable';
+import { allCallables, type Callable } from '../../types/callable';
 
 /** Istanbul proved the operand was never evaluated — nothing to interpret. */
 const NEVER_EVALUATED_CONFIDENCE = 0.9;
@@ -41,7 +40,7 @@ export class UntestedConditionOperandDetector implements BugDetector {
 
     for (const mod of codeModel.modules) {
       for (const c of allCallables(mod)) {
-        signals.push(...this.inspect(codeModel, coverage, c.filePath, c.owner, c.node, c.ownerKind === 'class', classFileOwners));
+        signals.push(...this.inspect(codeModel, coverage, c, classFileOwners));
       }
     }
 
@@ -51,12 +50,10 @@ export class UntestedConditionOperandDetector implements BugDetector {
   private inspect(
     codeModel: CodeModel,
     coverage: ResolvedCoverage,
-    filePath: string,
-    owner: string,
-    method: CallableNode,
-    isClass: boolean,
+    c: Callable,
     classFileOwners: ClassFileOwners
   ): BugSignal[] {
+    const { owner, filePath, node: method } = c;
     const compound = method.branches.filter((b) => (b.operands?.length ?? 0) >= 2);
     if (compound.length === 0) return [];
 
@@ -65,7 +62,7 @@ export class UntestedConditionOperandDetector implements BugDetector {
     // detector is only about conditions that look covered but are not.
     if (!methodCoverage?.isCovered) return [];
 
-    const tests = findTestsForCallable(codeModel, method.name, { owner, filePath, isClass }, classFileOwners);
+    const tests = findTestsForCallable(codeModel, method.name, c, classFileOwners);
     const signals: BugSignal[] = [];
 
     for (const branch of compound) {

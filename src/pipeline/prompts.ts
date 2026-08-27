@@ -1,6 +1,7 @@
 import type { CodeModel, TestInventory } from '../types/code-model';
 import type { BugSignal } from '../bug-detector/types';
 import type { JestRuntimeData } from '../resolver/types';
+import { allTests } from '../types/test-inventory';
 import { buildDomainStatesPrompt } from '../reasoner/prompts/domain-states';
 import { buildAssertionQualityPrompt } from '../reasoner/prompts/assertion-quality';
 import { buildCriticalityPrompt, type MethodCoverageInfo } from '../reasoner/prompts/criticality';
@@ -46,14 +47,10 @@ export function buildTestsByMethod(
 ): Record<string, string[]> {
   const result: Record<string, string[]> = {};
 
-  for (const file of testInventory.testFiles) {
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        if (!test.targetMethod) continue;
-        if (!result[test.targetMethod]) result[test.targetMethod] = [];
-        result[test.targetMethod]!.push(test.name);
-      }
-    }
+  for (const test of allTests(testInventory.testFiles)) {
+    if (!test.targetMethod) continue;
+    if (!result[test.targetMethod]) result[test.targetMethod] = [];
+    result[test.targetMethod]!.push(test.name);
   }
 
   if (runtime?.testResults) {

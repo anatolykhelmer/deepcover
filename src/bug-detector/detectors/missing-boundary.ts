@@ -2,7 +2,8 @@ import type { CodeModel, CallableNode } from '../../types/code-model';
 import type { ResolvedCoverage } from '../../resolver/types';
 import type { BugSignal, BugDetector } from '../types';
 import { buildClassFileOwners, type ClassFileOwners } from '../../types/method-owner';
-import { findTestsForCallable, type CallableScope } from '../find-tests';
+import { findTestsForCallable } from '../find-tests';
+import type { TestScope } from '../../types/test-inventory';
 import { allCallables } from '../../types/callable';
 
 const BOUNDARY_PATTERN = /(\w+)\s*(>|<|>=|<=|===|!==)\s*(\d+)/;
@@ -18,8 +19,7 @@ export class MissingBoundaryDetector implements BugDetector {
 
     for (const mod of codeModel.modules) {
       for (const c of allCallables(mod)) {
-        signals.push(...this.inspect(codeModel, c.node,
-          { owner: c.owner, filePath: c.filePath, isClass: c.ownerKind === 'class' }, classFileOwners));
+        signals.push(...this.inspect(codeModel, c.node, c, classFileOwners));
       }
     }
     return signals;
@@ -28,7 +28,7 @@ export class MissingBoundaryDetector implements BugDetector {
   private inspect(
     codeModel: CodeModel,
     callable: CallableNode,
-    scope: CallableScope,
+    scope: TestScope,
     classFileOwners: ClassFileOwners
   ): BugSignal[] {
     const boundaryBranches = callable.branches.filter(

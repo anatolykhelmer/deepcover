@@ -22,8 +22,7 @@ export class UnhandledErrorPathDetector implements BugDetector {
         const catchBranches = c.node.branches.filter((b) => b.type === 'try_catch');
         if (catchBranches.length === 0 && !c.node.throwsErrors) continue;
 
-        const tests = findTestsForCallable(codeModel, c.node.name,
-          { owner: c.owner, filePath: c.filePath, isClass: c.ownerKind === 'class' }, classFileOwners);
+        const tests = findTestsForCallable(codeModel, c.node.name, c, classFileOwners);
         const hasErrorTest = tests.some((t) => this.isErrorPathTest(t));
 
         if (!hasErrorTest) {

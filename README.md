@@ -111,7 +111,34 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
 
-## What's new in 0.7.0 (unreleased)
+## What's new in 0.8.0 (unreleased)
+
+### New public exports
+
+Writing a custom detector or scorer against DeepCover's `CodeModel` used to
+mean re-implementing the class-scoping rule that decides which tests count as
+evidence about which method — the library exported `allCallables` for walking
+source, but nothing for walking tests. Four exports close that gap:
+
+- `allTests(testFiles)` and `testsInFile(file)` walk the test inventory in
+  source order, replacing a hand-written `testFiles → describes → tests` loop.
+- `testInScopeOf(test, scope, classFileOwners)` is the scoping rule itself: a
+  test counts toward a class method only when its resolved `targetClass` is
+  that method's owner **and** resolves to that method's own file, so a
+  same-named method on an unrelated class — or a second class of the same name
+  in another file — cannot inherit the credit. Ownership that cannot be
+  established fails closed. Standalone functions carry no per-test class
+  signal, so the gate admits every test for them; that limitation is unchanged
+  and now documented in one place.
+- `TestScope` is the shape `testInScopeOf` matches against. The existing
+  `Callable` satisfies it structurally, so a `Callable` from `allCallables`
+  passes straight through.
+
+Additive only. No existing export changed, and analysis output is unchanged in
+every case — this release moves internal duplication behind a shared module and
+publishes it.
+
+## What's new in 0.7.0
 
 ### Bug detection
 

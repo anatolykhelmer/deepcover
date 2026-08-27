@@ -2,6 +2,7 @@ import path from 'path';
 import type { JestRuntimeData } from './types';
 import type { TestFileNode } from '../types/code-model';
 import { resolveClassMethodKey, type ClassMethodOwners } from '../types/method-owner';
+import { testsInFile } from '../types/test-inventory';
 
 export interface MethodRuntimeResult {
   passed: string[];
@@ -91,15 +92,13 @@ function buildTestNodeIndex(
   const index = new Map<string, TestNodeIndexEntry[]>();
   for (const file of testFiles) {
     const entries: TestNodeIndexEntry[] = [];
-    for (const block of file.describes) {
-      for (const test of block.tests) {
-        entries.push({
-          testName: test.name,
-          targetMethod: test.targetMethod,
-          targetClass: test.targetClass ?? null,
-          targetClassFile: test.targetClassFile ?? null,
-        });
-      }
+    for (const test of testsInFile(file)) {
+      entries.push({
+        testName: test.name,
+        targetMethod: test.targetMethod,
+        targetClass: test.targetClass ?? null,
+        targetClassFile: test.targetClassFile ?? null,
+      });
     }
     // Extract produces absolute paths (globSync absolute: true) while Jest
     // runtime lookups are normalized to repo-relative — index in the same
