@@ -1,21 +1,8 @@
 import type { Reporter, AggregatedResult } from '@jest/reporters';
+import type { RuntimeData } from '../resolver/types';
 
-export interface DeepCoverRuntimeData {
-  testResults: {
-    testFilePath: string;
-    testName: string;
-    status: 'passed' | 'failed' | 'skipped';
-    duration: number;
-    assertionCount: number;
-  }[];
-  timestamp: string;
-  /**
-   * Absolute path to Jest's coverage directory. Jest writes `coverage-final.json`
-   * there only after every reporter's `onRunComplete` has resolved, so we record
-   * where to find it rather than copying data that isn't on disk yet.
-   */
-  coverageDirectory: string;
-}
+/** @deprecated Renamed to `RuntimeData` in 0.9.0. */
+export type DeepCoverRuntimeData = RuntimeData;
 
 export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
   private outputDir: string;
@@ -38,7 +25,9 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
     const dir = path.resolve(this.outputDir);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const data: DeepCoverRuntimeData = {
+    const data: RuntimeData = {
+      framework: 'jest',
+      coverageProvider: 'istanbul',
       testResults: [],
       timestamp: new Date().toISOString(),
       coverageDirectory: path.resolve(this.coverageDirectory),
@@ -57,7 +46,7 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
     }
 
     fs.writeFileSync(
-      path.join(dir, 'jest-runtime.json'),
+      path.join(dir, 'runtime.json'),
       JSON.stringify(data, null, 2)
     );
 

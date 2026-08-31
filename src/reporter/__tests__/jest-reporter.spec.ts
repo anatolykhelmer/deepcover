@@ -128,7 +128,7 @@ describe('DeepCoverReporter', () => {
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
-    const outputPath = path.join(tmpDir, 'jest-runtime.json');
+    const outputPath = path.join(tmpDir, 'runtime.json');
     expect(fs.existsSync(outputPath)).toBe(true);
   });
 
@@ -138,7 +138,7 @@ describe('DeepCoverReporter', () => {
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
-    const outputPath = path.join(customDir, 'jest-runtime.json');
+    const outputPath = path.join(customDir, 'runtime.json');
     expect(fs.existsSync(outputPath)).toBe(true);
   });
 
@@ -147,7 +147,7 @@ describe('DeepCoverReporter', () => {
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
-    const content = fs.readFileSync(path.join(tmpDir, 'jest-runtime.json'), 'utf-8');
+    const content = fs.readFileSync(path.join(tmpDir, 'runtime.json'), 'utf-8');
     const parsed = JSON.parse(content);
     expect(Array.isArray(parsed.testResults)).toBe(true);
     expect(parsed.testResults).toHaveLength(2);
@@ -158,7 +158,7 @@ describe('DeepCoverReporter', () => {
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
-    const content = fs.readFileSync(path.join(tmpDir, 'jest-runtime.json'), 'utf-8');
+    const content = fs.readFileSync(path.join(tmpDir, 'runtime.json'), 'utf-8');
     const parsed = JSON.parse(content);
 
     for (const tr of parsed.testResults) {
@@ -209,6 +209,30 @@ describe('DeepCoverReporter', () => {
 
     const istanbulPath = path.join(outputDir, 'istanbul-coverage.json');
     expect(fs.existsSync(istanbulPath)).toBe(false);
-    expect(fs.existsSync(path.join(outputDir, 'jest-runtime.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, 'runtime.json'))).toBe(true);
+  });
+
+  it('writes runtime.json with framework and provider recorded', async () => {
+    const dir = tmpDir;
+    const reporter = new DeepCoverReporter(
+      { coverageDirectory: path.join(dir, 'coverage') },
+      { outputDir: dir },
+    );
+    await reporter.onRunComplete!(new Set(), {
+      testResults: [
+        {
+          testFilePath: '/repo/src/a.spec.ts',
+          testResults: [
+            { fullName: 'A does b', status: 'passed', duration: 3, numPassingAsserts: 2 },
+          ],
+        },
+      ],
+    } as never);
+
+    const data = JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8'));
+    expect(data.framework).toBe('jest');
+    expect(data.coverageProvider).toBe('istanbul');
+    expect(data.testResults[0].assertionCount).toBe(2);
+    expect(fs.existsSync(path.join(dir, 'jest-runtime.json'))).toBe(false);
   });
 });
