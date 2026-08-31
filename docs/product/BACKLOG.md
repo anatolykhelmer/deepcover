@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-26
+> Last updated: 2026-08-31
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| | | _No items._ | | | |
+| BL-009 | Vitest support | Status `planned`; 9 tasks on branch `vitest-support`. Two reporters over one neutral `runtime.json`, dialect-agnostic extractor, framework descriptor only for user-facing text. Carries two adjacent fixes it depends on: the `exports` map has no `import` condition (Vitest cannot load the reporter at all), and `test:paradigms:e2e` silently no-ops for 2 of 5 fixtures. | [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) | [plan](../superpowers/plans/2026-08-31-vitest-support.md) | 2026-08-18 |
 
 ## Ideas
 
@@ -18,7 +18,6 @@
 | BL-006 | Constructor logic as pseudo-method | Extract constructor body logic (branches, calls) as a pseudo-method so tests for constructor behavior get attributed. | 2026-08-18 |
 | BL-007 | Few-shot examples in prompts | Add 2-3 concrete good-vs-bad examples to each Reasoner system prompt to improve output quality. | 2026-08-18 |
 | BL-008 | HTML report | Add a rich HTML report output with expandable per-function breakdowns and dependency graph visualization. | 2026-08-18 |
-| BL-009 | Vitest support | Add a working Vitest analysis path so DeepCover is not Jest-only for TypeScript projects. | 2026-08-18 |
 | BL-011 | Surface reasoner job failures instead of empty arrays | Replace silent `runJob` → `[]` + bracket scrapers with structured job results (and tests); prefer provider JSON mode when available. | 2026-08-18 |
 | BL-012 | Split test-analyzer.ts by concern | Break the ~1050-line Jest inventory god module into focused modules with a thin `analyzeTestFile` orchestrator. | 2026-08-18 |
 | BL-013 | Integration tests must not swallow extract failures | Stop `catch { return }` in integration specs so missing/broken fixtures fail the suite instead of passing. | 2026-08-18 |
@@ -40,12 +39,13 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-023 | Extract scoped test-inventory traversal | [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) open; [spec](../superpowers/specs/2026-08-26-scoped-test-inventory-design.md) / [plan](../superpowers/plans/2026-08-26-scoped-test-inventory.md) | `scoped-test-inventory` |
+| | | _No items._ | |
 
 ## Done
 
 | ID | Title | Completed | Notes |
 |----|-------|-----------|-------|
+| BL-023 | Extract scoped test-inventory traversal | 2026-08-27 | [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) merged (`c2dc3e0`); released as 0.8.0 |
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
 | BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
 | BL-003 | Callable + CoverageKey instead of class/function dual loops | 2026-08-24 | [PR #7](https://github.com/anatolykhelmer/deepcover/pull/7) merged |
@@ -59,6 +59,20 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-08-31 — BL-009 designed and planned; BL-023 closed out
+
+- Brainstormed and approved the design spec (`docs/superpowers/specs/2026-08-31-vitest-support-design.md`), then wrote the 9-task plan (`docs/superpowers/plans/2026-08-31-vitest-support.md`); BL-009 Ideas → Ready, status `planned`. Branch `vitest-support` off `main` at `c2dc3e0`.
+- **The plan's biggest unknown was removed by execution, not reasoning.** Vitest 4.1.11 was installed in a scratch directory and a probe reporter compiled against it, which pinned `onInit(vitest)` / `onTestRunEnd(testModules, …)`, the `TestModule`/`TestCase` accessors, and — the load-bearing one — that **the repo's current `tsconfig.json` resolves `vitest/reporters` unchanged**, because Vitest ships root-level `.d.ts` shims for node10 resolution. No `moduleResolution` change is needed, which the plan states as a prohibition so nobody adds one.
+- One deliberate deviation from the spec, recorded in the plan: `terminal.ts:49` becomes framework-neutral text rather than reading the descriptor. `formatTerminalReport` receives only a `ScoreResult`, and threading a descriptor into the formatter for one parenthetical is worse than dropping a framework name from a line that is about *having* runtime data.
+- Task order is contract-first: the neutral artifact type and its readers move together (splitting them leaves the repo non-compiling), then one task per producer, then the two test-harness tasks. The e2e repair (Task 7) is Jest-only and deliberately precedes the Vitest parameterization (Task 8), so a reviewer can accept the harness fix without judging the Vitest work.
+- **BL-023 → Done.** PR #9 merged as `c2dc3e0` on 2026-08-27; the row still said "open" because the merge happened outside a session that touched the backlog.
+- Shape: two reporters (`jest-reporter`, `vitest-reporter`) writing one neutral `.deepcover/runtime.json`, a dialect-agnostic extractor, and a framework descriptor that **only user-facing text reads**. No analysis path asks which framework produced its input, so no framework detection is needed for correctness — `jest.fn` does not compile inside a Vitest file, so accepting both identifiers unconditionally is strictly better than detecting.
+- **The `0` trap that shaped the artifact type.** Vitest's reporter API has no per-test assertion count, and writing `assertionCount: 0` would silently zero assertion quality: the field's only consumer (`assertion-quality.ts:135`) uses it to *truncate* the static assertion list, so `slice(0, 0)` discards every assertion. The field becomes optional and Vitest omits it, taking the existing "trust the static count" path — the same one a Jest project without the reporter takes today.
+- **Two adjacent defects pulled into scope because the feature cannot be delivered or proven without them.** The `exports` map declares only `require` on both subpaths, so Vitest's Vite-based loader fails with `ERR_PACKAGE_PATH_NOT_EXPORTED` before any DeepCover code runs. And `test:paradigms:e2e` silently no-ops for 2 of 5 fixtures: `bug-unhandled-error` and `same-method-name-different-class` have no `package.json`, so `npx jest` resolves `rootDir` to the repo root (verified via `--showConfig`), runs the whole repo suite, and writes coverage where the runner does not look. Nobody noticed because `ci.yml` runs only `npm test`. Parity is asserted *through* that harness, so doubling a stand that no-ops for 40% of its cases would prove nothing.
+- **v8 coverage degrades a detector silently, and the fix is a type distinction, not new logic.** Vitest defaults to `@vitest/coverage-v8`, whose Istanbul-shaped output carries no `binary-expr` branches — so the "operand never evaluated" half of `untested-condition-operand` returns nothing while its static half keeps reporting, leaving the detector looking alive. `binaryExpressions` becomes optional, with `undefined` meaning "the provider does not measure this" as distinct from `[]` meaning "Istanbul looked and found none". The reporter records `coverageProvider` as fact from Vitest's own config rather than guessing from file contents.
+- **Not purely additive, and the spec says so.** `assertionCount` and `binaryExpressions` are both reachable from the publicly exported `MethodCoverage`, so making them optional is a compile-time break for a consumer doing arithmetic on either. Called a break rather than filed under "additive" — the log already records two version-honesty defects, and this is the same shape.
+- Deliberately out of scope: recovering a Vitest assertion count via a shipped setup file (a second required install step for one truncation refinement at one call site), a third framework, and renaming `jest-paths.json` (which holds extractor test directories and has nothing to do with Jest).
 
 ### 2026-08-26 — BL-023 PR open; 0.8.0
 - Pushed and opened [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) against `main`. Released as **0.8.0** — four additive public exports, nothing removed or changed.
