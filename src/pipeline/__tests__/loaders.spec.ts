@@ -5,7 +5,7 @@ import type { CodeModel, ModuleNode } from '../../types/code-model';
 import type { IstanbulCoverageData } from '../../resolver/types';
 import {
   resolvePaths,
-  loadJestArtifacts,
+  loadRuntimeArtifacts,
   loadReasonerOutputFile,
   loadCodeModelFile,
   loadIstanbulByMethod,
@@ -46,15 +46,15 @@ describe('pipeline loaders', () => {
     });
   });
 
-  describe('loadJestArtifacts', () => {
+  describe('loadRuntimeArtifacts (legacy jest-runtime.json)', () => {
     it('returns undefined when neither artifact exists', () => {
-      expect(loadJestArtifacts(tmpDir)).toBeUndefined();
+      expect(loadRuntimeArtifacts(tmpDir)).toBeUndefined();
     });
 
     it('warns instead of silently swallowing a malformed runtime file', () => {
       fs.writeFileSync(path.join(tmpDir, 'jest-runtime.json'), '{ not json');
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      expect(loadJestArtifacts(tmpDir)).toBeUndefined();
+      expect(loadRuntimeArtifacts(tmpDir)).toBeUndefined();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('jest-runtime.json'));
       warn.mockRestore();
     });
@@ -372,6 +372,66 @@ describe('pipeline loaders', () => {
       expect(unhandledWithoutIstanbul?.confidence).toBe(0.6);
       expect(unhandledWithIstanbul).toBeDefined();
       expect(unhandledWithIstanbul?.confidence).toBe(0.7);
+    });
+  });
+
+  describe('loadRuntimeArtifacts', () => {
+    const write = (dir: string, name: string, data: unknown, mtimeMs?: number) => {
+      const p = path.join(dir, name);
+      fs.writeFileSync(p, JSON.stringify(data));
+      if (mtimeMs !== undefined) fs.utimesSync(p, mtimeMs / 1000, mtimeMs / 1000);
+    };
+
+    const runtimeDoc = (framework: 'jest' | 'vitest') => ({
+      framework,
+      coverageProvider: 'istanbul',
+      coverageDirectory: '/tmp/coverage',
+      timestamp: '2026-08-31T00:00:00.000Z',
+      testResults: [
+        { testFilePath: '/a/x.spec.ts', testName: 'A > b', status: 'passed', duration: 1 },
+      ],
+    });
+
+    it('reads runtime.json', () => {
+      write(tmpDir, 'runtime.json', runtimeDoc('vitest'));
+      expect(loadRuntimeArtifacts(tmpDir)?.runtime?.framework).toBe('vitest');
+    });
+
+    it('reads a legacy jest-runtime.json and defaults its new fields', () => {
+      write(tmpDir, 'jest-runtime.json', {
+        timestamp: '2026-08-01T00:00:00.000Z',
+        coverageDirectory: '/tmp/coverage',
+        testResults: [
+          { testFilePath: '/a/x.spec.ts', testName: 'A b', status: 'passed', duration: 1, assertionCount: 2 },
+        ],
+      });
+      const runtime = loadRuntimeArtifacts(tmpDir)?.runtime;
+      expect(runtime?.framework).toBe('jest');
+      expect(runtime?.coverageProvider).toBe('istanbul');
+    });
+
+    it('prefers the newer file when both exist — new wins', () => {
+      write(tmpDir, 'jest-runtime.json', runtimeDoc('jest'), 1_000_000);
+      write(tmpDir, 'runtime.json', runtimeDoc('vitest'), 2_000_000);
+      expect(loadRuntimeArtifacts(tmpDir)?.runtime?.framework).toBe('vitest');
+    });
+
+    it('prefers the newer file when both exist — legacy wins', () => {
+      write(tmpDir, 'runtime.json', runtimeDoc('vitest'), 1_000_000);
+      write(tmpDir, 'jest-runtime.json', runtimeDoc('jest'), 2_000_000);
+      expect(loadRuntimeArtifacts(tmpDir)?.runtime?.framework).toBe('jest');
+    });
+
+    it('returns undefined when neither artifact nor istanbul data exists', () => {
+      expect(loadRuntimeArtifacts(tmpDir)).toBeUndefined();
+    });
+
+    it('warns and ignores an unparseable artifact rather than throwing', () => {
+      fs.writeFileSync(path.join(tmpDir, 'runtime.json'), '{ not json');
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(loadRuntimeArtifacts(tmpDir)).toBeUndefined();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 });

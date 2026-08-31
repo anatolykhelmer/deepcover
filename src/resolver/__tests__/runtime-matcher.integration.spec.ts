@@ -2,7 +2,7 @@ import path from 'path';
 import { extractCodeModel } from '../../extractor';
 import { matchRuntimeTests } from '../runtime-matcher';
 import { buildClassMethodOwners } from '../../types/method-owner';
-import type { JestRuntimeData } from '../types';
+import type { RuntimeData } from '../types';
 
 // Task 022 regression: extractCodeModel globs with absolute: true, so the
 // inventory's TestFileNode.filePath values are absolute, while Jest runtime
@@ -24,7 +24,10 @@ describe('matchRuntimeTests with a real extract (absolute inventory paths)', () 
     expect(strongTestsFile).toBeDefined();
     expect(path.isAbsolute(strongTestsFile!.filePath)).toBe(true);
 
-    const runtime: JestRuntimeData = {
+    const runtime: RuntimeData = {
+      framework: 'jest',
+      coverageProvider: 'istanbul',
+      coverageDirectory: '/tmp/coverage',
       testResults: [
         {
           testFilePath: specPath,

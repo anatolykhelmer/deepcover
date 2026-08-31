@@ -6,7 +6,7 @@ import type { BugSignal } from '../bug-detector/types';
 import type { ReasonerOutput } from '../reasoner/types';
 import { ReasonerOutputSchema } from '../reasoner/types';
 import type { MethodCoverageInfo } from '../reasoner/prompts/criticality';
-import type { IstanbulCoverageData, JestRuntimeData } from '../resolver/types';
+import type { IstanbulCoverageData, RuntimeData } from '../resolver/types';
 import { loadIstanbulCoverage } from '../resolver/istanbul-source';
 import { mapIstanbulToMethod } from '../resolver/istanbul-mapper';
 import { resolveCoverage } from '../resolver';
@@ -50,25 +50,52 @@ export function resolvePaths(opts: {
   return { rootDir, deepcoverDir, ...(include && { include }) };
 }
 
-export interface JestArtifacts {
+export interface RuntimeArtifacts {
   istanbul?: IstanbulCoverageData;
-  runtime?: JestRuntimeData;
+  runtime?: RuntimeData;
 }
 
-export function loadJestArtifacts(deepcoverDir: string): JestArtifacts | undefined {
-  const artifacts: JestArtifacts = {};
+/** Artifact names in the order they were introduced. Both are read; only the first is written. */
+const RUNTIME_ARTIFACT_NAMES = ['runtime.json', 'jest-runtime.json'] as const;
+
+/**
+ * A project migrating Jest → Vitest keeps a stale `jest-runtime.json` on disk, so
+ * "read the old name only when the new one is missing" would serve a previous
+ * run's results — and its `coverageDirectory` — indefinitely. Freshest wins
+ * instead, the same rule `istanbul-source.ts` already applies to its two sources.
+ */
+export function loadRuntimeArtifacts(deepcoverDir: string): RuntimeArtifacts | undefined {
+  const artifacts: RuntimeArtifacts = {};
   artifacts.istanbul = loadIstanbulCoverage(deepcoverDir);
 
-  const runtimePath = path.join(deepcoverDir, 'jest-runtime.json');
-  if (fs.existsSync(runtimePath)) {
+  const present = RUNTIME_ARTIFACT_NAMES
+    .map((name) => path.join(deepcoverDir, name))
+    .filter((p) => fs.existsSync(p))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  if (present.length > 0) {
+    const chosen = present[0];
     try {
-      artifacts.runtime = JSON.parse(fs.readFileSync(runtimePath, 'utf-8')) as JestRuntimeData;
+      artifacts.runtime = withRuntimeDefaults(
+        JSON.parse(fs.readFileSync(chosen, 'utf-8')) as Partial<RuntimeData>,
+      );
     } catch (err) {
-      console.warn(`Warning: could not parse ${runtimePath} — ignoring runtime data: ${err}`);
+      console.warn(`Warning: could not parse ${chosen} — ignoring runtime data: ${err}`);
     }
   }
 
   return artifacts.istanbul || artifacts.runtime ? artifacts : undefined;
+}
+
+/** A pre-0.9.0 artifact has no `framework`/`coverageProvider`; only Jest ever wrote one. */
+function withRuntimeDefaults(raw: Partial<RuntimeData>): RuntimeData {
+  return {
+    framework: raw.framework ?? 'jest',
+    coverageProvider: raw.coverageProvider ?? 'istanbul',
+    coverageDirectory: raw.coverageDirectory ?? '',
+    timestamp: raw.timestamp ?? '',
+    testResults: raw.testResults ?? [],
+  };
 }
 
 /**

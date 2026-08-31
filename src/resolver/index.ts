@@ -2,7 +2,7 @@ import path from 'path';
 import type { CodeModel } from '../types/code-model';
 import type {
   IstanbulCoverageData,
-  JestRuntimeData,
+  RuntimeData,
   MethodCoverage,
   ResolvedCoverage,
 } from './types';
@@ -19,7 +19,7 @@ function resolveCoverage(
   rootDir: string,
   jestData?: {
     istanbul?: IstanbulCoverageData;
-    runtime?: JestRuntimeData;
+    runtime?: RuntimeData;
   }
 ): ResolvedCoverage {
   const methods = new Map<string, MethodCoverage>();

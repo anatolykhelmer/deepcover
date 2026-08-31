@@ -18,16 +18,39 @@ export interface IstanbulFileCoverage {
 
 export type IstanbulCoverageData = Record<string, IstanbulFileCoverage>;
 
-export interface JestRuntimeData {
+/** Which runner produced this artifact. Written by the reporter, never inferred. */
+export type TestFrameworkId = 'jest' | 'vitest';
+
+/**
+ * How the coverage data was produced. Recorded as fact from the runner's own
+ * config: `v8` does not emit `binary-expr` branches, so operand-level analysis
+ * is unavailable rather than empty (see `istanbul-mapper.ts`).
+ */
+export type CoverageProviderId = 'istanbul' | 'v8' | 'none';
+
+export interface RuntimeData {
+  framework: TestFrameworkId;
+  coverageProvider: CoverageProviderId;
+  /** Absolute path to the runner's coverage directory. */
+  coverageDirectory: string;
+  timestamp: string;
   testResults: {
     testFilePath: string;
     testName: string;
     status: 'passed' | 'failed' | 'skipped';
     duration: number;
-    assertionCount: number;
+    /**
+     * Assertions the runner actually executed. Optional because Vitest's reporter
+     * API does not expose it — and `0` is not a safe stand-in: it is the only
+     * consumer's truncation bound (`assertion-quality.ts:135`), so a zero would
+     * discard every assertion for the test instead of deferring to the static count.
+     */
+    assertionCount?: number;
   }[];
-  timestamp: string;
 }
+
+/** @deprecated Renamed to `RuntimeData` in 0.9.0. */
+export type JestRuntimeData = RuntimeData;
 
 export interface IstanbulMethodMetrics {
   linesCovered: number;
@@ -55,7 +78,7 @@ export interface BinaryExprCoverage {
 export interface RuntimeTestResult {
   name: string;
   status: 'passed' | 'failed' | 'skipped';
-  assertionCount: number;
+  assertionCount?: number;
 }
 
 export interface RuntimeMethodMetrics {

@@ -1,6 +1,6 @@
 import type { CodeModel, TestInventory } from '../types/code-model';
 import type { BugSignal } from '../bug-detector/types';
-import type { JestRuntimeData } from '../resolver/types';
+import type { RuntimeData } from '../resolver/types';
 import { allTests } from '../types/test-inventory';
 import { buildDomainStatesPrompt } from '../reasoner/prompts/domain-states';
 import { buildAssertionQualityPrompt } from '../reasoner/prompts/assertion-quality';
@@ -24,7 +24,7 @@ export interface PromptSet {
 /** Extra material the prompts use when it is available on disk. */
 export interface PromptContext {
   istanbulCoverage?: Map<string, MethodCoverageInfo>;
-  runtime?: JestRuntimeData;
+  runtime?: RuntimeData;
 }
 
 export interface BuildPromptsInput extends PromptContext {
@@ -43,7 +43,7 @@ export interface BuildPromptsInput extends PromptContext {
  */
 export function buildTestsByMethod(
   testInventory: TestInventory,
-  runtime?: JestRuntimeData,
+  runtime?: RuntimeData,
 ): Record<string, string[]> {
   const result: Record<string, string[]> = {};
 

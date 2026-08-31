@@ -9,7 +9,7 @@ import { resolveCoverage } from '../resolver';
 import {
   loadCodeModelFile,
   loadReasonerOutputFile,
-  loadJestArtifacts,
+  loadRuntimeArtifacts,
   EMPTY_REASONER_OUTPUT,
 } from './loaders';
 
@@ -99,14 +99,14 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
     );
   }
 
-  const jestData = loadJestArtifacts(opts.deepcoverDir);
-  if (!jestData) {
+  const runtimeData = loadRuntimeArtifacts(opts.deepcoverDir);
+  if (!runtimeData) {
     notes.push(
       'No Jest artifacts in .deepcover — coverage falls back to static heuristics. Wire up the DeepCover Jest reporter and run tests with --coverage for accurate scores.',
     );
   }
 
-  const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, jestData);
+  const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
     ...(opts.weights && { weights: opts.weights }),
     ...(opts.maxInfluence !== undefined && { maxInfluence: opts.maxInfluence }),

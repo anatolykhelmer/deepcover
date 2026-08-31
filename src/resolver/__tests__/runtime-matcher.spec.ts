@@ -1,10 +1,13 @@
 import { matchRuntimeTests } from '../runtime-matcher';
-import type { JestRuntimeData } from '../types';
+import type { RuntimeData } from '../types';
 import type { TestFileNode } from '../../types/code-model';
 import { buildClassMethodOwners } from '../../types/method-owner';
 
 describe('matchRuntimeTests', () => {
-  const runtime: JestRuntimeData = {
+  const runtime: RuntimeData = {
+    framework: 'jest',
+    coverageProvider: 'istanbul',
+    coverageDirectory: '/tmp/coverage',
     testResults: [
       { testFilePath: '/project/src/order.spec.ts', testName: 'OrderService > should create order', status: 'passed', duration: 10, assertionCount: 3 },
       { testFilePath: '/project/src/order.spec.ts', testName: 'OrderService > should fail on invalid input', status: 'failed', duration: 5, assertionCount: 0 },
@@ -54,7 +57,10 @@ describe('matchRuntimeTests', () => {
   });
 
   describe('class-owned methods (cross-class leak regression)', () => {
-    const crossClassRuntime: JestRuntimeData = {
+    const crossClassRuntime: RuntimeData = {
+      framework: 'jest',
+      coverageProvider: 'istanbul',
+      coverageDirectory: '/tmp/coverage',
       testResults: [
         { testFilePath: '/project/src/a.spec.ts', testName: 'AService > adds one', status: 'passed', duration: 5, assertionCount: 1 },
       ],
