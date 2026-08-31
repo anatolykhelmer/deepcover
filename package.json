@@ -10,11 +10,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "require": "./dist/index.js"
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./reporter": {
       "types": "./dist/reporter/index.d.ts",
-      "require": "./dist/reporter/index.js"
+      "require": "./dist/reporter/index.js",
+      "default": "./dist/reporter/index.js"
+    },
+    "./reporter/vitest": {
+      "types": "./dist/reporter/vitest.d.ts",
+      "require": "./dist/reporter/vitest.js",
+      "default": "./dist/reporter/vitest.js"
     }
   },
   "files": [
@@ -89,9 +96,11 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.5.0",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }
