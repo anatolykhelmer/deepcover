@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-08-31
+> Last updated: 2026-09-01
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-009 | Vitest support | Status `planned`; 9 tasks on branch `vitest-support`. Two reporters over one neutral `runtime.json`, dialect-agnostic extractor, framework descriptor only for user-facing text. Carries two adjacent fixes it depends on: the `exports` map has no `import` condition (Vitest cannot load the reporter at all), and `test:paradigms:e2e` silently no-ops for 2 of 5 fixtures. | [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) | [plan](../superpowers/plans/2026-08-31-vitest-support.md) | 2026-08-18 |
+| | | _No items._ | | | |
 
 ## Ideas
 
@@ -33,13 +33,14 @@
 | BL-026 | Single source for criticality derivation | `getCriticality` (`composer.ts`) and `getMethodRisk` (`gap-generator.ts`) are identical bodies (LLM rating lookup, else `branchCount + externalCalls` thresholds); `criticality.ts`'s `getCriticalityFromLLM` is the same lookup without the fallback. Drift here would label the same method differently in the per-method score vs. the gap ranking. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-027 | Generic array-job runner in reasoner | The 4 reasoner jobs (domain states, assertion quality, criticality, transitive coverage) share an identical parse→validate→degrade-to-`[]` body, differing only in prompt pair and Zod schema. A private `runArrayJob<T>` helper collapses 4 six-line bodies to 4 one-liners; the `bugFinding` job stays separate (object shape, different failure semantics). Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-028 | Move reasonerScope out of cli/ into reasoner/scope.ts | The `{ module, wholeRepo: !module && !file }` construction is duplicated in `extract-stage.ts` and `run-pipeline.ts` because `pipeline/` cannot import `cli/` (documented layering rule), which is where the one existing helper (`cli/reasoner-scope.ts`) lives. Relocating it next to `ReasonerScope` removes the duplication at its source. Found by a finding-reusable-modules audit. | 2026-08-26 |
+| BL-030 | End-to-end guard for the reporter → loader → resolver path | Nothing automated exercises it: `paradigm-runner` feeds `resolveCoverage` Istanbul data it loaded itself, and no fixture registers a DeepCover reporter, so the 10-case parity matrix proves Istanbul-shape parity only — never `runtime.json`, `assertionCount`, `coverageProvider`, or either reporter. Both of BL-009's load-bearing invariants are unguarded end to end, and the `exports`-map fix is verified only by hand. Wiring the reporter into one fixture and asserting on its `runtime.json` closes this; a Vitest-dialect (`vi.*`) fixture would also give the dual-dialect extractor its only e2e coverage. Found by BL-009's final whole-branch review. | 2026-09-01 |
 | BL-029 | Extractor and scope gate resolve duplicate class names against different maps | `resolveClassMethodKey` breaks ties with `ClassMethodOwners` (files declaring that class *with that method*); `testInScopeOf` uses `ClassFileOwners` (files declaring that class name *at all*). They can disagree. Live repro: `a/svc.ts` has `class Svc { create() }`, `b/svc.ts` has `class Svc { ship() }`, a spec imports `Svc` from `b/` and calls `create` — the extractor credits `a/svc.ts:Svc.create` (scores covered, `untested: []`) while the gate resolves the test to `b/svc.ts` and rejects it, so the method gets zero assertions. Pre-existing: head and base are byte-identical on the fixture. Found by BL-023's final whole-branch review. | 2026-08-26 |
 
 ## In Progress
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| | | _No items._ | |
+| BL-009 | Vitest support | Implemented, 16 commits, not yet merged; [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md). Final whole-branch review: MERGE AFTER FIXES → all 6 fixed and re-reviewed clean. **Release-time obligation: tag `v0.9.0` at merge** — the README heading carries no "unreleased" marker by design. | `vitest-support` |
 
 ## Done
 
@@ -59,6 +60,17 @@
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
 
 ## Decision Log
+
+### 2026-09-01 — BL-009 implemented; BL-030 opened
+
+- 16 commits on `vitest-support`, executed via subagent-driven-development across the 9 planned tasks plus one final-review fix wave. Suite 654 passing / 6 pre-existing skips; `tsc --noEmit` clean; paradigm e2e 9 passed / 1 deliberately skipped in ~15s.
+- **Four of the nine tasks stopped and escalated rather than proceeding, and every one of those escalations was a defect in the plan text, not in the implementation.** The plan's code gave `detectFramework` a `try` that did not cover the field access it protected (a `package.json` containing `null` crashed the CLI); its Vitest reporter read `coverage.provider` without `coverage.enabled`, so a run without `--coverage` stamped a provider and copied a stale coverage file with a fresh mtime; its mock-detection test passed with the fix reverted because the analyzer sorts candidates by test-title match before weight; and its authorized test-edit exception named the wrong file. The reviews that caught these caught them by *running* things — reverting a guard to watch a test fail, driving a real Vitest run against the built reporter, importing both versions of a module from git objects and diffing behaviour across ten inputs.
+- **A "verified" claim in the spec was false because the verification silently checked nothing.** The spec asserted no paradigm fixture used a `jest.*` API. The check was `grep -rl "jest\." "$d__tests__"` — one undefined shell variable, so it searched an empty path, and empty output read as "no matches". `bug-unhandled-error` does use `jest.fn()`/`jest.Mocked<>`, which surfaced only when it was run under Vitest. That fixture is now excluded from the Vitest half of the matrix, visibly skipped rather than silently absent, so the run cannot be misread as full parity.
+- **Two reviewer concessions were reversed on the repo's own precedent.** An implementer gave `mapIstanbulToMethod`'s new parameter a default so seven existing spec calls kept compiling — unreachable in production, which is exactly BL-021's "dead defaults that drift". And `ResolvedCoverage.coverageProvider` was made optional for the same reason; checking found nothing read it at all, making it the BL-010 defect. Both were made required, and the field was *wired*: `analyze-stage` stopped re-deriving the provider from the raw artifact, collapsing a duplicate derivation of one fact.
+- **The final review found the first CI-breaking issue this branch could have shipped**: the new e2e step runs Vitest 4, which requires Node ≥ 20, while the matrix still includes 18.x — npm only warns EBADENGINE at install, so it would have failed at runtime. Gated at step level rather than dropping 18.x, since DeepCover itself still supports it. It also caught the Jest reporter hardcoding `coverageProvider: 'istanbul'` even though Jest supports `--coverageProvider=v8` (confirmed by running it), a `'none'` provider silently scoring a *previous* run's coverage, and the shipped agent skill still naming an artifact nothing writes.
+- **Version honesty failed a third time.** The README said "0.8.0 (unreleased)" while `v0.8.0` was genuinely tagged — after the same defect shipped for 0.6.1 and 0.7.0, and after this log recorded that the tag and heading "want to move in one step". Fixed in passing. 0.9.0's heading deliberately carries no marker; tagging at merge is recorded as a release-time obligation. Three occurrences is a mechanism problem, not an attention problem.
+- **Not purely additive, and the README says so.** `RuntimeTestResult.assertionCount` and `IstanbulMethodMetrics.binaryExpressions` both became optional and are both reachable from the exported `MethodCoverage`, so a consumer doing arithmetic on either gets a compile error. That is the intended effect — "not measured" must stop impersonating a measurement — but it is a break.
+- BL-030 opened from the final review: nothing automated exercises the reporter → loader → resolver path, so both load-bearing invariants and the `exports` fix are verified only by hand.
 
 ### 2026-08-31 — BL-009 designed and planned; BL-023 closed out
 
