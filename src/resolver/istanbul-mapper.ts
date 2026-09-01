@@ -4,9 +4,7 @@ export function mapIstanbulToMethod(
   fileCoverage: IstanbulFileCoverage,
   startLine: number,
   endLine: number,
-  // Defaults to 'istanbul' so the pre-existing calls in istanbul-mapper.spec.ts (written
-  // before this parameter existed) keep compiling and behaving exactly as before.
-  provider: CoverageProviderId = 'istanbul'
+  provider: CoverageProviderId
 ): IstanbulMethodMetrics | undefined {
   let linesTotal = 0;
   let linesCovered = 0;

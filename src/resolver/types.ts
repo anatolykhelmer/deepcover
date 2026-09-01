@@ -125,9 +125,7 @@ export interface ResolvedCoverage {
   methods: Map<string, MethodCoverage>;
   hasIstanbulData: boolean;
   hasRuntimeData: boolean;
-  // Optional (not required) so the several bug-detector spec files that hand-build a
-  // ResolvedCoverage without this field keep compiling unedited — see task-5-report.md.
-  coverageProvider?: CoverageProviderId;
+  coverageProvider: CoverageProviderId;
   isMethodCovered(className: string, methodName: string, filePath: string): boolean;
   getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined;
   getTestsForMethod(className: string, methodName: string, filePath: string): string[];
