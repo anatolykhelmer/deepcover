@@ -56,8 +56,8 @@ Four-phase pipeline:
                                              │
                               ┌──────────────┼──────────────┐
                               ▼              ▼              ▼
-                     jest-runtime.json  istanbul-coverage  coverage-final
-                     (pass/fail/dur)    .json (line/branch) (Jest default)
+                     runtime.json       istanbul-coverage  coverage-final
+                     (pass/fail/dur)    .json (line/branch) (runner default)
                               │              │
 Source + Tests ──► [Extractor] ──► CodeModel  │
                     (ts-morph)        │       │
@@ -82,7 +82,7 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 
 ## Quick Start
 
-**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest.
+**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest.
 
 ```bash
 npm install -g @anatolykhelmer/deep-cover
@@ -107,11 +107,32 @@ communicate through files in `<root>/.deepcover/`:
 `deepcover run` performs all three in one command. Stage 2 is the only stage that
 involves an LLM, and it always says which Reasoner it used.
 
-**Strongly recommended:** wire up the [Jest reporter](#jest-integration) and run tests with `--coverage` before analyzing.
+**Strongly recommended:** wire up the [test-runner reporter](#test-runner-integration) and run tests with `--coverage` before analyzing.
 
-**Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest** tests.
+**Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest or Vitest** tests.
 
-## What's new in 0.8.0 (unreleased)
+## What's new in 0.9.0
+
+### Vitest support
+
+DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have had since 0.6.0 — including full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`.
+
+### The runtime artifact is renamed, and it isn't Jest-specific anymore
+
+Both reporters now write `.deepcover/runtime.json` — previously `.deepcover/jest-runtime.json`, written only by the Jest reporter. **Existing Jest users need to do nothing**: DeepCover's loaders still read the old name too and take whichever of the two files has the newer mtime, so upgrading doesn't lose data and a Jest → Vitest migration doesn't need to delete anything mid-flight. Neither reporter writes the old name going forward.
+
+The exported type follows the same rename: `RuntimeData` replaces `JestRuntimeData` as the canonical name. `JestRuntimeData` remains exported as a deprecated alias of `RuntimeData`, so existing type annotations keep compiling.
+
+### Breaking: two `MethodCoverage` fields are now optional
+
+Two fields reachable from the publicly exported `MethodCoverage` type narrowed from required to optional, both to stop a missing measurement from impersonating a real one:
+
+- `RuntimeTestResult.assertionCount` — absent (not `0`) when the runner doesn't report a per-test assertion count, which is every Vitest run today.
+- `IstanbulMethodMetrics.binaryExpressions` — absent (not `[]`) when the coverage provider doesn't measure operands, which is every `v8`-provider run.
+
+If your code reads either field and does arithmetic or array operations on it without a guard, this is a compile error under `strict` mode. The fix is to handle the "not measured" case explicitly — the same way DeepCover's own scorer and bug-detector now do. This is the one part of 0.9.0 that isn't purely additive.
+
+## What's new in 0.8.0
 
 ### New public exports
 
@@ -820,11 +841,15 @@ fixtures/
     └── dont-test-getters-setters/  # Mini npm project with source, tests, expected.json
 ```
 
-## Jest Integration
+## Test-runner integration
 
-DeepCover works without this section — the Extractor can score a module from static AST analysis alone. But **configuring the Jest reporter and running tests with coverage is strongly recommended**: it's the difference between DeepCover *guessing* which test covers which method and *knowing*, from real Istanbul line/branch data and real pass/fail results. This directly sharpens Assertion Quality, State Coverage, Mutation Resilience, and Criticality (see "How it works" below). Do this once per project and every `analyze`/`score` run after that benefits automatically.
+DeepCover works without this section — the Extractor can score a module from static AST analysis alone. But **configuring the reporter for your test runner and running tests with coverage is strongly recommended**: it's the difference between DeepCover *guessing* which test covers which method and *knowing*, from real Istanbul line/branch data and real pass/fail results. This directly sharpens Assertion Quality, State Coverage, Mutation Resilience, and Criticality (see "How it works" below). Do this once per project and every `analyze`/`score` run after that benefits automatically.
 
-### Setup
+Both reporters write the same artifact, `.deepcover/runtime.json`. DeepCover's loaders still read the legacy `.deepcover/jest-runtime.json` name too, so **existing Jest users on the old reporter need to change nothing** — whichever of the two files has the newer mtime wins, so a stale `jest-runtime.json` left over from a Jest → Vitest migration can't shadow a fresh `runtime.json`. Neither reporter writes the old name anymore.
+
+### Jest
+
+#### Setup
 
 Add the DeepCover reporter to your project's Jest config, **and** enable coverage — both are required, together:
 
@@ -844,34 +869,72 @@ npx @anatolykhelmer/deep-cover run --root . --module src/your-module
 
 **Both pieces matter independently:**
 
-- Reporter only, no coverage → `jest-runtime.json` is written (pass/fail, durations, assertion counts), but `istanbul-coverage.json` is silently skipped — no error, the file just won't exist and DeepCover falls back to heuristic line/branch estimates.
+- Reporter only, no coverage → `runtime.json` is written (pass/fail, durations, assertion counts), but `istanbul-coverage.json` is silently skipped — no error, the file just won't exist and DeepCover falls back to heuristic line/branch estimates.
 - Coverage only, no reporter → Jest still writes `coverage/coverage-final.json`, but DeepCover never sees runtime pass/fail data, and nothing gets copied into `.deepcover/`.
 
 You want both configured together to get the full accuracy benefit.
 
-### What gets captured
+#### What gets captured
 
 After each test run, the reporter writes to `.deepcover/`:
 
 | File | Contents |
 |------|----------|
-| `jest-runtime.json` | Per-test pass/fail status, duration, assertion counts |
+| `runtime.json` | Per-test pass/fail status, duration, assertion counts |
 | `istanbul-coverage.json` | Istanbul line/branch/function coverage (from `coverage-final.json`, requires `collectCoverage: true`) |
 
-### How it works
+#### How it works
 
 1. **Run tests** — `npm test -- --coverage` executes tests and produces both artifacts
-2. **Run DeepCover** — the `analyze` / `score` commands auto-detect `.deepcover/jest-runtime.json` and `istanbul-coverage.json`
+2. **Run DeepCover** — the `analyze` / `score` commands auto-detect `.deepcover/runtime.json` and `istanbul-coverage.json`
 3. **Coverage Resolver** merges the data:
    - Istanbul data → ground-truth line/branch coverage per method (via line-range overlay)
    - Runtime data → actual pass/fail, assertion counts, test durations
-   - Static extractor data → fallback when Jest data is unavailable
+   - Static extractor data → fallback when runtime data is unavailable
 4. **Scorer** uses the merged data for more accurate sub-scores:
    - Assertion Quality filters out failed tests, detects runtime assertion count mismatches
    - State Coverage scales by Istanbul branch coverage when available
    - Mutation Resilience uses actual branch hit counts instead of heuristic estimates
    - Criticality scales coverage proportionally by Istanbul line coverage
    - Gap Generator reports "partially covered" methods (< 50% line/branch coverage)
+
+### Vitest
+
+#### Setup
+
+Add the DeepCover reporter to your Vitest config, **and** enable coverage with the `istanbul` provider — both are required, together:
+
+```ts
+import { defineConfig } from 'vitest/config';
+import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vitest';
+
+export default defineConfig({
+  test: {
+    reporters: ['default', new DeepCoverVitestReporter()],
+    coverage: { provider: 'istanbul', reporter: ['json'] },
+  },
+});
+```
+
+Then run tests with coverage before analyzing:
+
+```bash
+npx vitest run --coverage
+npx @anatolykhelmer/deep-cover run --root . --module src/your-module
+```
+
+**`@vitest/coverage-istanbul` is required for the full detector set.** Vitest's default coverage provider is `v8`, and `v8` does not record per-operand branch counts the way Istanbul does. When DeepCover sees a `v8` run, the "operand never evaluated" half of the `untested-condition-operand` detector is **disabled, not empty** — `analyze`/`score` say so explicitly in their output notes instead of silently reporting no findings. Install `@vitest/coverage-istanbul` and set `coverage.provider: 'istanbul'` (as above) to get the same detector coverage Jest projects get.
+
+**Vitest runs carry no per-test assertion count.** Vitest's reporter API does not expose one, so the DeepCover reporter omits `assertionCount` for each test rather than writing `0` — a `0` would be read as "this test's assertions were all discarded" instead of "not measured." Consequently, Assertion Quality falls back to the statically discovered assertion count for Vitest runs — the same path a Jest project takes when it hasn't wired up the reporter at all. This is not a Vitest shortcoming to fix; it is the correct, intentional degradation for data the runner genuinely doesn't expose.
+
+**If coverage isn't enabled**, the reporter still writes `runtime.json` (pass/fail, durations) but records `coverageProvider: 'none'` and skips its best-effort coverage snapshot — an honest artifact rather than a misleading one. Run with `--coverage` to get Istanbul (or V8) data as well.
+
+#### What gets captured
+
+| File | Contents |
+|------|----------|
+| `runtime.json` | Per-test pass/fail status and duration — no assertion counts (see above) |
+| `istanbul-coverage.json` | *(if coverage enabled)* Coverage data from the configured provider (`istanbul` or `v8`) |
 
 ## Paradigm Testing
 
