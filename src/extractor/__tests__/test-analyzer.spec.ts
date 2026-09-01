@@ -192,15 +192,18 @@ describe('test-analyzer', () => {
       expect(viMocks).toEqual(jestMocks);
     });
 
-    it('does not mistake vi for the method under test', () => {
-      // `vi` must be a GLOBAL_RECEIVERS entry, or `vi.spyOn` competes with the real
-      // target for the same reason `jest.spyOn` would without its entry.
+    it('does not treat vi as a local object when it is a global receiver', () => {
+      // `vi` must be a GLOBAL_RECEIVERS entry to prevent confusion if code happens
+      // to create a local variable named `vi`. Without the entry, multiple `vi.run()`
+      // calls in assertions would outweigh a single `save()` call.
       const result = analyzeSource(`
-    describe('OrderService', () => {
-      it('saves', () => {
-        const spy = vi.spyOn(console, 'log');
-        new OrderService().save({ id: 1 });
-        expect(spy).toHaveBeenCalled();
+    describe('Config', () => {
+      it('applies', () => {
+        const vi = { run: () => true };
+        new Config().save({ name: 'test' });
+        expect(vi.run()).toBe(true);
+        expect(vi.run()).toBe(true);
+        expect(vi.run()).toBe(true);
       });
     });
   `);
