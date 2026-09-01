@@ -11,6 +11,7 @@ export class DeepCoverVitestReporter implements Reporter {
   private outputDir: string;
   private coverageProvider: CoverageProviderId = 'none';
   private coverageDirectory = './coverage';
+  private coverageEnabled = false;
 
   constructor(options?: { outputDir?: string }) {
     this.outputDir = options?.outputDir ?? '.deepcover';
@@ -18,9 +19,15 @@ export class DeepCoverVitestReporter implements Reporter {
 
   onInit(vitest: Vitest): void {
     const coverage = vitest.config.coverage;
-    // 'custom' and undefined both mean "we cannot reason about what this measured".
+    this.coverageEnabled = coverage.enabled;
+    // Vitest always resolves `provider` to a real value (default 'v8') regardless
+    // of whether coverage actually ran — `enabled` is the only signal that the run
+    // measured anything at all. Gate on it first: a disabled run naming a provider
+    // would assert something false. 'custom' is likewise unreasoned-about territory.
     this.coverageProvider =
-      coverage.provider === 'istanbul' || coverage.provider === 'v8' ? coverage.provider : 'none';
+      coverage.enabled && (coverage.provider === 'istanbul' || coverage.provider === 'v8')
+        ? coverage.provider
+        : 'none';
     this.coverageDirectory = coverage.reportsDirectory;
   }
 
@@ -59,9 +66,14 @@ export class DeepCoverVitestReporter implements Reporter {
 
     // Best-effort snapshot, mirroring the Jest reporter: the runner has usually not
     // written this yet for the run just observed, so the CLI prefers the live file.
-    const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
-    if (fs.existsSync(istanbulSource)) {
-      fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));
+    // Skipped entirely when coverage was not enabled: copying would stamp a stale
+    // coverage-final.json with a fresh mtime, defeating the freshness comparison
+    // in istanbul-source.ts and laundering old data as new.
+    if (this.coverageEnabled) {
+      const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
+      if (fs.existsSync(istanbulSource)) {
+        fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));
+      }
     }
   }
 }
