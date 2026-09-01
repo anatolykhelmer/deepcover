@@ -46,7 +46,7 @@ export function formatTerminalReport(result: ScoreResult): string {
   const lines: string[] = [];
 
   const hasIstanbul = result.perFunction.some((fn) => fn.coverageSource === 'istanbul');
-  lines.push(hasIstanbul ? 'DeepCover Report (with Jest runtime data)' : 'DeepCover Report');
+  lines.push(hasIstanbul ? 'DeepCover Report (with runtime coverage data)' : 'DeepCover Report');
   lines.push('════════════════');
   lines.push(`Composite Score: ${Math.round(result.composite)}/100`);
   lines.push('');

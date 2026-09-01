@@ -6,6 +6,7 @@ import type { ScoreResult } from '../scorer/types';
 import type { ScoreWeights } from '../scorer/composer';
 import { runScorer } from '../scorer';
 import { resolveCoverage } from '../resolver';
+import { missingRuntimeNote } from '../framework';
 import {
   loadCodeModelFile,
   loadReasonerOutputFile,
@@ -101,9 +102,7 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
 
   const runtimeData = loadRuntimeArtifacts(opts.deepcoverDir);
   if (!runtimeData) {
-    notes.push(
-      'No Jest artifacts in .deepcover — coverage falls back to static heuristics. Wire up the DeepCover Jest reporter and run tests with --coverage for accurate scores.',
-    );
+    notes.push(missingRuntimeNote(opts.rootDir));
   }
 
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);

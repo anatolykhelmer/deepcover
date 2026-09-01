@@ -254,10 +254,10 @@ describe('analyze command loads Jest data from .deepcover/', () => {
     expect(withLinePercent.length).toBeGreaterThan(0);
   });
 
-  it('terminal output shows "with Jest runtime data" header', () => {
+  it('terminal output shows the runtime-data header', () => {
     const cmd = `${CLI} analyze --root ${tmpDir}`;
     const output = execSync(cmd, { encoding: 'utf-8', cwd: PROJECT_ROOT });
 
-    expect(output).toContain('with Jest runtime data');
+    expect(output).toContain('with runtime coverage data');
   });
 });

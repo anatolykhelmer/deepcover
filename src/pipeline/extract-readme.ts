@@ -20,7 +20,7 @@ No external tools or API keys required — you are the Reasoner.
 | \`code-model.json\` | Structured code model: ${classCount} classes, ${methodCount} methods, with branches, test inventory, dependency graph |
 | \`prompts.json\` | 4 pre-built prompts (one per Reasoner job) — read these as your instructions |
 | \`reasoner-output.json\` | **Your deliverable** — empty template, fill it with your analysis |
-| \`jest-runtime.json\` | *(if present)* Per-test pass/fail status, duration, assertion counts from Jest |
+| \`runtime.json\` | *(if present)* Per-test pass/fail status, duration, and (Jest only) assertion counts |
 | \`istanbul-coverage.json\` | *(if present)* Istanbul line/branch/function coverage data |
 
 ## Your task
