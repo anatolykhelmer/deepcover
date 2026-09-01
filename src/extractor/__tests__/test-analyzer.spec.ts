@@ -173,6 +173,39 @@ describe('test-analyzer', () => {
       expect(createTest?.mocks).toContain('mockRepo.findById');
       expect(createTest?.mocks).toContain('mockRepo.save');
     });
+
+    it('detects vi.fn() mocks exactly as it detects jest.fn()', () => {
+      const mockSource = (ns: 'jest' | 'vi') => `
+  describe('OrderService', () => {
+    const mockRepo = { save: ${ns}.fn(), findById: ${ns}.fn() };
+    it('saves the order', () => {
+      const service = new OrderService(mockRepo);
+      expect(service.save({ id: 1 })).toBe(true);
+    });
+  });
+`;
+      const viMocks = analyzeSource(mockSource('vi')).describes[0].tests[0].mocks;
+      const jestMocks = analyzeSource(mockSource('jest')).describes[0].tests[0].mocks;
+
+      expect(viMocks).toContain('mockRepo.save');
+      expect(viMocks).toContain('mockRepo.findById');
+      expect(viMocks).toEqual(jestMocks);
+    });
+
+    it('does not mistake vi for the method under test', () => {
+      // `vi` must be a GLOBAL_RECEIVERS entry, or `vi.spyOn` competes with the real
+      // target for the same reason `jest.spyOn` would without its entry.
+      const result = analyzeSource(`
+    describe('OrderService', () => {
+      it('saves', () => {
+        const spy = vi.spyOn(console, 'log');
+        new OrderService().save({ id: 1 });
+        expect(spy).toHaveBeenCalled();
+      });
+    });
+  `);
+      expect(result.describes[0].tests[0].targetMethod).toBe('save');
+    });
   });
 
   describe('test-to-source mapping', () => {

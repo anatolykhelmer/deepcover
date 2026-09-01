@@ -401,6 +401,13 @@ function isTestCallback(node: Node): node is TestCallback {
   return Node.isArrowFunction(node) || Node.isFunctionExpression(node);
 }
 
+/**
+ * Mock namespaces, by dialect. Both are accepted unconditionally: `jest.fn` does
+ * not compile inside a Vitest file (and vice versa), so there is nothing to
+ * disambiguate — and accepting both makes a half-migrated repo work with no config.
+ */
+const MOCK_NAMESPACES = new Set(['jest', 'vi']);
+
 function extractMocksFromBlock(block: Block): string[] {
   const mocks: string[] = [];
   const callExps = block.getDescendantsOfKind(SyntaxKind.CallExpression);
@@ -411,7 +418,7 @@ function extractMocksFromBlock(block: Block): string[] {
     const pa = expr as PropertyAccessExpression;
     const obj = pa.getExpression();
     if (!Node.isIdentifier(obj)) continue;
-    if (obj.getText() !== 'jest') continue;
+    if (!MOCK_NAMESPACES.has(obj.getText())) continue;
     const methodName = pa.getName();
     if (methodName !== 'fn' && methodName !== 'spyOn') continue;
 
@@ -714,7 +721,7 @@ const TEST_UTILITY_METHODS = new Set([
 ]);
 
 const GLOBAL_RECEIVERS = new Set([
-  'jest', 'expect', 'console', 'JSON', 'Object', 'Array', 'Math', 'Date', 'Promise',
+  'jest', 'vi', 'expect', 'console', 'JSON', 'Object', 'Array', 'Math', 'Date', 'Promise',
 ]);
 
 /** How much a single call counts towards being the method the test targets. */
