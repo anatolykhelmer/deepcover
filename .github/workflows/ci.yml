@@ -29,3 +29,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Paradigm e2e (real Jest + Vitest runs)
+        run: npm run test:paradigms:e2e
