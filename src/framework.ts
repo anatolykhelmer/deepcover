@@ -41,12 +41,17 @@ export const FRAMEWORKS: Record<TestFrameworkId, FrameworkDescriptor> = {
  * artifact which one. A project listing both is mid-migration; name the target.
  */
 export function detectFramework(rootDir: string): TestFrameworkId | undefined {
-  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  let parsed: unknown;
   try {
-    pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
+    parsed = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
   } catch {
     return undefined;
   }
+  // `JSON.parse` accepts any JSON value, not just objects — a truncated or
+  // half-written file can parse cleanly to `null`, a number, or a string.
+  // `typeof null === 'object'`, so the null check must be explicit.
+  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  const pkg = parsed as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (deps.vitest) return 'vitest';
   if (deps.jest) return 'jest';

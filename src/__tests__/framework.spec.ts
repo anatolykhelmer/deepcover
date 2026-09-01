@@ -40,6 +40,19 @@ describe('framework detection', () => {
     expect(detectFramework(tmpDir)).toBeUndefined();
   });
 
+  // Valid JSON, but not an object — a truncated or half-written file can
+  // parse cleanly to `null`. `typeof null === 'object'`, so a naive object
+  // check would let it through and crash on the dependency-object spread.
+  it('returns undefined when package.json parses to null', () => {
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), 'null');
+    expect(detectFramework(tmpDir)).toBeUndefined();
+  });
+
+  it('returns undefined when package.json parses to a non-object primitive', () => {
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), '42');
+    expect(detectFramework(tmpDir)).toBeUndefined();
+  });
+
   // A project listing both is mid-migration; the advice that helps names the
   // runner they are moving *to*.
   it('prefers vitest when a half-migrated project lists both', () => {
