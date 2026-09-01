@@ -106,6 +106,14 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
     );
   }
 
+  if (runtimeData?.runtime?.coverageProvider === 'v8') {
+    notes.push(
+      'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
+        'condition-operand analysis is disabled (not "found nothing"). Switch to ' +
+        '@vitest/coverage-istanbul for the full bug-detector set.',
+    );
+  }
+
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
     ...(opts.weights && { weights: opts.weights }),

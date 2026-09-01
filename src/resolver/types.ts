@@ -64,8 +64,12 @@ export interface IstanbulMethodMetrics {
    * `a && b`), which the aggregate counters above flatten away. A zero proves an operand
    * was never even evaluated; a non-zero proves nothing about whether it was ever the
    * operand that decided the branch.
+   *
+   * Absent when the coverage provider does not measure operands (`v8`), which is
+   * different from an empty array — that means Istanbul looked and this method has
+   * no compound conditions.
    */
-  binaryExpressions: BinaryExprCoverage[];
+  binaryExpressions?: BinaryExprCoverage[];
 }
 
 export interface BinaryExprCoverage {
@@ -121,6 +125,9 @@ export interface ResolvedCoverage {
   methods: Map<string, MethodCoverage>;
   hasIstanbulData: boolean;
   hasRuntimeData: boolean;
+  // Optional (not required) so the several bug-detector spec files that hand-build a
+  // ResolvedCoverage without this field keep compiling unedited — see task-5-report.md.
+  coverageProvider?: CoverageProviderId;
   isMethodCovered(className: string, methodName: string, filePath: string): boolean;
   getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined;
   getTestsForMethod(className: string, methodName: string, filePath: string): string[];

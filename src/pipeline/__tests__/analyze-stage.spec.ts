@@ -155,4 +155,20 @@ describe('runAnalyzeStage', () => {
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: true });
     expect(notes.join('\n')).toContain('deepcover reason --bugs');
   });
+
+  it('warns that operand-level analysis is unavailable under the v8 provider', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(true);
+  });
 });

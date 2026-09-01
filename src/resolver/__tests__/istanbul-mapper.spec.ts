@@ -77,5 +77,15 @@ describe('mapIstanbulToMethod', () => {
       const result = mapIstanbulToMethod(fileCoverage, 4, 7);
       expect(result!.binaryExpressions).toEqual([]);
     });
+
+    it('returns an empty binaryExpressions list under istanbul when there are no compound conditions', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'istanbul');
+      expect(metrics?.binaryExpressions).toEqual([]);
+    });
+
+    it('returns undefined binaryExpressions under v8, which does not measure operands', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'v8');
+      expect(metrics?.binaryExpressions).toBeUndefined();
+    });
   });
 });

@@ -1,9 +1,12 @@
-import type { BinaryExprCoverage, IstanbulFileCoverage, IstanbulMethodMetrics } from './types';
+import type { BinaryExprCoverage, CoverageProviderId, IstanbulFileCoverage, IstanbulMethodMetrics } from './types';
 
 export function mapIstanbulToMethod(
   fileCoverage: IstanbulFileCoverage,
   startLine: number,
-  endLine: number
+  endLine: number,
+  // Defaults to 'istanbul' so the pre-existing calls in istanbul-mapper.spec.ts (written
+  // before this parameter existed) keep compiling and behaving exactly as before.
+  provider: CoverageProviderId = 'istanbul'
 ): IstanbulMethodMetrics | undefined {
   let linesTotal = 0;
   let linesCovered = 0;
@@ -28,7 +31,7 @@ export function mapIstanbulToMethod(
         branchesTotal += 1;
         if (armCount > 0) branchesHit += 1;
       }
-      if (branch.type === 'binary-expr') {
+      if (branch.type === 'binary-expr' && provider === 'istanbul') {
         binaryExpressions.push({ line: branch.loc.start.line, pathCounts: [...arms] });
       }
     }
@@ -41,6 +44,8 @@ export function mapIstanbulToMethod(
     branchesHit,
     branchesTotal,
     branchCoveragePercent: branchesTotal > 0 ? (branchesHit / branchesTotal) * 100 : 100,
-    binaryExpressions,
+    // Genuinely absent (not present-and-undefined) under any provider other than
+    // Istanbul, which is the only one that emits `binary-expr` branches.
+    ...(provider === 'istanbul' && { binaryExpressions }),
   };
 }
