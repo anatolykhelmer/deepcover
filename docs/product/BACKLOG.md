@@ -40,7 +40,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-009 | Vitest support | Implemented, 16 commits, not yet merged; [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md). Final whole-branch review: MERGE AFTER FIXES → all 6 fixed and re-reviewed clean. **Release-time obligation: tag `v0.9.0` at merge** — the README heading carries no "unreleased" marker by design. | `vitest-support` |
+| BL-009 | Vitest support | [PR #10](https://github.com/anatolykhelmer/deepcover/pull/10) open; [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md). Final whole-branch review: MERGE AFTER FIXES → all 6 fixed and re-reviewed clean. Breaking (two exported types narrow), released as 0.9.0. **Release-time obligation: tag `v0.9.0` at merge** — the README heading carries no "unreleased" marker by design. | `vitest-support` |
 
 ## Done
 
