@@ -115,7 +115,7 @@ involves an LLM, and it always says which Reasoner it used.
 
 ### Vitest support
 
-DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have had since 0.6.0 — including full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`.
+DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have — including full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`.
 
 ### The runtime artifact is renamed, and it isn't Jest-specific anymore
 
