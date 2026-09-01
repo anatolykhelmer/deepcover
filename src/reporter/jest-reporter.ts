@@ -1,19 +1,34 @@
 import type { Reporter, AggregatedResult } from '@jest/reporters';
-import type { RuntimeData } from '../resolver/types';
+import type { CoverageProviderId, RuntimeData } from '../resolver/types';
 
 /** @deprecated Renamed to `RuntimeData` in 0.9.0. */
 export type DeepCoverRuntimeData = RuntimeData;
 
+/**
+ * Jest's `globalConfig.coverageProvider` is `'babel' | 'v8'` — 'babel' is Jest's
+ * default and means coverage went through babel-plugin-istanbul, so it maps to
+ * `'istanbul'`. `'v8'` maps straight across. Absent (a loosely-typed globalConfig,
+ * or a Jest version that omits it) also means `'istanbul'`, since babel is Jest's
+ * own default. Unlike the Vitest reporter, Jest's `Reporter` has no `enabled` flag
+ * to gate on — a Jest run without `--coverage` produces no coverage data at all
+ * for this reporter to see, so there is no `'none'` case here.
+ */
+function mapJestCoverageProvider(raw: unknown): CoverageProviderId {
+  return raw === 'v8' ? 'v8' : 'istanbul';
+}
+
 export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
   private outputDir: string;
   private coverageDirectory: string;
+  private coverageProvider: CoverageProviderId;
 
   constructor(
-    globalConfig: { coverageDirectory?: string } & Record<string, unknown>,
+    globalConfig: { coverageDirectory?: string; coverageProvider?: string } & Record<string, unknown>,
     options?: { outputDir?: string }
   ) {
     this.outputDir = options?.outputDir ?? '.deepcover';
     this.coverageDirectory = globalConfig.coverageDirectory ?? './coverage';
+    this.coverageProvider = mapJestCoverageProvider(globalConfig.coverageProvider);
   }
 
   async onRunComplete(
@@ -27,7 +42,7 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
 
     const data: RuntimeData = {
       framework: 'jest',
-      coverageProvider: 'istanbul',
+      coverageProvider: this.coverageProvider,
       testResults: [],
       timestamp: new Date().toISOString(),
       coverageDirectory: path.resolve(this.coverageDirectory),

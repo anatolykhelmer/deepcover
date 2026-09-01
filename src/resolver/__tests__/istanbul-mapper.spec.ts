@@ -87,5 +87,10 @@ describe('mapIstanbulToMethod', () => {
       const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'v8');
       expect(metrics?.binaryExpressions).toBeUndefined();
     });
+
+    it('returns undefined binaryExpressions under "none", which does not measure operands either', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'none');
+      expect(metrics?.binaryExpressions).toBeUndefined();
+    });
   });
 });

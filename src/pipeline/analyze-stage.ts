@@ -107,12 +107,17 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
 
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
 
-  if (resolvedCoverage.coverageProvider === 'v8') {
-    notes.push(
-      'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
-        'condition-operand analysis is disabled (not "found nothing"). Switch to ' +
-        '@vitest/coverage-istanbul for the full bug-detector set.',
-    );
+  if (resolvedCoverage.coverageProvider !== 'istanbul' && resolvedCoverage.hasIstanbulData) {
+    const explanation =
+      resolvedCoverage.coverageProvider === 'v8'
+        ? 'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
+          'condition-operand analysis is disabled (not "found nothing"). Switch to ' +
+          '@vitest/coverage-istanbul for the full bug-detector set.'
+        : 'The coverage data on disk did not come from the run that produced this artifact — ' +
+          'the runtime artifact records coverageProvider: \'none\' (coverage was not enabled for ' +
+          'this run), but a coverage file from a previous run is still present. Condition-operand ' +
+          'analysis is disabled (not "found nothing"); re-run with --coverage for accurate results.';
+    notes.push(explanation);
   }
 
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {

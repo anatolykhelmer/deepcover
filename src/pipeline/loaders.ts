@@ -103,14 +103,18 @@ function withRuntimeDefaults(raw: Partial<RuntimeData>): RuntimeData {
  * data is used whenever it is available: a detector that cannot see real branch
  * coverage reports weaker evidence, and those signals used to leak from
  * `extract` into the LLM path via `bug-signals.json`.
+ *
+ * Goes through `loadRuntimeArtifacts` (not a bare `loadIstanbulCoverage` call) so
+ * `resolveCoverage` gets the full runtime artifact, including `coverageProvider` —
+ * without it, `ResolvedCoverage.coverageProvider` silently defaulted to `'istanbul'`
+ * here regardless of what the run actually used.
  */
 export function computeBugSignals(
   codeModel: CodeModel,
   rootDir: string,
   deepcoverDir: string,
 ): BugSignal[] {
-  const istanbul = loadIstanbulCoverage(deepcoverDir);
-  const resolved = resolveCoverage(codeModel, rootDir, istanbul ? { istanbul } : undefined);
+  const resolved = resolveCoverage(codeModel, rootDir, loadRuntimeArtifacts(deepcoverDir));
   return runBugDetector(codeModel, resolved);
 }
 

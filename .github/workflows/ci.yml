@@ -30,5 +30,12 @@ jobs:
       - name: Test
         run: npm test
 
+      # Vitest 4's engines field requires Node ^20.0.0 || ^22.0.0 || >=24.0.0 (vite's
+      # requires ^20.19.0 || >=22.12.0), so `npx vitest run --coverage` here would fail
+      # at runtime on the 18.x leg. DeepCover itself still supports Node >= 18 (the
+      # unit suite above proves that on all three versions) — only this Vitest e2e
+      # step is skipped. Do not delete this condition without checking Vitest's
+      # current engines requirement.
       - name: Paradigm e2e (real Jest + Vitest runs)
+        if: ${{ !startsWith(matrix.node-version, '18') }}
         run: npm run test:paradigms:e2e

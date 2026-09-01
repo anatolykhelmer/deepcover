@@ -235,4 +235,28 @@ describe('DeepCoverReporter', () => {
     expect(data.testResults[0].assertionCount).toBe(2);
     expect(fs.existsSync(path.join(dir, 'jest-runtime.json'))).toBe(false);
   });
+
+  describe('coverageProvider mapping', () => {
+    it.each([
+      ['babel', 'istanbul'],
+      ['v8', 'v8'],
+      [undefined, 'istanbul'],
+    ] as const)('globalConfig.coverageProvider %p maps to %p', async (input, expected) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-provider-'));
+      try {
+        const globalConfig: { coverageDirectory: string; coverageProvider?: string } = {
+          coverageDirectory: path.join(dir, 'no-coverage-here'),
+        };
+        if (input !== undefined) globalConfig.coverageProvider = input;
+
+        const reporter = new DeepCoverReporter(globalConfig, { outputDir: dir });
+        await reporter.onRunComplete!(new Set(), createMockAggregatedResult());
+
+        const data = JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8'));
+        expect(data.coverageProvider).toBe(expected);
+      } finally {
+        fs.rmSync(dir, { recursive: true });
+      }
+    });
+  });
 });

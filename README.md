@@ -50,8 +50,8 @@ Four-phase pipeline:
 
 ```
                                     ┌─────────────────────┐
-                                    │  npm test            │
-                                    │  (Jest + Reporter)   │
+                                    │      npm test       │
+                                    │    (Jest/Vitest)    │
                                     └────────┬────────────┘
                                              │
                               ┌──────────────┼──────────────┐
@@ -76,7 +76,7 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 ```
 
 - **Extractor** — Deterministic AST analysis: classes, methods, branches, dependencies, assertions, mocks
-- **Coverage Resolver** — Merges static AST analysis with Jest/Istanbul runtime data into unified, class-qualified coverage
+- **Coverage Resolver** — Merges static AST analysis with Jest/Vitest runtime and Istanbul coverage data into unified, class-qualified coverage
 - **Reasoner** — LLM semantic analysis with enriched prompts: domain states (with branch conditions + test names + state taxonomy), assertion quality (with target method info), criticality (with blast radius from dependency graph), transitive coverage (with mock detection + intra-class call graph)
 - **Scorer** — Deterministic formula: 4 sub-scores, 3 of them with LLM influence capped by `reasoner.maxInfluence` (default ±20 points)
 
@@ -116,6 +116,8 @@ involves an LLM, and it always says which Reasoner it used.
 ### Vitest support
 
 DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have — including full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`.
+
+**Using the Vitest reporter requires Node >= 20** — Vitest 4 itself only supports Node `^20.0.0 || ^22.0.0 || >=24.0.0`. DeepCover's own Node >= 18 requirement (see Prerequisites) is unaffected for Jest-only projects.
 
 ### The runtime artifact is renamed, and it isn't Jest-specific anymore
 
@@ -649,7 +651,7 @@ The `resolves`, `rejects` and `not` modifiers are unwrapped, so `await expect(p)
 
 ## Example Output
 
-Without Jest runtime data:
+Without runtime coverage data:
 
 ```
 DeepCover Report
@@ -671,11 +673,11 @@ Top gaps:
   #2 MED   OrderService.createOrder — "only happy path tested"
 ```
 
-With Jest runtime data (run `npm test -- --coverage` first):
+With runtime coverage data (run `npm test -- --coverage`, or `npx vitest run --coverage`, first):
 
 ```
-DeepCover Report (with Jest runtime data)
-═══════════════════════════════════════════
+DeepCover Report (with runtime coverage data)
+════════════════
 Composite Score: 61/100
 
   Assertion Quality   ████████░░  78
@@ -829,7 +831,7 @@ src/
 │   ├── composer        # Weighted score composition
 │   ├── gap-generator   # Prioritized untested scenario list + partial coverage gaps
 │   └── index           # Orchestrator → ScoreResult
-├── reporter/           # Jest custom reporter (runtime + Istanbul capture)
+├── reporter/           # Jest and Vitest reporters (runtime + Istanbul capture)
 ├── cli/                # Commander CLI (analyze, score, extract)
 │   ├── commands/       # analyze, score, extract commands
 │   ├── formatters/     # Terminal report formatter
@@ -954,7 +956,7 @@ DeepCover includes acceptance tests that validate the quality of its analysis ag
 
 ```bash
 npm run test:paradigms       # Fast — uses pre-computed Istanbul data (~1s)
-npm run test:paradigms:e2e   # Full — runs real Jest in fixture projects (~3s)
+npm run test:paradigms:e2e   # Full — runs real Jest and Vitest in fixture projects (~15s)
 ```
 
 Fast paradigm tests are included in the default `npm test` run. E2E tests run separately.
@@ -972,7 +974,7 @@ Fast paradigm tests are included in the default `npm test` run. E2E tests run se
 ```bash
 npm test              # Unit + paradigm unit tests
 npm run test:watch    # Watch mode
-npm run test:paradigms:e2e  # E2E paradigm tests (real Jest runs)
+npm run test:paradigms:e2e  # E2E paradigm tests (real Jest and Vitest runs)
 npm run build         # Compile TypeScript
 ```
 
