@@ -433,5 +433,15 @@ describe('pipeline loaders', () => {
       expect(warn).toHaveBeenCalled();
       warn.mockRestore();
     });
+
+    it('falls through to the older artifact when the freshest file is unparseable', () => {
+      write(tmpDir, 'jest-runtime.json', runtimeDoc('jest'), 1_000_000);
+      fs.writeFileSync(path.join(tmpDir, 'runtime.json'), '{ not json');
+      fs.utimesSync(path.join(tmpDir, 'runtime.json'), 2_000, 2_000);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(loadRuntimeArtifacts(tmpDir)?.runtime?.framework).toBe('jest');
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 });

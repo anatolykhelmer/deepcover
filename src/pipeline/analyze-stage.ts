@@ -111,8 +111,9 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
     const explanation =
       resolvedCoverage.coverageProvider === 'v8'
         ? 'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
-          'condition-operand analysis is disabled (not "found nothing"). Switch to ' +
-          '@vitest/coverage-istanbul for the full bug-detector set.'
+          'condition-operand analysis is disabled (not "found nothing"). Switch to an Istanbul ' +
+          'coverage provider (Jest: coverageProvider "babel"; Vitest: @vitest/coverage-istanbul) ' +
+          'for the full bug-detector set.'
         : 'The coverage data on disk did not come from the run that produced this artifact — ' +
           'the runtime artifact records coverageProvider: \'none\' (coverage was not enabled for ' +
           'this run), but a coverage file from a previous run is still present. Condition-operand ' +

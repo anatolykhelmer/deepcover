@@ -963,7 +963,7 @@ Fast paradigm tests are included in the default `npm test` run. E2E tests run se
 
 ### Adding a new paradigm
 
-1. Create `fixtures/paradigms/<paradigm-name>/` with source, tests, `jest.config.js`, `package.json`
+1. Create `fixtures/paradigms/<paradigm-name>/` with source, tests, `jest.config.js`, `vitest.config.ts`, `package.json`
 2. Run `npm test` in the fixture to generate `coverage/coverage-final.json`
 3. Copy to `.deepcover/coverage-final.json` and commit
 4. Write `expected.json` with qualitative assertions

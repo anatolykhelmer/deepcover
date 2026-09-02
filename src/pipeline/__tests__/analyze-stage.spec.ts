@@ -181,6 +181,28 @@ describe('runAnalyzeStage', () => {
     expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(true);
   });
 
+  it('names the Jest babel provider, not only a Vitest package, for a Jest+v8 run', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'jest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': { statementMap: {}, s: {}, branchMap: {}, b: {}, fnMap: {}, f: {} },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('coverageProvider "babel"'))).toBe(true);
+  });
+
   it('does not warn about a disabled operand analysis when there is no Istanbul data at all', () => {
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),

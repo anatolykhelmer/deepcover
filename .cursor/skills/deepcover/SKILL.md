@@ -29,6 +29,7 @@ Jest (`jest.config.js`):
 Vitest (`vitest.config.ts`):
 
 ```ts
+import { defineConfig } from 'vitest/config';
 import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vitest';
 
 export default defineConfig({

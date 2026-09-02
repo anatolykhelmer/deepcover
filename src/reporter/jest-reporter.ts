@@ -9,11 +9,16 @@ export type DeepCoverRuntimeData = RuntimeData;
  * default and means coverage went through babel-plugin-istanbul, so it maps to
  * `'istanbul'`. `'v8'` maps straight across. Absent (a loosely-typed globalConfig,
  * or a Jest version that omits it) also means `'istanbul'`, since babel is Jest's
- * own default. Unlike the Vitest reporter, Jest's `Reporter` has no `enabled` flag
- * to gate on — a Jest run without `--coverage` produces no coverage data at all
- * for this reporter to see, so there is no `'none'` case here.
+ * own default.
+ *
+ * `collectCoverage: false` is the `'none'` case: reporters still run without
+ * `--coverage`, and `coverageDirectory` still points at `./coverage`. Treating
+ * that as Istanbul would copy leftover `coverage-final.json` and claim this run
+ * measured operands it never did. Omitted `collectCoverage` (hand-built test
+ * configs) keeps the babel default so existing callers do not change.
  */
-function mapJestCoverageProvider(raw: unknown): CoverageProviderId {
+function mapJestCoverageProvider(raw: unknown, collectCoverage: boolean | undefined): CoverageProviderId {
+  if (collectCoverage === false) return 'none';
   return raw === 'v8' ? 'v8' : 'istanbul';
 }
 
@@ -23,12 +28,15 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
   private coverageProvider: CoverageProviderId;
 
   constructor(
-    globalConfig: { coverageDirectory?: string; coverageProvider?: string } & Record<string, unknown>,
+    globalConfig: { coverageDirectory?: string; coverageProvider?: string; collectCoverage?: boolean } & Record<string, unknown>,
     options?: { outputDir?: string }
   ) {
     this.outputDir = options?.outputDir ?? '.deepcover';
     this.coverageDirectory = globalConfig.coverageDirectory ?? './coverage';
-    this.coverageProvider = mapJestCoverageProvider(globalConfig.coverageProvider);
+    this.coverageProvider = mapJestCoverageProvider(
+      globalConfig.coverageProvider,
+      globalConfig.collectCoverage,
+    );
   }
 
   async onRunComplete(
@@ -67,10 +75,16 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
 
     // Best-effort snapshot. Jest has usually not written this file yet for the run
     // we just observed, so the CLI reads the coverage directory directly and falls
-    // back to this copy only when it is the fresher of the two.
-    const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
-    if (fs.existsSync(istanbulSource)) {
-      fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));
+    // back to this copy only when it is the fresher of the two. Skipped entirely
+    // when this run did not measure coverage: copying would stamp a stale
+    // coverage-final.json with a fresh mtime, defeating the freshness comparison
+    // in istanbul-source.ts and laundering old data as new — same hole already
+    // closed on the Vitest reporter.
+    if (this.coverageProvider !== 'none') {
+      const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
+      if (fs.existsSync(istanbulSource)) {
+        fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));
+      }
     }
   }
 }

@@ -112,10 +112,14 @@ describe('DeepCoverVitestReporter', () => {
 
   it('records "none" for a custom provider', async () => {
     const dir = mkTmpDir();
+    const coverageDir = path.join(dir, 'coverage');
+    fs.mkdirSync(coverageDir, { recursive: true });
+    fs.writeFileSync(path.join(coverageDir, 'coverage-final.json'), JSON.stringify({ stale: true }));
     const reporter = new DeepCoverVitestReporter({ outputDir: dir });
-    init(reporter, true, 'custom', path.join(dir, 'coverage'));
+    init(reporter, true, 'custom', coverageDir);
     await reporter.onTestRunEnd([] as never);
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8')).coverageProvider).toBe('none');
+    expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
   });
 
   it('skips tests that never finished', async () => {

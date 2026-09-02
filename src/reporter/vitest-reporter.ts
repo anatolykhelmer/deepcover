@@ -11,7 +11,6 @@ export class DeepCoverVitestReporter implements Reporter {
   private outputDir: string;
   private coverageProvider: CoverageProviderId = 'none';
   private coverageDirectory = './coverage';
-  private coverageEnabled = false;
 
   constructor(options?: { outputDir?: string }) {
     this.outputDir = options?.outputDir ?? '.deepcover';
@@ -19,7 +18,6 @@ export class DeepCoverVitestReporter implements Reporter {
 
   onInit(vitest: Vitest): void {
     const coverage = vitest.config.coverage;
-    this.coverageEnabled = coverage.enabled;
     // Vitest always resolves `provider` to a real value (default 'v8') regardless
     // of whether coverage actually ran — `enabled` is the only signal that the run
     // measured anything at all. Gate on it first: a disabled run naming a provider
@@ -66,10 +64,10 @@ export class DeepCoverVitestReporter implements Reporter {
 
     // Best-effort snapshot, mirroring the Jest reporter: the runner has usually not
     // written this yet for the run just observed, so the CLI prefers the live file.
-    // Skipped entirely when coverage was not enabled: copying would stamp a stale
-    // coverage-final.json with a fresh mtime, defeating the freshness comparison
-    // in istanbul-source.ts and laundering old data as new.
-    if (this.coverageEnabled) {
+    // Skip when this run did not measure istanbul/v8 coverage: copying would stamp a
+    // stale coverage-final.json with a fresh mtime, and a custom provider must not
+    // look like a coverage-disabled run that happened to find a leftover file.
+    if (this.coverageProvider !== 'none') {
       const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
       if (fs.existsSync(istanbulSource)) {
         fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));

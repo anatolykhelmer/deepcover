@@ -73,12 +73,12 @@ export function loadRuntimeArtifacts(deepcoverDir: string): RuntimeArtifacts | u
     .filter((p) => fs.existsSync(p))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 
-  if (present.length > 0) {
-    const chosen = present[0];
+  for (const chosen of present) {
     try {
       artifacts.runtime = withRuntimeDefaults(
         JSON.parse(fs.readFileSync(chosen, 'utf-8')) as Partial<RuntimeData>,
       );
+      break;
     } catch (err) {
       console.warn(`Warning: could not parse ${chosen} — ignoring runtime data: ${err}`);
     }

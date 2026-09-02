@@ -258,5 +258,24 @@ describe('DeepCoverReporter', () => {
         fs.rmSync(dir, { recursive: true });
       }
     });
+
+    it('records none and skips the leftover coverage copy when collectCoverage is false', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepcover-nocollect-'));
+      const coverageDir = path.join(dir, 'coverage');
+      fs.mkdirSync(coverageDir, { recursive: true });
+      fs.writeFileSync(path.join(coverageDir, 'coverage-final.json'), JSON.stringify({ stale: true }));
+      try {
+        const reporter = new DeepCoverReporter(
+          { coverageDirectory: coverageDir, collectCoverage: false },
+          { outputDir: dir },
+        );
+        await reporter.onRunComplete!(new Set(), createMockAggregatedResult());
+        const data = JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8'));
+        expect(data.coverageProvider).toBe('none');
+        expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
+      } finally {
+        fs.rmSync(dir, { recursive: true });
+      }
+    });
   });
 });
