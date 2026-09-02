@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { IstanbulCoverageData, JestRuntimeData } from './types';
+import type { IstanbulCoverageData, RuntimeData } from './types';
 
 /**
  * Jest writes `coverage-final.json` *after* every custom reporter's
@@ -31,15 +31,18 @@ function mtimeOf(filePath: string): number {
   }
 }
 
-/** Absolute path to Jest's `coverage-final.json`, as recorded by the reporter. */
+/** Absolute path to the runner's `coverage-final.json`, as recorded by the reporter. */
 export function resolveCoverageFinalPath(deepcoverDir: string): string | undefined {
-  const runtime = readJson<JestRuntimeData & { coverageDirectory?: string }>(
-    path.join(deepcoverDir, 'jest-runtime.json'),
-  );
-  if (!runtime?.coverageDirectory) return undefined;
-
-  const candidate = path.resolve(runtime.coverageDirectory, 'coverage-final.json');
-  return fs.existsSync(candidate) ? candidate : undefined;
+  // "New name first", not freshest-wins: this returns a *path*, and both artifacts
+  // point at a directory whose coverage-final.json is checked for existence anyway
+  // — freshness of the pointer itself is irrelevant, so no need to stat/sort here.
+  for (const name of ['runtime.json', 'jest-runtime.json']) {
+    const runtime = readJson<RuntimeData>(path.join(deepcoverDir, name));
+    if (!runtime?.coverageDirectory) continue;
+    const candidate = path.resolve(runtime.coverageDirectory, 'coverage-final.json');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   classifyReasonerOutput,
   computeBugSignals,
   loadIstanbulByMethod,
-  loadJestArtifacts,
+  loadRuntimeArtifacts,
   EMPTY_REASONER_OUTPUT,
   KEPT_REASONER_OUTPUT_NOTE,
   REPLACED_REASONER_OUTPUT_NOTE,
@@ -68,7 +68,7 @@ export function runExtractStage(opts: ExtractStageOptions): ExtractStageResult {
     : undefined;
 
   const istanbulCoverage = loadIstanbulByMethod(opts.deepcoverDir, codeModel.modules);
-  const runtime = loadJestArtifacts(opts.deepcoverDir)?.runtime;
+  const runtime = loadRuntimeArtifacts(opts.deepcoverDir)?.runtime;
 
   const prompts = buildPrompts({
     scopedModel,

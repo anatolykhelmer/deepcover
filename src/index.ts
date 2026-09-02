@@ -35,6 +35,7 @@ export type { ReasonerScope } from './reasoner/scope';
 export type { LLMProvider } from './reasoner/providers/base';
 
 export { DeepCoverReporter } from './reporter/jest-reporter';
+export { DeepCoverVitestReporter } from './reporter/vitest-reporter';
 export type { DeepCoverRuntimeData } from './reporter/jest-reporter';
 
 export { runBugDetector } from './bug-detector';
@@ -69,4 +70,7 @@ export type {
 export type { ResolvedReasoner, ResolvedPaths, BuildPromptsInput, PromptContext } from './pipeline';
 export type { ReasonerOutput } from './reasoner/types';
 export type { MethodCoverageInfo } from './reasoner/prompts/criticality';
-export type { JestRuntimeData } from './resolver/types';
+export type { RuntimeData, JestRuntimeData, TestFrameworkId, CoverageProviderId } from './resolver/types';
+
+export { FRAMEWORKS, detectFramework } from './framework';
+export type { FrameworkDescriptor } from './framework';

@@ -1,5 +1,5 @@
 import path from 'path';
-import type { JestRuntimeData } from './types';
+import type { RuntimeData } from './types';
 import type { TestFileNode } from '../types/code-model';
 import { resolveClassMethodKey, type ClassMethodOwners } from '../types/method-owner';
 import { testsInFile } from '../types/test-inventory';
@@ -8,7 +8,7 @@ export interface MethodRuntimeResult {
   passed: string[];
   failed: string[];
   skipped: string[];
-  perTest: { name: string; status: 'passed' | 'failed' | 'skipped'; assertionCount: number }[];
+  perTest: { name: string; status: 'passed' | 'failed' | 'skipped'; assertionCount?: number }[];
 }
 
 /**
@@ -19,7 +19,7 @@ export interface MethodRuntimeResult {
  *   functions (absent from the map) keep the previous bare-name keying.
  */
 export function matchRuntimeTests(
-  runtime: JestRuntimeData | undefined,
+  runtime: RuntimeData | undefined,
   testFiles: TestFileNode[],
   rootDir: string,
   classMethodOwners: ClassMethodOwners = new Map()

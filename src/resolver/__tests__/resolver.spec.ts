@@ -1,6 +1,6 @@
 import { resolveCoverage } from '../index';
 import type { CodeModel } from '../../types/code-model';
-import type { IstanbulCoverageData, JestRuntimeData } from '../types';
+import type { IstanbulCoverageData, RuntimeData } from '../types';
 
 function createMinimalCodeModel(): CodeModel {
   return {
@@ -78,7 +78,10 @@ describe('resolveCoverage', () => {
         tests: [{ name: 'should create', targetMethod: 'create', assertions: [], mocks: [], isAsync: false, targetClass: 'OrderService' }],
       }],
     }];
-    const runtime: JestRuntimeData = {
+    const runtime: RuntimeData = {
+      framework: 'jest',
+      coverageProvider: 'istanbul',
+      coverageDirectory: '/tmp/coverage',
       testResults: [
         { testFilePath: '/project/src/order.spec.ts', testName: 'OrderService > should create', status: 'passed', duration: 5, assertionCount: 2 },
       ],

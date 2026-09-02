@@ -1,8 +1,9 @@
 import path from 'path';
 import type { CodeModel } from '../types/code-model';
 import type {
+  CoverageProviderId,
   IstanbulCoverageData,
-  JestRuntimeData,
+  RuntimeData,
   MethodCoverage,
   ResolvedCoverage,
 } from './types';
@@ -17,18 +18,23 @@ export type { ResolvedCoverage, MethodCoverage } from './types';
 function resolveCoverage(
   codeModel: CodeModel,
   rootDir: string,
-  jestData?: {
+  runtimeData?: {
     istanbul?: IstanbulCoverageData;
-    runtime?: JestRuntimeData;
+    runtime?: RuntimeData;
   }
 ): ResolvedCoverage {
   const methods = new Map<string, MethodCoverage>();
-  const hasIstanbulData = !!jestData?.istanbul && Object.keys(jestData.istanbul).length > 0;
-  const hasRuntimeData = !!jestData?.runtime && jestData.runtime.testResults.length > 0;
+  const hasIstanbulData = !!runtimeData?.istanbul && Object.keys(runtimeData.istanbul).length > 0;
+  const hasRuntimeData = !!runtimeData?.runtime && runtimeData.runtime.testResults.length > 0;
+
+  // No runtime artifact means a hand-placed or pre-0.9.0 coverage file, which only
+  // Istanbul ever produced — so defaulting to 'istanbul' preserves today's behavior
+  // for every existing Jest project.
+  const coverageProvider: CoverageProviderId = runtimeData?.runtime?.coverageProvider ?? 'istanbul';
 
   const classMethodOwners = buildClassMethodOwners(codeModel.modules);
   const runtimeMap = matchRuntimeTests(
-    jestData?.runtime,
+    runtimeData?.runtime,
     codeModel.testInventory.testFiles,
     rootDir,
     classMethodOwners
@@ -55,10 +61,10 @@ function resolveCoverage(
         coverageSource: 'static',
       };
 
-      if (hasIstanbulData && jestData!.istanbul) {
-        const fileCov = jestData!.istanbul[absFilePath];
+      if (hasIstanbulData && runtimeData!.istanbul) {
+        const fileCov = runtimeData!.istanbul[absFilePath];
         if (fileCov) {
-          const metrics = mapIstanbulToMethod(fileCov, c.node.startLine, c.node.endLine);
+          const metrics = mapIstanbulToMethod(fileCov, c.node.startLine, c.node.endLine, coverageProvider);
           if (metrics) {
             mc.istanbul = metrics;
           }
@@ -136,6 +142,7 @@ function resolveCoverage(
     methods,
     hasIstanbulData,
     hasRuntimeData,
+    coverageProvider,
     isMethodCovered(className: string, methodName: string, filePath: string): boolean {
       return lookup(className, methodName, filePath)?.isCovered ?? false;
     },

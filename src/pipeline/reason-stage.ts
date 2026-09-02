@@ -13,7 +13,7 @@ import {
   classifyReasonerOutput,
   computeBugSignals,
   loadIstanbulByMethod,
-  loadJestArtifacts,
+  loadRuntimeArtifacts,
   EMPTY_REASONER_OUTPUT,
   KEPT_REASONER_OUTPUT_NOTE,
   REPLACED_REASONER_OUTPUT_NOTE,
@@ -119,7 +119,7 @@ export async function runReasonStage(opts: ReasonStageOptions): Promise<ReasonSt
 
   // Same enrichment `extract` writes into prompts.json, so the provider and the
   // agent reason over identical material.
-  const runtime = loadJestArtifacts(opts.deepcoverDir)?.runtime;
+  const runtime = loadRuntimeArtifacts(opts.deepcoverDir)?.runtime;
   const istanbulCoverage = loadIstanbulByMethod(opts.deepcoverDir, codeModel.modules);
 
   const output = await runReasoner(scopedModel, opts.reasoner.provider, bugSignals, opts.scope, {

@@ -6,7 +6,7 @@ import type { BugSignal } from '../bug-detector/types';
 import type { ReasonerOutput } from '../reasoner/types';
 import { ReasonerOutputSchema } from '../reasoner/types';
 import type { MethodCoverageInfo } from '../reasoner/prompts/criticality';
-import type { IstanbulCoverageData, JestRuntimeData } from '../resolver/types';
+import type { IstanbulCoverageData, RuntimeData } from '../resolver/types';
 import { loadIstanbulCoverage } from '../resolver/istanbul-source';
 import { mapIstanbulToMethod } from '../resolver/istanbul-mapper';
 import { resolveCoverage } from '../resolver';
@@ -50,25 +50,52 @@ export function resolvePaths(opts: {
   return { rootDir, deepcoverDir, ...(include && { include }) };
 }
 
-export interface JestArtifacts {
+export interface RuntimeArtifacts {
   istanbul?: IstanbulCoverageData;
-  runtime?: JestRuntimeData;
+  runtime?: RuntimeData;
 }
 
-export function loadJestArtifacts(deepcoverDir: string): JestArtifacts | undefined {
-  const artifacts: JestArtifacts = {};
+/** Artifact names in the order they were introduced. Both are read; only the first is written. */
+const RUNTIME_ARTIFACT_NAMES = ['runtime.json', 'jest-runtime.json'] as const;
+
+/**
+ * A project migrating Jest → Vitest keeps a stale `jest-runtime.json` on disk, so
+ * "read the old name only when the new one is missing" would serve a previous
+ * run's results — and its `coverageDirectory` — indefinitely. Freshest wins
+ * instead, the same rule `istanbul-source.ts` already applies to its two sources.
+ */
+export function loadRuntimeArtifacts(deepcoverDir: string): RuntimeArtifacts | undefined {
+  const artifacts: RuntimeArtifacts = {};
   artifacts.istanbul = loadIstanbulCoverage(deepcoverDir);
 
-  const runtimePath = path.join(deepcoverDir, 'jest-runtime.json');
-  if (fs.existsSync(runtimePath)) {
+  const present = RUNTIME_ARTIFACT_NAMES
+    .map((name) => path.join(deepcoverDir, name))
+    .filter((p) => fs.existsSync(p))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+
+  for (const chosen of present) {
     try {
-      artifacts.runtime = JSON.parse(fs.readFileSync(runtimePath, 'utf-8')) as JestRuntimeData;
+      artifacts.runtime = withRuntimeDefaults(
+        JSON.parse(fs.readFileSync(chosen, 'utf-8')) as Partial<RuntimeData>,
+      );
+      break;
     } catch (err) {
-      console.warn(`Warning: could not parse ${runtimePath} — ignoring runtime data: ${err}`);
+      console.warn(`Warning: could not parse ${chosen} — ignoring runtime data: ${err}`);
     }
   }
 
   return artifacts.istanbul || artifacts.runtime ? artifacts : undefined;
+}
+
+/** A pre-0.9.0 artifact has no `framework`/`coverageProvider`; only Jest ever wrote one. */
+function withRuntimeDefaults(raw: Partial<RuntimeData>): RuntimeData {
+  return {
+    framework: raw.framework ?? 'jest',
+    coverageProvider: raw.coverageProvider ?? 'istanbul',
+    coverageDirectory: raw.coverageDirectory ?? '',
+    timestamp: raw.timestamp ?? '',
+    testResults: raw.testResults ?? [],
+  };
 }
 
 /**
@@ -76,14 +103,18 @@ export function loadJestArtifacts(deepcoverDir: string): JestArtifacts | undefin
  * data is used whenever it is available: a detector that cannot see real branch
  * coverage reports weaker evidence, and those signals used to leak from
  * `extract` into the LLM path via `bug-signals.json`.
+ *
+ * Goes through `loadRuntimeArtifacts` (not a bare `loadIstanbulCoverage` call) so
+ * `resolveCoverage` gets the full runtime artifact, including `coverageProvider` —
+ * without it, `ResolvedCoverage.coverageProvider` silently defaulted to `'istanbul'`
+ * here regardless of what the run actually used.
  */
 export function computeBugSignals(
   codeModel: CodeModel,
   rootDir: string,
   deepcoverDir: string,
 ): BugSignal[] {
-  const istanbul = loadIstanbulCoverage(deepcoverDir);
-  const resolved = resolveCoverage(codeModel, rootDir, istanbul ? { istanbul } : undefined);
+  const resolved = resolveCoverage(codeModel, rootDir, loadRuntimeArtifacts(deepcoverDir));
   return runBugDetector(codeModel, resolved);
 }
 
@@ -107,7 +138,8 @@ export function loadIstanbulByMethod(
     if (!fileCoverage) continue;
 
     for (const c of allCallables(mod)) {
-      const metrics = mapIstanbulToMethod(fileCoverage[1], c.node.startLine, c.node.endLine);
+      // Only line/branch percentages are read below; operand data is unused on this path.
+      const metrics = mapIstanbulToMethod(fileCoverage[1], c.node.startLine, c.node.endLine, 'istanbul');
       if (metrics) {
         result.set(c.qualifiedName, {
           lineCoveragePercent: metrics.lineCoveragePercent,

@@ -1,5 +1,5 @@
 {
-  "name": "paradigm-dont-test-getters-setters",
+  "name": "paradigm-same-method-name-different-class",
   "private": true,
   "scripts": {
     "test": "jest --coverage"

@@ -173,6 +173,42 @@ describe('test-analyzer', () => {
       expect(createTest?.mocks).toContain('mockRepo.findById');
       expect(createTest?.mocks).toContain('mockRepo.save');
     });
+
+    it('detects vi.fn() mocks exactly as it detects jest.fn()', () => {
+      const mockSource = (ns: 'jest' | 'vi') => `
+  describe('OrderService', () => {
+    const mockRepo = { save: ${ns}.fn(), findById: ${ns}.fn() };
+    it('saves the order', () => {
+      const service = new OrderService(mockRepo);
+      expect(service.save({ id: 1 })).toBe(true);
+    });
+  });
+`;
+      const viMocks = analyzeSource(mockSource('vi')).describes[0].tests[0].mocks;
+      const jestMocks = analyzeSource(mockSource('jest')).describes[0].tests[0].mocks;
+
+      expect(viMocks).toContain('mockRepo.save');
+      expect(viMocks).toContain('mockRepo.findById');
+      expect(viMocks).toEqual(jestMocks);
+    });
+
+    it('does not treat vi as a local object when it is a global receiver', () => {
+      // `vi` must be a GLOBAL_RECEIVERS entry to prevent confusion if code happens
+      // to create a local variable named `vi`. Without the entry, multiple `vi.run()`
+      // calls in assertions would outweigh a single `save()` call.
+      const result = analyzeSource(`
+    describe('Config', () => {
+      it('applies', () => {
+        const vi = { run: () => true };
+        new Config().save({ name: 'test' });
+        expect(vi.run()).toBe(true);
+        expect(vi.run()).toBe(true);
+        expect(vi.run()).toBe(true);
+      });
+    });
+  `);
+      expect(result.describes[0].tests[0].targetMethod).toBe('save');
+    });
   });
 
   describe('test-to-source mapping', () => {

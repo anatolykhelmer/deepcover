@@ -19,7 +19,7 @@ describe('mapIstanbulToMethod', () => {
   };
 
   it('counts lines within method range as covered/total', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 4, 7);
+    const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
     expect(result).toBeDefined();
     expect(result!.linesTotal).toBe(2);
     expect(result!.linesCovered).toBe(2);
@@ -27,21 +27,21 @@ describe('mapIstanbulToMethod', () => {
   });
 
   it('counts uncovered lines correctly', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 9, 12);
+    const result = mapIstanbulToMethod(fileCoverage, 9, 12, 'istanbul');
     expect(result!.linesTotal).toBe(2);
     expect(result!.linesCovered).toBe(0);
     expect(result!.lineCoveragePercent).toBe(0);
   });
 
   it('counts branch hits within method range', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 4, 7);
+    const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
     expect(result!.branchesTotal).toBe(2);
     expect(result!.branchesHit).toBe(1);
     expect(result!.branchCoveragePercent).toBe(50);
   });
 
   it('returns undefined when no statements fall in range', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 20, 30);
+    const result = mapIstanbulToMethod(fileCoverage, 20, 30, 'istanbul');
     expect(result).toBeUndefined();
   });
 
@@ -62,20 +62,35 @@ describe('mapIstanbulToMethod', () => {
     };
 
     it('keeps the per-operand counts of binary expressions in range', () => {
-      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7);
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, 'istanbul');
       expect(result!.binaryExpressions).toEqual([{ line: 5, pathCounts: [3, 3, 3, 2] }]);
     });
 
     it('leaves the aggregate branch counters untouched', () => {
-      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7);
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, 'istanbul');
       expect(result!.branchesTotal).toBe(6);
       expect(result!.branchesHit).toBe(6);
       expect(result!.branchCoveragePercent).toBe(100);
     });
 
     it('is empty when the method has no binary expressions', () => {
-      const result = mapIstanbulToMethod(fileCoverage, 4, 7);
+      const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
       expect(result!.binaryExpressions).toEqual([]);
+    });
+
+    it('returns an empty binaryExpressions list under istanbul when there are no compound conditions', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'istanbul');
+      expect(metrics?.binaryExpressions).toEqual([]);
+    });
+
+    it('returns undefined binaryExpressions under v8, which does not measure operands', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'v8');
+      expect(metrics?.binaryExpressions).toBeUndefined();
+    });
+
+    it('returns undefined binaryExpressions under "none", which does not measure operands either', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'none');
+      expect(metrics?.binaryExpressions).toBeUndefined();
     });
   });
 });

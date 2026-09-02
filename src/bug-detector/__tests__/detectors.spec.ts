@@ -20,6 +20,7 @@ function makeCoverage(methods: Map<string, { isCovered: boolean; staticTests: st
     methods: new Map(),
     hasIstanbulData: false,
     hasRuntimeData: false,
+    coverageProvider: 'istanbul',
     isMethodCovered: (cls, method) => methods.get(`${cls}.${method}`)?.isCovered ?? false,
     getMethodCoverage: () => undefined,
     getTestsForMethod: (cls, method) => methods.get(`${cls}.${method}`)?.staticTests ?? [],

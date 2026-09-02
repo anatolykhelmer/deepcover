@@ -155,4 +155,113 @@ describe('runAnalyzeStage', () => {
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: true });
     expect(notes.join('\n')).toContain('deepcover reason --bugs');
   });
+
+  it('warns that operand-level analysis is unavailable under the v8 provider', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    // A real v8 run still produces Istanbul-shaped coverage-final.json (v8-to-istanbul
+    // conversion); the note only fires when that data is actually in play (see the
+    // 'none'-provider test below for the case where it must NOT fire).
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': { statementMap: {}, s: {}, branchMap: {}, b: {}, fnMap: {}, f: {} },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(true);
+  });
+
+  it('names the Jest babel provider, not only a Vitest package, for a Jest+v8 run', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'jest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': { statementMap: {}, s: {}, branchMap: {}, b: {}, fnMap: {}, f: {} },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('coverageProvider "babel"'))).toBe(true);
+  });
+
+  it('does not warn about a disabled operand analysis when there is no Istanbul data at all', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(false);
+  });
+
+  it('warns when coverageProvider is "none" but a stale Istanbul file is still on disk', () => {
+    // Reproduces: run Vitest WITH --coverage, then again WITHOUT it. The second run
+    // writes coverageProvider: 'none' while coverageDirectory still points at the
+    // previous run's coverage-final.json, which loadIstanbulCoverage happily loads —
+    // so operand analysis silently goes dark unless this note fires.
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'none',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': { statementMap: {}, s: {}, branchMap: {}, b: {}, fnMap: {}, f: {} },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(
+      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
+    ).toBe(true);
+  });
+
+  it('does not warn about stale coverage when coverageProvider is "none" and no Istanbul file exists', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'none',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(
+      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
+    ).toBe(false);
+  });
 });

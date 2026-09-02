@@ -24,6 +24,7 @@ function makeCoverage(): ResolvedCoverage {
     methods: new Map(),
     hasIstanbulData: false,
     hasRuntimeData: false,
+    coverageProvider: 'istanbul',
     isMethodCovered: () => false,
     getMethodCoverage: () => undefined,
     getTestsForMethod: () => [],

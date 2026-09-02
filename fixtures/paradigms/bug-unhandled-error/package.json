@@ -1,5 +1,5 @@
 {
-  "name": "paradigm-dont-test-getters-setters",
+  "name": "paradigm-bug-unhandled-error",
   "private": true,
   "scripts": {
     "test": "jest --coverage"

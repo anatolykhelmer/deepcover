@@ -6,10 +6,11 @@ import type { ScoreResult } from '../scorer/types';
 import type { ScoreWeights } from '../scorer/composer';
 import { runScorer } from '../scorer';
 import { resolveCoverage } from '../resolver';
+import { missingRuntimeNote } from '../framework';
 import {
   loadCodeModelFile,
   loadReasonerOutputFile,
-  loadJestArtifacts,
+  loadRuntimeArtifacts,
   EMPTY_REASONER_OUTPUT,
 } from './loaders';
 
@@ -99,14 +100,27 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
     );
   }
 
-  const jestData = loadJestArtifacts(opts.deepcoverDir);
-  if (!jestData) {
-    notes.push(
-      'No Jest artifacts in .deepcover — coverage falls back to static heuristics. Wire up the DeepCover Jest reporter and run tests with --coverage for accurate scores.',
-    );
+  const runtimeData = loadRuntimeArtifacts(opts.deepcoverDir);
+  if (!runtimeData) {
+    notes.push(missingRuntimeNote(opts.rootDir));
   }
 
-  const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, jestData);
+  const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
+
+  if (resolvedCoverage.coverageProvider !== 'istanbul' && resolvedCoverage.hasIstanbulData) {
+    const explanation =
+      resolvedCoverage.coverageProvider === 'v8'
+        ? 'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
+          'condition-operand analysis is disabled (not "found nothing"). Switch to an Istanbul ' +
+          'coverage provider (Jest: coverageProvider "babel"; Vitest: @vitest/coverage-istanbul) ' +
+          'for the full bug-detector set.'
+        : 'The coverage data on disk did not come from the run that produced this artifact — ' +
+          'the runtime artifact records coverageProvider: \'none\' (coverage was not enabled for ' +
+          'this run), but a coverage file from a previous run is still present. Condition-operand ' +
+          'analysis is disabled (not "found nothing"); re-run with --coverage for accurate results.';
+    notes.push(explanation);
+  }
+
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
     ...(opts.weights && { weights: opts.weights }),
     ...(opts.maxInfluence !== undefined && { maxInfluence: opts.maxInfluence }),
