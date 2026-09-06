@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-030 | End-to-end guard for the reporter → loader → resolver path | Status `planned` (6 tasks); branch `runtime-artifact-guard`. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Scope covers three source fixes: operand availability follows the artifact rather than the provider id; a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision); and the analyze-stage notes follow both new signals. Ships as 0.10.0 (numbers move). | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) | [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md) | 2026-09-01 |
+| | | _No items._ | | | |
 
 ## Ideas
 
@@ -39,7 +39,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| | | _No items._ | |
+| BL-030 | End-to-end guard for the reporter → loader → resolver path | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) / [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md); executing via subagent-driven-development, 5 tasks. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Carries two source fixes: operand availability follows the artifact rather than the provider id, and a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision), each shipping its analyze-stage note in the same commit. Ships as 0.10.0 (numbers move). **Release-time obligation: tag `v0.10.0` at merge.** | `runtime-artifact-guard` |
 
 ## Done
 
