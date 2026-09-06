@@ -22,9 +22,13 @@ export type IstanbulCoverageData = Record<string, IstanbulFileCoverage>;
 export type TestFrameworkId = 'jest' | 'vitest';
 
 /**
- * How the coverage data was produced. Recorded as fact from the runner's own
- * config: `v8` does not emit `binary-expr` branches, so operand-level analysis
- * is unavailable rather than empty (see `istanbul-mapper.ts`).
+ * How the coverage data was produced. Recorded as fact from the runner's own config —
+ * but this id alone cannot decide whether per-operand (`binary-expr`) branch data is
+ * available. Istanbul always measures operands. `v8` does not: it is reported by two
+ * different providers that disagree — `@vitest/coverage-v8` 4.x emits `binary-expr`
+ * branches, Jest's v8-to-istanbul does not — so `v8` must be judged by what the
+ * artifact actually contains. See `artifactMeasuresOperands` in `istanbul-mapper.ts`,
+ * the decision point that does that judging.
  */
 export type CoverageProviderId = 'istanbul' | 'v8' | 'none';
 
@@ -65,9 +69,10 @@ export interface IstanbulMethodMetrics {
    * was never even evaluated; a non-zero proves nothing about whether it was ever the
    * operand that decided the branch.
    *
-   * Absent when the coverage provider does not measure operands (`v8`), which is
-   * different from an empty array — that means Istanbul looked and this method has
-   * no compound conditions.
+   * Absent when the artifact does not measure operands (see
+   * `ResolvedCoverage.measuresOperands` / `artifactMeasuresOperands`), which is
+   * different from an empty array — that means the artifact does measure operands and
+   * this method simply has no compound conditions.
    */
   binaryExpressions?: BinaryExprCoverage[];
 }
