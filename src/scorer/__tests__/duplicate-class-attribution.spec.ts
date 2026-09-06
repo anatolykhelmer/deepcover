@@ -59,6 +59,7 @@ function resolvedCoverageOf(entries: MethodCoverage[], hasIstanbulData: boolean)
   return {
     methods,
     hasIstanbulData,
+    measuresOperands: hasIstanbulData,
     hasRuntimeData: false,
     coverageProvider: 'istanbul',
     isMethodCovered: (c, m, f) => lookup(c, m, f)?.isCovered ?? false,

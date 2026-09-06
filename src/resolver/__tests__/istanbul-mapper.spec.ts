@@ -1,4 +1,4 @@
-import { mapIstanbulToMethod } from '../istanbul-mapper';
+import { mapIstanbulToMethod, artifactMeasuresOperands } from '../istanbul-mapper';
 import type { IstanbulFileCoverage } from '../types';
 
 describe('mapIstanbulToMethod', () => {
@@ -19,7 +19,7 @@ describe('mapIstanbulToMethod', () => {
   };
 
   it('counts lines within method range as covered/total', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
+    const result = mapIstanbulToMethod(fileCoverage, 4, 7, true);
     expect(result).toBeDefined();
     expect(result!.linesTotal).toBe(2);
     expect(result!.linesCovered).toBe(2);
@@ -27,21 +27,21 @@ describe('mapIstanbulToMethod', () => {
   });
 
   it('counts uncovered lines correctly', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 9, 12, 'istanbul');
+    const result = mapIstanbulToMethod(fileCoverage, 9, 12, true);
     expect(result!.linesTotal).toBe(2);
     expect(result!.linesCovered).toBe(0);
     expect(result!.lineCoveragePercent).toBe(0);
   });
 
   it('counts branch hits within method range', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
+    const result = mapIstanbulToMethod(fileCoverage, 4, 7, true);
     expect(result!.branchesTotal).toBe(2);
     expect(result!.branchesHit).toBe(1);
     expect(result!.branchCoveragePercent).toBe(50);
   });
 
   it('returns undefined when no statements fall in range', () => {
-    const result = mapIstanbulToMethod(fileCoverage, 20, 30, 'istanbul');
+    const result = mapIstanbulToMethod(fileCoverage, 20, 30, true);
     expect(result).toBeUndefined();
   });
 
@@ -62,35 +62,54 @@ describe('mapIstanbulToMethod', () => {
     };
 
     it('keeps the per-operand counts of binary expressions in range', () => {
-      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, 'istanbul');
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, true);
       expect(result!.binaryExpressions).toEqual([{ line: 5, pathCounts: [3, 3, 3, 2] }]);
     });
 
     it('leaves the aggregate branch counters untouched', () => {
-      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, 'istanbul');
+      const result = mapIstanbulToMethod(withBinaryExpr, 4, 7, true);
       expect(result!.branchesTotal).toBe(6);
       expect(result!.branchesHit).toBe(6);
       expect(result!.branchCoveragePercent).toBe(100);
     });
 
     it('is empty when the method has no binary expressions', () => {
-      const result = mapIstanbulToMethod(fileCoverage, 4, 7, 'istanbul');
+      const result = mapIstanbulToMethod(fileCoverage, 4, 7, true);
       expect(result!.binaryExpressions).toEqual([]);
     });
 
     it('returns an empty binaryExpressions list under istanbul when there are no compound conditions', () => {
-      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'istanbul');
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, true);
       expect(metrics?.binaryExpressions).toEqual([]);
     });
 
-    it('returns undefined binaryExpressions under v8, which does not measure operands', () => {
-      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'v8');
+    it('returns undefined binaryExpressions when the artifact does not measure operands', () => {
+      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, false);
       expect(metrics?.binaryExpressions).toBeUndefined();
     });
 
-    it('returns undefined binaryExpressions under "none", which does not measure operands either', () => {
-      const metrics = mapIstanbulToMethod(fileCoverage, 1, 20, 'none');
-      expect(metrics?.binaryExpressions).toBeUndefined();
+    describe('artifactMeasuresOperands', () => {
+      const withBinary = { 'src/a.ts': withBinaryExpr };
+      const withoutBinary = { 'src/a.ts': fileCoverage };
+
+      it('trusts the istanbul id even when the sources have no compound conditions', () => {
+        expect(artifactMeasuresOperands('istanbul', withoutBinary)).toBe(true);
+      });
+
+      // @vitest/coverage-v8 4.x remaps v8 output through the AST and does emit
+      // binary-expr; Jest's v8-to-istanbul does not. Both say coverageProvider: 'v8',
+      // so the artifact is the only thing that can tell them apart.
+      it('accepts a v8 artifact that actually carries binary-expr branches', () => {
+        expect(artifactMeasuresOperands('v8', withBinary)).toBe(true);
+      });
+
+      it('rejects a v8 artifact with no binary-expr branches', () => {
+        expect(artifactMeasuresOperands('v8', withoutBinary)).toBe(false);
+      });
+
+      it('rejects an empty artifact', () => {
+        expect(artifactMeasuresOperands('v8', {})).toBe(false);
+      });
     });
   });
 });

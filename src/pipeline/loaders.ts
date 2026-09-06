@@ -138,8 +138,9 @@ export function loadIstanbulByMethod(
     if (!fileCoverage) continue;
 
     for (const c of allCallables(mod)) {
-      // Only line/branch percentages are read below; operand data is unused on this path.
-      const metrics = mapIstanbulToMethod(fileCoverage[1], c.node.startLine, c.node.endLine, 'istanbul');
+      // Only line/branch percentages are read below; operand data is unused on this
+      // path, so it is not requested rather than requested and discarded.
+      const metrics = mapIstanbulToMethod(fileCoverage[1], c.node.startLine, c.node.endLine, false);
       if (metrics) {
         result.set(c.qualifiedName, {
           lineCoveragePercent: metrics.lineCoveragePercent,

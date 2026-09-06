@@ -126,6 +126,11 @@ export interface ResolvedCoverage {
   hasIstanbulData: boolean;
   hasRuntimeData: boolean;
   coverageProvider: CoverageProviderId;
+  /**
+   * Whether the loaded coverage artifact records per-operand branch counts. Not derivable
+   * from `coverageProvider` alone: Vitest's v8 provider emits them and Jest's does not.
+   */
+  measuresOperands: boolean;
   isMethodCovered(className: string, methodName: string, filePath: string): boolean;
   getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined;
   getTestsForMethod(className: string, methodName: string, filePath: string): string[];

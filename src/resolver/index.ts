@@ -7,7 +7,7 @@ import type {
   MethodCoverage,
   ResolvedCoverage,
 } from './types';
-import { mapIstanbulToMethod } from './istanbul-mapper';
+import { artifactMeasuresOperands, mapIstanbulToMethod } from './istanbul-mapper';
 import { matchRuntimeTests } from './runtime-matcher';
 import { buildClassMethodOwners, classMethodKey } from '../types/method-owner';
 import { allCallables, calleeKey, functionCoverageKey } from '../types/callable';
@@ -31,6 +31,12 @@ function resolveCoverage(
   // Istanbul ever produced — so defaulting to 'istanbul' preserves today's behavior
   // for every existing Jest project.
   const coverageProvider: CoverageProviderId = runtimeData?.runtime?.coverageProvider ?? 'istanbul';
+
+  // Computed once per artifact rather than per method: it is a property of the run.
+  const measuresOperands =
+    hasIstanbulData && runtimeData?.istanbul
+      ? artifactMeasuresOperands(coverageProvider, runtimeData.istanbul)
+      : false;
 
   const classMethodOwners = buildClassMethodOwners(codeModel.modules);
   const runtimeMap = matchRuntimeTests(
@@ -64,7 +70,7 @@ function resolveCoverage(
       if (hasIstanbulData && runtimeData!.istanbul) {
         const fileCov = runtimeData!.istanbul[absFilePath];
         if (fileCov) {
-          const metrics = mapIstanbulToMethod(fileCov, c.node.startLine, c.node.endLine, coverageProvider);
+          const metrics = mapIstanbulToMethod(fileCov, c.node.startLine, c.node.endLine, measuresOperands);
           if (metrics) {
             mc.istanbul = metrics;
           }
@@ -143,6 +149,7 @@ function resolveCoverage(
     hasIstanbulData,
     hasRuntimeData,
     coverageProvider,
+    measuresOperands,
     isMethodCovered(className: string, methodName: string, filePath: string): boolean {
       return lookup(className, methodName, filePath)?.isCovered ?? false;
     },
