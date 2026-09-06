@@ -1,13 +1,13 @@
 # Product Backlog
 
-> Last updated: 2026-09-01
+> Last updated: 2026-09-06
 > Repo: deep-cover
 
 ## Ready
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| | | _No items._ | | | |
+| BL-030 | End-to-end guard for the reporter → loader → resolver path | Status `designing` → spec approved 2026-09-06; branch `runtime-artifact-guard`. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Scope grew by two live defects the design found *by execution*: `istanbul-mapper` discards real operand data under Vitest's default v8 provider, and a run without coverage silently scores the previous run's coverage. Ships as 0.10.0 (numbers move). | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) | | 2026-09-01 |
 
 ## Ideas
 
@@ -33,19 +33,19 @@
 | BL-026 | Single source for criticality derivation | `getCriticality` (`composer.ts`) and `getMethodRisk` (`gap-generator.ts`) are identical bodies (LLM rating lookup, else `branchCount + externalCalls` thresholds); `criticality.ts`'s `getCriticalityFromLLM` is the same lookup without the fallback. Drift here would label the same method differently in the per-method score vs. the gap ranking. Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-027 | Generic array-job runner in reasoner | The 4 reasoner jobs (domain states, assertion quality, criticality, transitive coverage) share an identical parse→validate→degrade-to-`[]` body, differing only in prompt pair and Zod schema. A private `runArrayJob<T>` helper collapses 4 six-line bodies to 4 one-liners; the `bugFinding` job stays separate (object shape, different failure semantics). Found by a finding-reusable-modules audit. | 2026-08-26 |
 | BL-028 | Move reasonerScope out of cli/ into reasoner/scope.ts | The `{ module, wholeRepo: !module && !file }` construction is duplicated in `extract-stage.ts` and `run-pipeline.ts` because `pipeline/` cannot import `cli/` (documented layering rule), which is where the one existing helper (`cli/reasoner-scope.ts`) lives. Relocating it next to `ReasonerScope` removes the duplication at its source. Found by a finding-reusable-modules audit. | 2026-08-26 |
-| BL-030 | End-to-end guard for the reporter → loader → resolver path | Nothing automated exercises it: `paradigm-runner` feeds `resolveCoverage` Istanbul data it loaded itself, and no fixture registers a DeepCover reporter, so the 10-case parity matrix proves Istanbul-shape parity only — never `runtime.json`, `assertionCount`, `coverageProvider`, or either reporter. Both of BL-009's load-bearing invariants are unguarded end to end, and the `exports`-map fix is verified only by hand. Wiring the reporter into one fixture and asserting on its `runtime.json` closes this; a Vitest-dialect (`vi.*`) fixture would also give the dual-dialect extractor its only e2e coverage. Found by BL-009's final whole-branch review. | 2026-09-01 |
-| BL-029 | Extractor and scope gate resolve duplicate class names against different maps | `resolveClassMethodKey` breaks ties with `ClassMethodOwners` (files declaring that class *with that method*); `testInScopeOf` uses `ClassFileOwners` (files declaring that class name *at all*). They can disagree. Live repro: `a/svc.ts` has `class Svc { create() }`, `b/svc.ts` has `class Svc { ship() }`, a spec imports `Svc` from `b/` and calls `create` — the extractor credits `a/svc.ts:Svc.create` (scores covered, `untested: []`) while the gate resolves the test to `b/svc.ts` and rejects it, so the method gets zero assertions. Pre-existing: head and base are byte-identical on the fixture. Found by BL-023's final whole-branch review. | 2026-08-26 |
+| BL-031 | Persist CoverageKey on TestNode and Reasoner schemas | Write `CoverageKey` once at extract onto `TestNode` (and accept the same key — or `{file, owner, method}` — in Reasoner Zod schemas). Scoring stops re-resolving class names after extract via `ClassMethodOwners`/`ClassFileOwners`. Extends BL-003 (Done); related to BL-015 and BL-018. Supersedes BL-029. | 2026-09-03 |
 
 ## In Progress
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-009 | Vitest support | [PR #10](https://github.com/anatolykhelmer/deepcover/pull/10) open; [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md). Final whole-branch review: MERGE AFTER FIXES → all 6 fixed and re-reviewed clean. Breaking (two exported types narrow), released as 0.9.0. **Release-time obligation: tag `v0.9.0` at merge** — the README heading carries no "unreleased" marker by design. | `vitest-support` |
+| | | _No items._ | |
 
 ## Done
 
 | ID | Title | Completed | Notes |
 |----|-------|-----------|-------|
+| BL-009 | Vitest support | 2026-09-02 | [PR #10](https://github.com/anatolykhelmer/deepcover/pull/10) merged (`6c8075b`); breaking, released as 0.9.0, `v0.9.0` tagged on the merge commit. [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md) |
 | BL-023 | Extract scoped test-inventory traversal | 2026-08-27 | [PR #9](https://github.com/anatolykhelmer/deepcover/pull/9) merged (`c2dc3e0`); released as 0.8.0 |
 | BL-001 | One StateCatalog for aggregate and per-method scores | 2026-08-18 | |
 | BL-002 | Validate config and runtime JSON with existing Zod | 2026-08-20 | |
@@ -58,8 +58,34 @@
 | ID | Title | Reason | Dropped |
 |----|-------|--------|---------|
 | BL-016 | Exact-key dedupe in gap-generator | Superseded: PR #3 review removed the substring guard entirely — after catalog dedupe the check was redundant and harmful. | 2026-08-19 |
+| BL-029 | Extractor and scope gate resolve duplicate class names against different maps | Superseded by BL-031: do not patch the two owner maps separately; persist CoverageKey at extract so post-extract name resolution (and the ClassMethodOwners vs ClassFileOwners asymmetry) goes away. | 2026-09-03 |
 
 ## Decision Log
+
+### 2026-09-06 — BL-030 designed
+
+- Spec approved: `docs/superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md`. Branch `runtime-artifact-guard` off `main` at `6c8075b`.
+- **The design found two live defects before a line of the guard was written, both by running things rather than reading them, and both in the composition rather than in any single unit.** `istanbul-mapper.ts` gates `binaryExpressions` on `provider === 'istanbul'` under a comment asserting Istanbul is the only provider emitting `binary-expr`. That is true of Jest's v8-to-istanbul and **false of `@vitest/coverage-v8` 4.x**, which emits them — so on Vitest's *default* coverage provider the operand half of `untested-condition-operand` reports nothing, on data that was there. Worse, the branch *counter* two lines up is not gated at all, so those same arms already flow into the reported percentages: the artifact is trusted for counting and distrusted for operands at once.
+- **The second defect is the one 0.9.0's review thought it had closed.** `'none'` is honored only inside the reporters, which skip the `istanbul-coverage.json` copy. `coverageDirectory` is recorded unconditionally, so `resolveCoverageFinalPath` reads it out of the very `runtime.json` saying `'none'` and returns the stale live `coverage-final.json`. Reproduced end to end: a `--coverage` run, then a plain `npx jest`, and `loadRuntimeArtifacts()` still hands back Istanbul data. The reporter comment says copying "would launder old data as new"; the uncopied path does exactly that.
+- Both pulled into scope rather than pinned, on the repo's own precedent (BL-009 pulled in the `exports` map and the no-op e2e harness): the `v8` and `none` cases *cannot be given honest assertions* without deciding what the right answer is, so a guard that shipped first would have pinned both defects against their own fix.
+- **A hard constraint decided the stand's shape**: Jest resolves reporters through Node's own `require`, bypassing ts-jest, and Node's type-stripping rejects `reporter/index.ts`'s `export =`. The stand must load `dist/`, so `test:paradigms:e2e` gains a build step — chosen over a presence check because a *stale* `dist/` is the worse failure, passing green against yesterday's reporter.
+- Naming the new describes `… real jest run` / `… real vitest run` lets the existing CI `-t` filters and the Node-18 Vitest exclusion pick them up with no workflow change.
+- Recorded as the design's single most important detail: the two `none` cases must run *after* a coverage run in the same directory, and must assert the stale file exists before asserting it was ignored. BL-009's log has a "verified" claim that was false because the check silently examined an empty path; this is the same shape.
+- Fix A's residual imprecision is stated in the spec rather than left to be discovered: a project with no compound expressions under a non-Istanbul provider gets classified "does not measure". Inert — the detector has nothing to work with either way — but a real narrowing.
+- Deliberately out of scope: package-name resolution covering the `exports` map (stays hand-verified), a `vi.*` extractor fixture, freshest-wins mtime testing, and touching the five existing paradigm fixtures.
+
+### 2026-09-06 — BL-009 → Done; BL-030 picked next
+
+- [PR #10](https://github.com/anatolykhelmer/deepcover/pull/10) merged 2026-09-02 as `6c8075b`; all three CI jobs (18.x / 20.x / 22.x) green. The row still said "open" because the merge happened outside a session that touched the backlog — same lag as BL-023.
+- **The release-time obligation was met**: `v0.9.0` points at the merge commit, and `package.json` is on 0.9.0. First branch since 0.6.1 where the tag and the README heading did not disagree — the fourth version-honesty check in a row, and the first that passed on its own.
+- `In Progress` and `Ready` were both empty, so the pick came from Ideas.
+- **BL-030 Ideas → Ready, status `designing`.** Chosen over BL-014 / BL-025 / BL-031 because it closes the hole 0.9.0 just shipped with, while the reporter/loader design is still fresh: the e2e stand DeepCover already owns proves Istanbul-shape parity and nothing else, so the two invariants the Vitest work turns on — `runtime.json`'s shape and `coverageProvider` as recorded fact — are guarded only by unit tests and one manual run. Its own history argues for it: BL-009's real defects were found by *running* things, and the one spec claim marked "verified" that was false was false because a silent grep checked an empty path.
+
+### 2026-09-03 — BL-031 opened; BL-029 dropped
+
+- Architecture review proposed three redesigns; the net-new piece was "write CoverageKey once on TestNode / Reasoner schemas" rather than keep fixing owner-map drift.
+- **BL-031** added to Ideas: persist CoverageKey at extract; scoring path stops re-resolving class names. Related: BL-003 (Done), BL-015, BL-018.
+- **BL-029** moved to Dropped as superseded by BL-031 — the live dual-map repro stays documented in the Dropped notes / BL-031, but a point fix of the two maps is out of scope.
 
 ### 2026-09-01 — BL-009 implemented; BL-030 opened
 
