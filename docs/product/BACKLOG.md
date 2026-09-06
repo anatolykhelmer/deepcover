@@ -7,7 +7,7 @@
 
 | ID | Title | Notes | Spec | Plan | Added |
 |----|-------|-------|------|------|-------|
-| BL-030 | End-to-end guard for the reporter → loader → resolver path | Status `designing` → spec approved 2026-09-06; branch `runtime-artifact-guard`. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Scope grew by two live defects the design found *by execution*: `istanbul-mapper` discards real operand data under Vitest's default v8 provider, and a run without coverage silently scores the previous run's coverage. Ships as 0.10.0 (numbers move). | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) | | 2026-09-01 |
+| BL-030 | End-to-end guard for the reporter → loader → resolver path | Status `planned` (6 tasks); branch `runtime-artifact-guard`. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Scope covers three source fixes: operand availability follows the artifact rather than the provider id; a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision); and the analyze-stage notes follow both new signals. Ships as 0.10.0 (numbers move). | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) | [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md) | 2026-09-01 |
 
 ## Ideas
 
@@ -61,6 +61,14 @@
 | BL-029 | Extractor and scope gate resolve duplicate class names against different maps | Superseded by BL-031: do not patch the two owner maps separately; persist CoverageKey at extract so post-extract name resolution (and the ClassMethodOwners vs ClassFileOwners asymmetry) goes away. | 2026-09-03 |
 
 ## Decision Log
+
+### 2026-09-06 — BL-030 planned; a spec claim corrected
+
+- 6-task plan written (`docs/superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md`); status → planned. Order is fixes-first (operand availability, then `'none'`, then the notes), so the e2e matrix goes green in one step at task 5 instead of being red across four.
+- **The spec was wrong about the second defect, and planning caught it.** It called the stale-coverage behavior a half-closed defect. It is not: 0.9.0 chose *warn, don't block*, `analyze-stage.ts:110-122` emits exactly that warning, and `analyze-stage.spec.ts:222` pins it with a comment stating outright that `loadIstanbulCoverage` happily loads the stale file. So BL-030 is **reversing a tested decision**, not fixing an oversight. The spec has been corrected in place. The direction still stands — a warning in a CI log does not stop a score being computed on last week's data — but calling it a bug would have led an implementer to "fix" a passing test rather than deliberately rewrite it.
+- That correction added a whole task: the analyze-stage notes are the user-facing half of both fixes. The `v8` note stops naming a provider it cannot identify from the id (Vitest's v8 now measures operands, Jest's still does not), and the `'none'` note inverts from "we loaded it, beware" to "we ignored it, re-run with --coverage" — without which it would have silently stopped firing while the user's situation was unchanged.
+- **Two plan defects found by self-review rather than by an implementer.** Adding a required `measuresOperands` to `ResolvedCoverage` breaks four spec files that build the interface as a literal (three bug-detector, one scorer) — enumerated in the plan with the value each should carry, since `untested-condition-operand.spec.ts` builds coverage *with* `binaryExpressions` and must claim operands are measured or contradict itself. And the first draft of the e2e stand called its runner helper from all three assertion layers, which would have executed 18 real runner invocations instead of 6; the helper is now memoized and throws rather than `expect`s, since a memoized helper only ever asserts for its first caller.
+- The plan requires the stand to be **observed failing** before it is trusted: task 5 reverts `artifactMeasuresOperands` to the old id-only check and confirms the `vitest / v8` rows go red. Both defects this guard covers were invisible to a 654-test suite, so "it passes" is not evidence it can fail.
 
 ### 2026-09-06 — BL-030 designed
 
