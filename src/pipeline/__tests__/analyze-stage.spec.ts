@@ -219,11 +219,11 @@ describe('runAnalyzeStage', () => {
     expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(false);
   });
 
-  it('warns when coverageProvider is "none" but a stale Istanbul file is still on disk', () => {
-    // Reproduces: run Vitest WITH --coverage, then again WITHOUT it. The second run
-    // writes coverageProvider: 'none' while coverageDirectory still points at the
-    // previous run's coverage-final.json, which loadIstanbulCoverage happily loads —
-    // so operand analysis silently goes dark unless this note fires.
+  it('reports that stale coverage on disk was ignored when the run recorded "none"', () => {
+    // Reproduces: run WITH --coverage, then again WITHOUT it. The second run records
+    // 'none' while a coverage file from the first is still on disk. 0.10.0 refuses to
+    // score against it — and must say so, or the user's situation is unchanged and they
+    // now hear nothing at all.
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),
       JSON.stringify({
@@ -242,9 +242,40 @@ describe('runAnalyzeStage', () => {
     );
 
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
-    expect(
-      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
-    ).toBe(true);
+    expect(notes.some((n) => n.includes('was ignored'))).toBe(true);
+    expect(notes.some((n) => n.includes('re-run with --coverage'))).toBe(true);
+  });
+
+  // The case Fix A creates: Vitest's v8 provider does emit binary-expr, so an artifact
+  // carrying them measures operands and must draw no warning, even though the recorded
+  // provider is 'v8'.
+  it('does not warn about operands for a v8 artifact that carries binary-expr branches', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': {
+          statementMap: {},
+          s: {},
+          branchMap: { '0': { loc: { start: { line: 5 }, end: { line: 5 } }, type: 'binary-expr' } },
+          b: { '0': [1, 0] },
+          fnMap: {},
+          f: {},
+        },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('condition-operand analysis is disabled'))).toBe(false);
   });
 
   it('does not warn about stale coverage when coverageProvider is "none" and no Istanbul file exists', () => {
@@ -260,8 +291,6 @@ describe('runAnalyzeStage', () => {
     );
 
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
-    expect(
-      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
-    ).toBe(false);
+    expect(notes.some((n) => n.includes('was ignored'))).toBe(false);
   });
 });

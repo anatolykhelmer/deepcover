@@ -7,7 +7,7 @@ import type { ReasonerOutput } from '../reasoner/types';
 import { ReasonerOutputSchema } from '../reasoner/types';
 import type { MethodCoverageInfo } from '../reasoner/prompts/criticality';
 import type { IstanbulCoverageData, RuntimeData } from '../resolver/types';
-import { loadIstanbulCoverage } from '../resolver/istanbul-source';
+import { hasIstanbulSource, loadIstanbulCoverage } from '../resolver/istanbul-source';
 import { mapIstanbulToMethod } from '../resolver/istanbul-mapper';
 import { resolveCoverage } from '../resolver';
 import { runBugDetector } from '../bug-detector';
@@ -53,6 +53,12 @@ export function resolvePaths(opts: {
 export interface RuntimeArtifacts {
   istanbul?: IstanbulCoverageData;
   runtime?: RuntimeData;
+  /**
+   * A coverage file was on disk but deliberately not loaded, because the run recorded
+   * `coverageProvider: 'none'`. Distinguishes "no coverage anywhere" from "coverage
+   * ignored as stale", which the analyze stage reports differently.
+   */
+  ignoredStaleIstanbul: boolean;
 }
 
 /** Artifact names in the order they were introduced. Both are read; only the first is written. */
@@ -65,8 +71,7 @@ const RUNTIME_ARTIFACT_NAMES = ['runtime.json', 'jest-runtime.json'] as const;
  * instead, the same rule `istanbul-source.ts` already applies to its two sources.
  */
 export function loadRuntimeArtifacts(deepcoverDir: string): RuntimeArtifacts | undefined {
-  const artifacts: RuntimeArtifacts = {};
-  artifacts.istanbul = loadIstanbulCoverage(deepcoverDir);
+  const artifacts: RuntimeArtifacts = { ignoredStaleIstanbul: false };
 
   const present = RUNTIME_ARTIFACT_NAMES
     .map((name) => path.join(deepcoverDir, name))
@@ -83,6 +88,13 @@ export function loadRuntimeArtifacts(deepcoverDir: string): RuntimeArtifacts | u
       console.warn(`Warning: could not parse ${chosen} — ignoring runtime data: ${err}`);
     }
   }
+
+  // Istanbul is resolved from the chosen runtime artifact, so `coverageDirectory` and
+  // the 'none' decision come from the same file the rest of the run is described by.
+  artifacts.istanbul = loadIstanbulCoverage(deepcoverDir, artifacts.runtime);
+  artifacts.ignoredStaleIstanbul =
+    artifacts.runtime?.coverageProvider === 'none' &&
+    hasIstanbulSource(deepcoverDir, artifacts.runtime);
 
   return artifacts.istanbul || artifacts.runtime ? artifacts : undefined;
 }
@@ -127,7 +139,7 @@ export function loadIstanbulByMethod(
   deepcoverDir: string,
   modules: ModuleNode[],
 ): Map<string, MethodCoverageInfo> | undefined {
-  const data = loadIstanbulCoverage(deepcoverDir);
+  const data = loadRuntimeArtifacts(deepcoverDir)?.istanbul;
   if (!data) return undefined;
 
   const result = new Map<string, MethodCoverageInfo>();

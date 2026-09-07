@@ -107,18 +107,21 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
 
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
 
-  if (resolvedCoverage.coverageProvider !== 'istanbul' && resolvedCoverage.hasIstanbulData) {
-    const explanation =
-      resolvedCoverage.coverageProvider === 'v8'
-        ? 'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
-          'condition-operand analysis is disabled (not "found nothing"). Switch to an Istanbul ' +
-          'coverage provider (Jest: coverageProvider "babel"; Vitest: @vitest/coverage-istanbul) ' +
-          'for the full bug-detector set.'
-        : 'The coverage data on disk did not come from the run that produced this artifact — ' +
-          'the runtime artifact records coverageProvider: \'none\' (coverage was not enabled for ' +
-          'this run), but a coverage file from a previous run is still present. Condition-operand ' +
-          'analysis is disabled (not "found nothing"); re-run with --coverage for accurate results.';
-    notes.push(explanation);
+  // Two distinct situations, previously collapsed into one condition on the provider id.
+  if (runtimeData?.ignoredStaleIstanbul) {
+    notes.push(
+      'Coverage data on disk was ignored: the runtime artifact records ' +
+        "coverageProvider: 'none' (this run did not measure coverage), so the coverage " +
+        'file present belongs to an earlier run. Scoring fell back to static test ' +
+        'attribution — re-run with --coverage for coverage-based results.',
+    );
+  } else if (resolvedCoverage.hasIstanbulData && !resolvedCoverage.measuresOperands) {
+    notes.push(
+      'Coverage came from a provider that does not record per-operand branch counts — ' +
+        'condition-operand analysis is disabled (not "found nothing"). Switch to an ' +
+        'Istanbul coverage provider (Jest: coverageProvider "babel"; Vitest: ' +
+        '@vitest/coverage-istanbul) for the full bug-detector set.',
+    );
   }
 
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
