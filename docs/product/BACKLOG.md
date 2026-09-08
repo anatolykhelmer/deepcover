@@ -43,7 +43,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|-------|---------|--------|
-| BL-030 | End-to-end guard for the reporter → loader → resolver path | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) / [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md); executing via subagent-driven-development, 5 tasks. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Carries two source fixes: operand availability follows the artifact rather than the provider id, and a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision), each shipping its analyze-stage note in the same commit. Ships as 0.10.0 (numbers move). **Release-time obligation: tag `v0.10.0` at merge.** | `runtime-artifact-guard` |
+| BL-030 | End-to-end guard for the reporter → loader → resolver path | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) / [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md); [PR #11](https://github.com/anatolykhelmer/deepcover/pull/11) open; executed via subagent-driven-development, 5 tasks + one final-review fix wave. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Carries two source fixes: operand availability follows the artifact rather than the provider id, and a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision), each shipping its analyze-stage note in the same commit. Ships as 0.10.0 (numbers move). **Release-time obligation: tag `v0.10.0` at merge.** | `runtime-artifact-guard` |
 
 ## Done
 
