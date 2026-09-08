@@ -139,7 +139,7 @@ Neither change narrows a public type.
 
 ### Vitest support
 
-DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have — including full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`.
+DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have — including, as of 0.9.0, full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`. (As of 0.10.0, Vitest's default `v8` provider gets this too, with no config change — see "What's new in 0.10.0" above.)
 
 **Using the Vitest reporter requires Node >= 20** — Vitest 4 itself only supports Node `^20.0.0 || ^22.0.0 || >=24.0.0`. DeepCover's own Node >= 18 requirement (see Prerequisites) is unaffected for Jest-only projects.
 
@@ -154,7 +154,7 @@ The exported type follows the same rename: `RuntimeData` replaces `JestRuntimeDa
 Two fields reachable from the publicly exported `MethodCoverage` type narrowed from required to optional, both to stop a missing measurement from impersonating a real one:
 
 - `RuntimeTestResult.assertionCount` — absent (not `0`) when the runner doesn't report a per-test assertion count, which is every Vitest run today.
-- `IstanbulMethodMetrics.binaryExpressions` — absent (not `[]`) when the coverage provider doesn't measure operands, which is every `v8`-provider run.
+- `IstanbulMethodMetrics.binaryExpressions` — absent (not `[]`) when the coverage provider doesn't measure operands, which **in 0.9.0** was every `v8`-provider run. That determination changed in 0.10.0 (see "What's new in 0.10.0" above): it's no longer based on the provider id, and most `v8`-provider Vitest runs measure operands now. The field's optionality itself, described here, is unchanged since 0.9.0 — only which runs land on which side of it has moved.
 
 If your code reads either field and does arithmetic or array operations on it without a guard, this is a compile error under `strict` mode. The fix is to handle the "not measured" case explicitly — the same way DeepCover's own scorer and bug-detector now do. This is the one part of 0.9.0 that isn't purely additive.
 
@@ -928,7 +928,7 @@ After each test run, the reporter writes to `.deepcover/`:
 
 #### Setup
 
-Add the DeepCover reporter to your Vitest config, **and** enable coverage with the `istanbul` provider — both are required, together:
+Add the DeepCover reporter to your Vitest config, **and** enable coverage — both are required, together:
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -937,10 +937,12 @@ import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vit
 export default defineConfig({
   test: {
     reporters: ['default', new DeepCoverVitestReporter()],
-    coverage: { provider: 'istanbul', reporter: ['json'] },
+    coverage: { reporter: ['json'] },
   },
 });
 ```
+
+No `provider` is set above, so Vitest uses its default, `v8` — see below for why that default is no longer a downgrade.
 
 Then run tests with coverage before analyzing:
 
@@ -949,7 +951,9 @@ npx vitest run --coverage
 npx @anatolykhelmer/deep-cover run --root . --module src/your-module
 ```
 
-**`@vitest/coverage-istanbul` is required for the full detector set.** Vitest's default coverage provider is `v8`, and `v8` does not record per-operand branch counts the way Istanbul does. When DeepCover sees a `v8` run, the "operand never evaluated" half of the `untested-condition-operand` detector is **disabled, not empty** — `analyze`/`score` say so explicitly in their output notes instead of silently reporting no findings. Install `@vitest/coverage-istanbul` and set `coverage.provider: 'istanbul'` (as above) to get the same detector coverage Jest projects get.
+**Vitest's default `v8` provider already gets the full detector set.** DeepCover decides whether per-operand (`binary-expr`) branch data is available by inspecting the coverage artifact itself, not by trusting the provider id: `@vitest/coverage-v8` (Vitest 4.x, DeepCover's supported version) remaps its output through the AST and does emit `binary-expr` branches, so the "operand never evaluated" half of the `untested-condition-operand` detector runs on the default setup above with no extra configuration. `@vitest/coverage-istanbul` still works if you'd rather use it, but it is no longer required for this.
+
+This is *not* true of every `v8`-labeled provider, which is why DeepCover checks the artifact instead of the id: Jest's own `--coverageProvider=v8` converts through `v8-to-istanbul`, which does not produce `binary-expr` branches, so operand detection there still needs Jest's default `babel` provider (i.e. running Jest without `--coverageProvider=v8`). When DeepCover does load an artifact with no operand data — a Vitest run with no compound conditions to remap, or a Jest `v8` run — the detector's operand half is **disabled, not empty**, and `analyze`/`score` say so explicitly in their output notes instead of silently reporting no findings.
 
 **Vitest runs carry no per-test assertion count.** Vitest's reporter API does not expose one, so the DeepCover reporter omits `assertionCount` for each test rather than writing `0` — a `0` would be read as "this test's assertions were all discarded" instead of "not measured." Consequently, Assertion Quality falls back to the statically discovered assertion count for Vitest runs — the same path a Jest project takes when it hasn't wired up the reporter at all. This is not a Vitest shortcoming to fix; it is the correct, intentional degradation for data the runner genuinely doesn't expose.
 
