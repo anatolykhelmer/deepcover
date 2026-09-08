@@ -133,14 +133,27 @@ describe.each(['jest', 'vitest'] as const)(
       // Every non-'none' case here gets its own freshly created, single-use coverage
       // directory (see runCase's coverageDirFlag — required so the six runs cannot
       // contaminate each other's live coverage-final.json, see the comment above
-      // coverageDirFlag), so there is never a stale file for either runner's copy to
-      // find. The copy is real production behaviour, not a mistake in this stand: it
+      // coverageDirFlag), so for the four coverage-collecting cases there is simply
+      // nothing on disk for the copy to find. The two 'none' cases are different: their
+      // coverageDirectory IS the shared `<fixture>/coverage` that beforeAll seeds, so a
+      // stale coverage-final.json genuinely is sitting there — the only reason the copy
+      // still doesn't fire is the reporters' own `coverageProvider !== 'none'` guard
+      // (jest-reporter.ts / vitest-reporter.ts). Those two rows are the only place this
+      // assertion has teeth; the other four would pass even if the guard were deleted.
+      // The copy is real production behaviour, not a mistake in this stand: it
       // is a genuine gap in both reporters (DeepCoverVitestReporter's could be fixed by
       // hooking onFinishedReportCoverage, which core Vitest fires after
       // reportCoverage() resolves) — out of scope here, which only consumes the
       // reporters. Asserted as always-false rather than skipped, so a future change
       // that makes it non-deterministic (e.g. copying opportunistically mid-run) does
       // not go unnoticed.
+      // NOTE: if DeepCoverVitestReporter is ever fixed to copy from
+      // onFinishedReportCoverage (or the Jest reporter from an equivalent
+      // post-write hook), coverage-final.json would already exist for the run
+      // that just produced it, and this expectation must flip to `true` for the
+      // four coverage-collecting cases — that flip is the fix working, not a
+      // regression. The two 'none' cases stay `false` regardless: they are
+      // blocked by the `coverageProvider !== 'none'` guard, not by hook timing.
       expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(false);
     });
 

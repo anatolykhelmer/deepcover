@@ -117,10 +117,12 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
     );
   } else if (resolvedCoverage.hasIstanbulData && !resolvedCoverage.measuresOperands) {
     notes.push(
-      'Coverage came from a provider that does not record per-operand branch counts — ' +
-        'condition-operand analysis is disabled (not "found nothing"). Switch to an ' +
-        'Istanbul coverage provider (Jest: coverageProvider "babel"; Vitest: ' +
-        '@vitest/coverage-istanbul) for the full bug-detector set.',
+      'The loaded coverage artifact carries no per-operand branch data — ' +
+        'condition-operand analysis is disabled (not "found nothing"). For Jest, ' +
+        'switch to coverageProvider "babel" (Jest\'s default). For Vitest, either ' +
+        'switch to @vitest/coverage-istanbul, or — if the sources simply have no ' +
+        'compound conditions for the v8 provider to remap — recognize that switching ' +
+        'providers will not change anything.',
     );
   }
 

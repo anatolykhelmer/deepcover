@@ -133,7 +133,12 @@ If you run `jest`/`vitest` without `--coverage` and then `deepcover analyze`,
 expect a lower, honest score where you previously saw stale numbers — re-run with
 `--coverage` to restore them.
 
-Neither change narrows a public type.
+Neither change narrows a public type — but the first one did add a required one:
+the exported `ResolvedCoverage` type (produced by `resolveCoverage()`, and consumed
+by the exported `runScorer` and `runBugDetector`) gained a required
+`measuresOperands: boolean`. Code that only calls `resolveCoverage()` is unaffected;
+anyone hand-building a `ResolvedCoverage` to call `runScorer`/`runBugDetector`
+directly now needs to supply it.
 
 ## What's new in 0.9.0
 
@@ -927,6 +932,14 @@ After each test run, the reporter writes to `.deepcover/`:
 ### Vitest
 
 #### Setup
+
+Install `@vitest/coverage-v8` as a devDependency — Vitest's `v8` provider is its
+default choice but is not bundled with Vitest itself, so coverage collection fails
+without it even though no `provider` is named in the config below:
+
+```bash
+npm install -D @vitest/coverage-v8
+```
 
 Add the DeepCover reporter to your Vitest config, **and** enable coverage — both are required, together:
 

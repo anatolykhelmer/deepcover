@@ -156,7 +156,7 @@ describe('runAnalyzeStage', () => {
     expect(notes.join('\n')).toContain('deepcover reason --bugs');
   });
 
-  it('warns that operand-level analysis is unavailable under the v8 provider', () => {
+  it('warns that operand-level analysis is unavailable when the artifact records no operand data', () => {
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),
       JSON.stringify({
@@ -168,8 +168,11 @@ describe('runAnalyzeStage', () => {
       }),
     );
     // A real v8 run still produces Istanbul-shaped coverage-final.json (v8-to-istanbul
-    // conversion); the note only fires when that data is actually in play (see the
-    // 'none'-provider test below for the case where it must NOT fire).
+    // conversion); the note only fires when that data is actually in play — see 'does
+    // not warn about a disabled operand analysis when there is no Istanbul data at all'
+    // below for the negative case. (The two 'none'-provider tests below assert a
+    // different note instead — the stale-coverage-ignored one — since
+    // `ignoredStaleIstanbul` short-circuits before this note's branch is reached.)
     fs.writeFileSync(
       path.join(deepcoverDir, 'istanbul-coverage.json'),
       JSON.stringify({
