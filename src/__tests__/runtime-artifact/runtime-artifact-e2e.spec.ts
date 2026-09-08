@@ -43,6 +43,28 @@ const CASES: Record<'jest' | 'vitest', Case[]> = {
  */
 const runs = new Map<string, { outputDir: string; runtime: RuntimeData }>();
 
+/**
+ * All six cases would otherwise share Jest's and Vitest's identical default coverage
+ * directory (`<fixture>/coverage`), so whichever case's runner wrote there LAST — not
+ * the case reading it — determines what `istanbul-source.ts`'s live-vs-copy freshness
+ * pick actually returns. Reproduced directly: after running the istanbul case followed
+ * by the v8 case, `loadRuntimeArtifacts('.deepcover-jest-istanbul').istanbul` contains
+ * only `branch`-type entries — the v8 run's data, never `binary-expr` — even though the
+ * istanbul run itself measured real operands. `it.each` happening to declare `v8` after
+ * `istanbul` is what let the jest/v8 and vitest/v8 resolver rows look correct; swap the
+ * declaration order and they would not. So every coverage-collecting case gets its own
+ * coverage output directory, nested inside its own already-gitignored `.deepcover-<key>`
+ * (the fixture's `.gitignore` covers the `.deepcover-` prefix, so no fixture file needs touching).
+ * The `none` cases are the deliberate exception: they must keep reading the shared
+ * `<fixture>/coverage` directory that `beforeAll` seeds, since their whole point is
+ * confirming a stale file there gets ignored, not measuring anything themselves.
+ */
+function coverageDirFlag(framework: string, dir: string): string {
+  return framework === 'jest'
+    ? `--coverageDirectory=${dir}`
+    : `--coverage.reportsDirectory=${dir}`;
+}
+
 function runCase(framework: string, c: Case): { outputDir: string; runtime: RuntimeData } {
   const key = `${framework}-${c.provider}`;
   const cached = runs.get(key);
@@ -51,7 +73,12 @@ function runCase(framework: string, c: Case): { outputDir: string; runtime: Runt
   const outputDir = path.join(FIXTURE, `.deepcover-${key}`);
   fs.rmSync(outputDir, { recursive: true, force: true });
 
-  execSync(c.command, {
+  const command =
+    c.provider === 'none'
+      ? c.command
+      : `${c.command} ${coverageDirFlag(framework, path.join(outputDir, 'coverage'))}`;
+
+  execSync(command, {
     cwd: FIXTURE,
     stdio: 'pipe',
     env: { ...process.env, DEEPCOVER_E2E_OUTPUT_DIR: outputDir },
@@ -98,29 +125,23 @@ describe.each(['jest', 'vitest'] as const)(
       // The copy is best-effort, not guaranteed: both reporters' onRunComplete /
       // onTestRunEnd read the runner's coverage-final.json synchronously, and both
       // runners write that file only after invoking custom reporters (see the
-      // "best-effort" comments in jest-reporter.ts / vitest-reporter.ts). Whether
-      // that leaves a copyable file behind depends on each runner's own cleanup
-      // timing, not on DeepCover:
-      //   - Jest never deletes the prior coverage-final.json before its own rewrite,
-      //     so the previous run's file (here, beforeAll's seed run) is still on disk
-      //     when onRunComplete fires, and gets copied — verified by execution.
-      //   - Vitest's coverage provider calls `clean()` at the very start of
-      //     `vitest run` (before any test executes) and only writes the new report
-      //     from `reportCoverage()`, which core Vitest calls strictly *after*
-      //     `_testRun.end()` (the hook that fires onTestRunEnd) — see
-      //     node_modules/vitest/dist/chunks/cli-api.*.js. So for every Vitest
-      //     invocation the directory is guaranteed empty at copy time, regardless
-      //     of provider — verified by execution (a coverage-final.json seeded
-      //     before the run gets deleted, then rewritten only after the process
-      //     would already have copied nothing).
-      // This is a real, previously-uncovered gap in DeepCoverVitestReporter (it
-      // could copy successfully by hooking onFinishedReportCoverage instead, which
-      // Vitest fires after reportCoverage() resolves) — out of scope for this task,
-      // which only consumes the reporters, so it is asserted here as-is rather than
-      // silently required to be true for Vitest.
-      expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(
-        framework === 'jest' && c.provider !== 'none',
-      );
+      // "best-effort" comments in jest-reporter.ts / vitest-reporter.ts). It can only
+      // ever find something to copy when a stale file from an earlier run already sits
+      // in the coverage directory this run points at — verified by execution for both
+      // runners (seeding a fake coverage-final.json and observing it deleted, then
+      // rewritten, entirely after onRunComplete / onTestRunEnd would have already run).
+      // Every non-'none' case here gets its own freshly created, single-use coverage
+      // directory (see runCase's coverageDirFlag — required so the six runs cannot
+      // contaminate each other's live coverage-final.json, see the comment above
+      // coverageDirFlag), so there is never a stale file for either runner's copy to
+      // find. The copy is real production behaviour, not a mistake in this stand: it
+      // is a genuine gap in both reporters (DeepCoverVitestReporter's could be fixed by
+      // hooking onFinishedReportCoverage, which core Vitest fires after
+      // reportCoverage() resolves) — out of scope here, which only consumes the
+      // reporters. Asserted as always-false rather than skipped, so a future change
+      // that makes it non-deterministic (e.g. copying opportunistically mid-run) does
+      // not go unnoticed.
+      expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(false);
     });
 
     it.each(CASES[framework])('$provider: loader reads it back', (c) => {
@@ -166,7 +187,18 @@ describe.each(['jest', 'vitest'] as const)(
         expect(resolved.hasIstanbulData).toBe(false);
       } else {
         expect(allows!.istanbul).toBeDefined();
-        expect(allows!.istanbul!.binaryExpressions === undefined).toBe(!c.measuresOperands);
+        if (c.measuresOperands) {
+          // Non-vacuity: `binaryExpressions` must actually hold data, not merely be
+          // present-but-empty. `allows`'s `role === 'admin' && active` guard is exactly
+          // the compound condition a binary-expr branch is emitted for, so a real
+          // measuresOperands=true run must produce at least one entry here — an empty
+          // array would mean the flag says "measured" while the data says otherwise
+          // (e.g. contaminated coverage from a different run's directory).
+          expect(allows!.istanbul!.binaryExpressions).toBeDefined();
+          expect(allows!.istanbul!.binaryExpressions!.length).toBeGreaterThan(0);
+        } else {
+          expect(allows!.istanbul!.binaryExpressions).toBeUndefined();
+        }
       }
     });
   },
