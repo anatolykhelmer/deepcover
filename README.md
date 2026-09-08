@@ -111,6 +111,30 @@ involves an LLM, and it always says which Reasoner it used.
 
 **Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest or Vitest** tests.
 
+## What's new in 0.10.0
+
+Two fixes on the reporter → loader → resolver path. Both change reported numbers,
+so a project's score can move without any change to its code or tests.
+
+**Condition-operand analysis now works under Vitest's default coverage provider.**
+DeepCover decided whether per-operand branch data was available by looking at the
+recorded provider id, on the assumption that only Istanbul emits `binary-expr`
+branches. That holds for Jest's `--coverageProvider=v8`, and not for
+`@vitest/coverage-v8`, which remaps v8 output through the AST and does emit them.
+Anyone running Vitest's default provider was silently getting no operand half of
+`untested-condition-operand` on data that was present. Availability is now derived
+from the artifact itself, so those runs gain bug signals they were denied.
+
+**A test run without coverage no longer scores the previous run's coverage.**
+When the runtime artifact records `coverageProvider: 'none'`, every coverage file
+on disk necessarily belongs to an earlier run. 0.9.0 loaded it and printed a
+warning; 0.10.0 refuses it and says so, falling back to static test attribution.
+If you run `jest`/`vitest` without `--coverage` and then `deepcover analyze`,
+expect a lower, honest score where you previously saw stale numbers — re-run with
+`--coverage` to restore them.
+
+Neither change narrows a public type.
+
 ## What's new in 0.9.0
 
 ### Vitest support
