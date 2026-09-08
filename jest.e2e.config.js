@@ -1,6 +1,6 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  testRegex: 'paradigm-e2e\\.spec\\.ts$',
+  testRegex: '(paradigm-e2e|runtime-artifact-e2e)\\.spec\\.ts$',
   testPathIgnorePatterns: ['/.claude/'],
 };
