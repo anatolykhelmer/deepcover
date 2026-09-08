@@ -66,6 +66,13 @@
 
 ## Decision Log
 
+### 2026-09-08 — CI broke on unchanged code; fixture lockfiles committed
+
+- CI failed on all three Node versions with npm arborist's `Cannot read properties of null (reading 'edgesOut')`, from the `npm install` the e2e specs run inside their fixtures. **PR #11 did not cause it:** re-running `6c8075b` — green on 2026-09-02, untouched since — reproduces it today, with node/npm on the runner identical between the green and red runs (v22.23.2 / npm 10.9.8). The stack lands in `#loadPeerSet`, so registry drift under the fixtures' floating ranges reached a peer-resolution bug in npm. Reproduced locally against an *unmodified* paradigm fixture: crashes under npm 10.9.8, 10.9.9, 11.0.0; clean under 11.6.2 and 12.0.2 — which is why it never reproduced on the dev machine.
+- **Three diagnoses were wrong before the right one, and two of them reached commits.** A concurrent-install race (disproved by the next CI run: both specs still failed, serially), "the paradigm spec stopped failing" (it had not — the truncated log was misread), and a poisoned Actions cache (two entries under one key, 69.83 MiB vs 40.67 MiB — deleting both changed nothing). The lesson is not that the guesses were bad but that they were stated as conclusions before being tested; the reverted commits carry their false rationale in the message, which is why they were reverted rather than squashed away.
+- **Fixture lockfiles are the fix, and were owed anyway.** All six installed fixtures now carry a committed `package-lock.json` and both specs use `npm ci`. It skips ideal-tree construction, so it survives the npm bug on every Node in the matrix, and installs in ~0.8s instead of ~36s. More to the point: the fixtures had been resolving their dependency graph from the registry on every run, so an e2e stand whose whole purpose is reproducible evidence was not reproducible. Today's failure is that weakness collecting — the code did not change, the registry did.
+- Pinning npm was tried first and reverted: 11.6.2 is the earliest version that fixes the crash, and it does not support Node 18.
+
 ### 2026-09-08 — BL-030 implemented; BL-032..BL-035 opened
 
 - 12 commits on `runtime-artifact-guard`, executed via subagent-driven-development across the 5 tasks plus one final-review fix wave. Unit suite 667 passing / 6 pre-existing skips (654 on 0.9.0; the delta is this branch's new tests plus the new fixture's own spec, which the root suite picks up exactly as it already picks up all five paradigm fixtures). `tsc --noEmit` clean; the e2e stand 27 passed / 1 skipped across 2 suites. Final whole-branch review: MERGE AFTER FIXES → all seven fixed, every one comment/doc/label only.
