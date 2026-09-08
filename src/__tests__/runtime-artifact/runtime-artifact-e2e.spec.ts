@@ -99,7 +99,12 @@ describe.each(['jest', 'vitest'] as const)(
   (framework) => {
     beforeAll(() => {
       if (!fs.existsSync(path.join(FIXTURE, 'node_modules'))) {
-        execSync('npm install', { cwd: FIXTURE, stdio: 'pipe' });
+      // `npm ci`, not `npm install`: the fixtures carry committed lockfiles so the
+      // e2e stand resolves the same dependency graph on every run. It also sidesteps
+      // an arborist peer-resolution crash (`edgesOut` of null) that npm <= 11.0.0 hits
+      // when building an ideal tree for a nested project — which broke CI on unchanged
+      // code once the registry drifted under it.
+        execSync('npm ci', { cwd: FIXTURE, stdio: 'pipe' });
       }
       // The 'none' cases below are only meaningful with a coverage file already on disk,
       // so seed one deliberately rather than depending on test order.

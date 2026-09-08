@@ -3,4 +3,3 @@ coverage/
 .deepcover/
 .deepcover-*/
 dist/
-package-lock.json

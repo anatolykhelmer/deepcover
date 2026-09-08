@@ -21,17 +21,6 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # The npm bundled with these Node releases (10.9.8) crashes in arborist's
-      # peer-dependency resolution — "Cannot read properties of null (reading
-      # 'edgesOut')" — when the e2e specs run `npm install` inside a fixture.
-      # This is an npm bug, not a repo change: commit 6c8075b was green on
-      # 2026-09-02 and fails today untouched, and an unmodified paradigm fixture
-      # reproduces it locally under npm 10.9.8, 10.9.9 and 11.0.0 while
-      # installing cleanly under 11.6.2. Pinned exactly rather than @latest, so
-      # a future npm regression cannot silently break CI the same way.
-      - name: Pin npm (bundled 10.x crashes on nested fixture installs)
-        run: npm install -g npm@11.6.2
-
       - name: Install dependencies
         run: npm ci
 
