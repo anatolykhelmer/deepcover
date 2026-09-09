@@ -116,13 +116,17 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
         'attribution — re-run with --coverage for coverage-based results.',
     );
   } else if (resolvedCoverage.hasIstanbulData && !resolvedCoverage.measuresOperands) {
+    // The artifact records which runner produced it, so name only the remedy that
+    // applies: a Jest user has no use for a Vitest package, and vice versa.
+    const remedy =
+      runtimeData?.runtime?.framework === 'vitest'
+        ? 'Switch to @vitest/coverage-istanbul — or, if these sources simply have no ' +
+          'compound conditions for the v8 provider to remap, expect switching to change nothing.'
+        : 'Switch to coverageProvider "babel" (Jest\'s default): Jest\'s v8-to-istanbul ' +
+          'conversion emits no binary-expr branches.';
     notes.push(
       'The loaded coverage artifact carries no per-operand branch data — ' +
-        'condition-operand analysis is disabled (not "found nothing"). For Jest, ' +
-        'switch to coverageProvider "babel" (Jest\'s default). For Vitest, either ' +
-        'switch to @vitest/coverage-istanbul, or — if the sources simply have no ' +
-        'compound conditions for the v8 provider to remap — recognize that switching ' +
-        'providers will not change anything.',
+        `condition-operand analysis is disabled (not "found nothing"). ${remedy}`,
     );
   }
 

@@ -134,8 +134,14 @@ export interface ResolvedCoverage {
   /**
    * Whether the loaded coverage artifact records per-operand branch counts. Not derivable
    * from `coverageProvider` alone: Vitest's v8 provider emits them and Jest's does not.
+   *
+   * Optional only so that hand-built `ResolvedCoverage` values keep compiling — it costs a
+   * public break to buy one note-selection read in `analyze-stage`, and the bug detector
+   * never reads it (it inspects `MethodCoverage.istanbul.binaryExpressions` per method and
+   * already fails closed). `resolveCoverage` always sets it, so every value the library
+   * produces has it.
    */
-  measuresOperands: boolean;
+  measuresOperands?: boolean;
   isMethodCovered(className: string, methodName: string, filePath: string): boolean;
   getMethodCoverage(className: string, methodName: string, filePath: string): MethodCoverage | undefined;
   getTestsForMethod(className: string, methodName: string, filePath: string): string[];

@@ -49,7 +49,14 @@ describe.each(RUNNERS)('paradigm tests (e2e — real $framework run)', ({ framew
   it.each(runnableParadigms)('paradigm: %s', (paradigmName) => {
     const fixturePath = getParadigmFixturePath(paradigmName);
 
-    if (!fs.existsSync(path.join(fixturePath, 'node_modules'))) {
+    // Reinstall when the lockfile is newer than the installed tree: `npm ci` writes
+    // node_modules/.package-lock.json, so its mtime is when this tree was materialised.
+    // Guarding on node_modules alone would keep a pre-lockfile tree alive indefinitely.
+    const installedLock = path.join(fixturePath, 'node_modules', '.package-lock.json');
+    if (
+      !fs.existsSync(installedLock) ||
+      fs.statSync(path.join(fixturePath, 'package-lock.json')).mtimeMs > fs.statSync(installedLock).mtimeMs
+    ) {
       // `npm ci`, not `npm install`: the fixtures carry committed lockfiles so the
       // e2e stand resolves the same dependency graph on every run. It also sidesteps
       // an arborist peer-resolution crash (`edgesOut` of null) that npm <= 11.0.0 hits

@@ -171,8 +171,9 @@ describe('runAnalyzeStage', () => {
     // conversion); the note only fires when that data is actually in play — see 'does
     // not warn about a disabled operand analysis when there is no Istanbul data at all'
     // below for the negative case. (The two 'none'-provider tests below assert a
-    // different note instead — the stale-coverage-ignored one — since
-    // `ignoredStaleIstanbul` short-circuits before this note's branch is reached.)
+    // different note instead — the stale-coverage-ignored one — since a run that
+    // ignored stale coverage has no Istanbul data at all, making the two branches
+    // mutually exclusive by construction rather than by their order here.)
     fs.writeFileSync(
       path.join(deepcoverDir, 'istanbul-coverage.json'),
       JSON.stringify({

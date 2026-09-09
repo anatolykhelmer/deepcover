@@ -98,17 +98,26 @@ describe.each(['jest', 'vitest'] as const)(
   'runtime artifact (e2e — real %s run)',
   (framework) => {
     beforeAll(() => {
-      if (!fs.existsSync(path.join(FIXTURE, 'node_modules'))) {
-      // `npm ci`, not `npm install`: the fixtures carry committed lockfiles so the
-      // e2e stand resolves the same dependency graph on every run. It also sidesteps
-      // an arborist peer-resolution crash (`edgesOut` of null) that npm <= 11.0.0 hits
-      // when building an ideal tree for a nested project — which broke CI on unchanged
-      // code once the registry drifted under it.
+      // Reinstall when the lockfile is newer than the installed tree: `npm ci` writes
+      // node_modules/.package-lock.json, so its mtime is when this tree was materialised.
+      // Guarding on node_modules alone would keep a pre-lockfile tree alive indefinitely.
+      const installedLock = path.join(FIXTURE, 'node_modules', '.package-lock.json');
+      if (
+        !fs.existsSync(installedLock) ||
+        fs.statSync(path.join(FIXTURE, 'package-lock.json')).mtimeMs > fs.statSync(installedLock).mtimeMs
+      ) {
+        // `npm ci`, not `npm install`: the fixtures carry committed lockfiles so the
+        // e2e stand resolves the same dependency graph on every run. It also sidesteps
+        // an arborist peer-resolution crash (`edgesOut` of null) that npm <= 11.0.0 hits
+        // when building an ideal tree for a nested project — which broke CI on unchanged
+        // code once the registry drifted under it.
         execSync('npm ci', { cwd: FIXTURE, stdio: 'pipe' });
       }
       // The 'none' cases below are only meaningful with a coverage file already on disk,
-      // so seed one deliberately rather than depending on test order.
-      execSync('npx jest --coverage', {
+      // so seed one deliberately rather than depending on test order. Seeded with the same
+      // runner the cases use, so `vitest/none` exercises "Vitest wrote it, then Vitest ran
+      // bare" instead of picking up whatever Jest happened to leave behind.
+      execSync(framework === 'jest' ? 'npx jest --coverage' : 'npx vitest run --coverage', {
         cwd: FIXTURE,
         stdio: 'pipe',
         env: { ...process.env, DEEPCOVER_E2E_OUTPUT_DIR: path.join(FIXTURE, '.deepcover-seed') },
