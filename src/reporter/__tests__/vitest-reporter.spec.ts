@@ -188,6 +188,29 @@ describe('DeepCoverVitestReporter', () => {
     expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
   });
 
+  /**
+   * Vitest skips onFinishedReportCoverage entirely when the run failed and
+   * reportOnFailure is off (the default): reportCoverage() returns before
+   * dispatching it, right after the provider has already wiped the coverage
+   * directory. A copy from an earlier successful run would otherwise outlive this
+   * one — surviving under a coverageProvider that is not 'none', so nothing marks
+   * it stale — and get loaded as if it belonged to the run that just failed.
+   */
+  it("drops a previous run's copy when this run's onTestRunEnd fires", async () => {
+    const dir = mkTmpDir();
+    const coverageDir = path.join(dir, 'coverage');
+    fs.mkdirSync(coverageDir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'istanbul-coverage.json'), JSON.stringify({ run: 'previous' }));
+
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', coverageDir);
+    await reporter.onTestRunEnd([] as never);
+    // onFinishedReportCoverage is deliberately not called: this reproduces the run
+    // that fails and never reaches it.
+
+    expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
+  });
+
   it('reports coverage without a copy when no report was written', async () => {
     const dir = mkTmpDir();
     const coverageDir = path.join(dir, 'coverage');

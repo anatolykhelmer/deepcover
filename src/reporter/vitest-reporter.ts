@@ -61,8 +61,17 @@ export class DeepCoverVitestReporter implements Reporter {
     }
 
     fs.writeFileSync(path.join(dir, 'runtime.json'), JSON.stringify(data, null, 2));
+
     // The coverage snapshot is deliberately not taken here — see
-    // onFinishedReportCoverage for why this moment is always too early.
+    // onFinishedReportCoverage for why this moment is always too early. Any snapshot
+    // still on disk therefore belongs to an earlier run, and must not outlive the
+    // runtime.json just overwritten: Vitest skips the hook entirely when tests fail
+    // and reportOnFailure is off, having already cleaned the coverage directory, so a
+    // surviving copy becomes the only source the loader can find — and it is loaded as
+    // current, because this run recorded a real provider and nothing marks it stale.
+    if (this.coverageProvider !== 'none') {
+      fs.rmSync(path.join(dir, 'istanbul-coverage.json'), { force: true });
+    }
   }
 
   /**
@@ -78,10 +87,13 @@ export class DeepCoverVitestReporter implements Reporter {
    * run's data stamped with a fresh mtime — which is precisely the signal
    * resolver/istanbul-source.ts uses to pick between this copy and the live file.
    *
-   * Vitest skips this hook when the run had failures and `reportOnFailure` is off; no
-   * report is written in that case either, so nothing is missed. Likewise if a future
-   * Vitest drops the hook: the copy simply stops happening and the CLI goes on reading
-   * the live coverage directory recorded in runtime.json.
+   * Vitest skips this hook entirely when the run had failures and `reportOnFailure` is
+   * off — `reportCoverage` returns before dispatching it, right after the provider has
+   * already cleaned the coverage directory. No report is written for such a run, and
+   * `onTestRunEnd` drops any earlier snapshot precisely so that none is left to be
+   * mistaken for this one. Likewise if a future Vitest drops the hook: the copy simply
+   * stops happening and the CLI goes on reading the live coverage directory recorded
+   * in runtime.json.
    */
   async onFinishedReportCoverage(): Promise<void> {
     // The gate has to be re-applied here rather than inherited from onInit's
