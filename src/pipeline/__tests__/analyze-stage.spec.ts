@@ -156,7 +156,7 @@ describe('runAnalyzeStage', () => {
     expect(notes.join('\n')).toContain('deepcover reason --bugs');
   });
 
-  it('warns that operand-level analysis is unavailable under the v8 provider', () => {
+  it('warns that operand-level analysis is unavailable when the artifact records no operand data', () => {
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),
       JSON.stringify({
@@ -168,8 +168,12 @@ describe('runAnalyzeStage', () => {
       }),
     );
     // A real v8 run still produces Istanbul-shaped coverage-final.json (v8-to-istanbul
-    // conversion); the note only fires when that data is actually in play (see the
-    // 'none'-provider test below for the case where it must NOT fire).
+    // conversion); the note only fires when that data is actually in play — see 'does
+    // not warn about a disabled operand analysis when there is no Istanbul data at all'
+    // below for the negative case. (The two 'none'-provider tests below assert a
+    // different note instead — the stale-coverage-ignored one — since a run that
+    // ignored stale coverage has no Istanbul data at all, making the two branches
+    // mutually exclusive by construction rather than by their order here.)
     fs.writeFileSync(
       path.join(deepcoverDir, 'istanbul-coverage.json'),
       JSON.stringify({
@@ -219,11 +223,11 @@ describe('runAnalyzeStage', () => {
     expect(notes.some((n) => n.includes('@vitest/coverage-istanbul'))).toBe(false);
   });
 
-  it('warns when coverageProvider is "none" but a stale Istanbul file is still on disk', () => {
-    // Reproduces: run Vitest WITH --coverage, then again WITHOUT it. The second run
-    // writes coverageProvider: 'none' while coverageDirectory still points at the
-    // previous run's coverage-final.json, which loadIstanbulCoverage happily loads —
-    // so operand analysis silently goes dark unless this note fires.
+  it('reports that stale coverage on disk was ignored when the run recorded "none"', () => {
+    // Reproduces: run WITH --coverage, then again WITHOUT it. The second run records
+    // 'none' while a coverage file from the first is still on disk. 0.10.0 refuses to
+    // score against it — and must say so, or the user's situation is unchanged and they
+    // now hear nothing at all.
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),
       JSON.stringify({
@@ -242,9 +246,66 @@ describe('runAnalyzeStage', () => {
     );
 
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
-    expect(
-      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
-    ).toBe(true);
+    expect(notes.some((n) => n.includes('was ignored'))).toBe(true);
+    expect(notes.some((n) => n.includes('re-run with --coverage'))).toBe(true);
+  });
+
+  // The case Fix A creates: Vitest's v8 provider does emit binary-expr, so an artifact
+  // carrying them measures operands and must draw no warning, even though the recorded
+  // provider is 'v8'.
+  it('does not warn about operands for a v8 artifact that carries binary-expr branches', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'v8',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'istanbul-coverage.json'),
+      JSON.stringify({
+        '/fake/file.ts': {
+          statementMap: {},
+          s: {},
+          branchMap: { '0': { loc: { start: { line: 5 }, end: { line: 5 } }, type: 'binary-expr' } },
+          b: { '0': [1, 0] },
+          fnMap: {},
+          f: {},
+        },
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('condition-operand analysis is disabled'))).toBe(false);
+  });
+
+  /**
+   * A run recorded a real provider — coverage was configured — but neither the live
+   * coverage-final.json nor a .deepcover copy exists, so hasIstanbulData is false and
+   * ignoredStaleIstanbul (specific to coverageProvider 'none') stays false too. Neither
+   * branch above fires, so before this test the score silently fell back to static
+   * attribution with no explanation at all — indistinguishable from a project that
+   * never configured coverage in the first place. Reproduces: a Vitest run that fails
+   * with the default reportOnFailure: false (no report written, ac9e637), or coverage
+   * enabled without `reporter: ['json']`.
+   */
+  it('explains a silent static fallback when coverage was configured but no data was found', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'istanbul',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('no coverage data was found'))).toBe(true);
   });
 
   it('does not warn about stale coverage when coverageProvider is "none" and no Istanbul file exists', () => {
@@ -260,8 +321,6 @@ describe('runAnalyzeStage', () => {
     );
 
     const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
-    expect(
-      notes.some((n) => n.includes('did not come from the run that produced this artifact')),
-    ).toBe(false);
+    expect(notes.some((n) => n.includes('was ignored'))).toBe(false);
   });
 });

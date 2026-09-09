@@ -1,6 +1,6 @@
 {
   "name": "@anatolykhelmer/deep-cover",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,7 +34,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:paradigms": "jest --testPathPatterns=paradigm-unit",
-    "test:paradigms:e2e": "jest --config jest.e2e.config.js",
+    "test:paradigms:e2e": "npm run build && jest --config jest.e2e.config.js",
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "deepcover": "tsx src/cli/index.ts"
@@ -46,6 +46,7 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "paradigm-e2e",
+      "runtime-artifact-e2e",
       "/docs/",
       "/.claude/"
     ],

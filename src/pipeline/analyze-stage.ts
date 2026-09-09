@@ -107,18 +107,44 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
 
   const resolvedCoverage = resolveCoverage(codeModel, opts.rootDir, runtimeData);
 
-  if (resolvedCoverage.coverageProvider !== 'istanbul' && resolvedCoverage.hasIstanbulData) {
-    const explanation =
-      resolvedCoverage.coverageProvider === 'v8'
-        ? 'Coverage came from the v8 provider, which does not record per-operand branch counts — ' +
-          'condition-operand analysis is disabled (not "found nothing"). Switch to an Istanbul ' +
-          'coverage provider (Jest: coverageProvider "babel"; Vitest: @vitest/coverage-istanbul) ' +
-          'for the full bug-detector set.'
-        : 'The coverage data on disk did not come from the run that produced this artifact — ' +
-          'the runtime artifact records coverageProvider: \'none\' (coverage was not enabled for ' +
-          'this run), but a coverage file from a previous run is still present. Condition-operand ' +
-          'analysis is disabled (not "found nothing"); re-run with --coverage for accurate results.';
-    notes.push(explanation);
+  // Two distinct situations, previously collapsed into one condition on the provider id.
+  if (runtimeData?.ignoredStaleIstanbul) {
+    notes.push(
+      'Coverage data on disk was ignored: the runtime artifact records ' +
+        "coverageProvider: 'none' (this run did not measure coverage), so the coverage " +
+        'file present belongs to an earlier run. Scoring fell back to static test ' +
+        'attribution — re-run with --coverage for coverage-based results.',
+    );
+  } else if (resolvedCoverage.hasIstanbulData && !resolvedCoverage.measuresOperands) {
+    // The artifact records which runner produced it, so name only the remedy that
+    // applies: a Jest user has no use for a Vitest package, and vice versa.
+    const remedy =
+      runtimeData?.runtime?.framework === 'vitest'
+        ? 'Switch to @vitest/coverage-istanbul — or, if these sources simply have no ' +
+          'compound conditions for the v8 provider to remap, expect switching to change nothing.'
+        : 'Switch to coverageProvider "babel" (Jest\'s default): Jest\'s v8-to-istanbul ' +
+          'conversion emits no binary-expr branches.';
+    notes.push(
+      'The loaded coverage artifact carries no per-operand branch data — ' +
+        `condition-operand analysis is disabled (not "found nothing"). ${remedy}`,
+    );
+  } else if (
+    runtimeData?.runtime &&
+    runtimeData.runtime.coverageProvider !== 'none' &&
+    !resolvedCoverage.hasIstanbulData
+  ) {
+    // A run recorded a real provider — coverage was configured — but no coverage data
+    // resolved: not stale ('none' would have taken the branch above), just absent.
+    // Without this, the result is indistinguishable from a project that never
+    // configured coverage: same fallback, silently. Common causes: coverage disabled
+    // on this specific invocation despite the config, `reporter: ['json']` missing
+    // from the coverage config, or a run that recorded 'istanbul'/'v8' but wrote no
+    // report because it failed with reportOnFailure left off.
+    notes.push(
+      'The runtime artifact records coverage as measured, but no coverage data was ' +
+        'found on disk — scoring fell back to static test attribution. Confirm the ' +
+        "coverage config includes a 'json' reporter and that this run actually wrote one.",
+    );
   }
 
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {

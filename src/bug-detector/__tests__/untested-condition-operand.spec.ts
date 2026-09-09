@@ -116,6 +116,7 @@ function makeCoverage(
   return {
     methods: new Map(),
     hasIstanbulData: !!binaryExpressions,
+    measuresOperands: !!binaryExpressions,
     hasRuntimeData: false,
     coverageProvider: 'istanbul',
     isMethodCovered: () => isCovered,

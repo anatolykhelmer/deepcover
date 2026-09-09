@@ -1,10 +1,43 @@
-import type { BinaryExprCoverage, CoverageProviderId, IstanbulFileCoverage, IstanbulMethodMetrics } from './types';
+import type {
+  BinaryExprCoverage,
+  CoverageProviderId,
+  IstanbulCoverageData,
+  IstanbulFileCoverage,
+  IstanbulMethodMetrics,
+} from './types';
+
+/**
+ * Whether this coverage artifact carries per-operand (`binary-expr`) branch data.
+ *
+ * Istanbul always measures operands, so its id is trusted directly — otherwise a project
+ * that simply has no compound conditions would be misread as unmeasured. Every other
+ * provider is judged by what it actually emitted: `@vitest/coverage-v8` 4.x remaps v8
+ * output through the AST and does produce `binary-expr` branches, while Jest's
+ * v8-to-istanbul does not. Both report `coverageProvider: 'v8'`, so asking the data is
+ * the only way to tell them apart.
+ *
+ * Residual imprecision, accepted deliberately: a project with no compound conditions at
+ * all under a non-Istanbul provider is classified "does not measure". The operand
+ * detector has nothing to work with either way, so the misclassification is inert.
+ */
+export function artifactMeasuresOperands(
+  provider: CoverageProviderId,
+  data: IstanbulCoverageData
+): boolean {
+  if (provider === 'istanbul') return true;
+  for (const file of Object.values(data)) {
+    for (const branch of Object.values(file.branchMap)) {
+      if (branch.type === 'binary-expr') return true;
+    }
+  }
+  return false;
+}
 
 export function mapIstanbulToMethod(
   fileCoverage: IstanbulFileCoverage,
   startLine: number,
   endLine: number,
-  provider: CoverageProviderId
+  measuresOperands: boolean
 ): IstanbulMethodMetrics | undefined {
   let linesTotal = 0;
   let linesCovered = 0;
@@ -29,7 +62,7 @@ export function mapIstanbulToMethod(
         branchesTotal += 1;
         if (armCount > 0) branchesHit += 1;
       }
-      if (branch.type === 'binary-expr' && provider === 'istanbul') {
+      if (branch.type === 'binary-expr' && measuresOperands) {
         binaryExpressions.push({ line: branch.loc.start.line, pathCounts: [...arms] });
       }
     }
@@ -42,8 +75,8 @@ export function mapIstanbulToMethod(
     branchesHit,
     branchesTotal,
     branchCoveragePercent: branchesTotal > 0 ? (branchesHit / branchesTotal) * 100 : 100,
-    // Genuinely absent (not present-and-undefined) under any provider other than
-    // Istanbul, which is the only one that emits `binary-expr` branches.
-    ...(provider === 'istanbul' && { binaryExpressions }),
+    // Genuinely absent (not present-and-undefined) when the provider that produced this
+    // artifact does not record per-operand counts — see `artifactMeasuresOperands`.
+    ...(measuresOperands && { binaryExpressions }),
   };
 }

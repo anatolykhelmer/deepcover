@@ -23,6 +23,7 @@ function makeCoverage(): ResolvedCoverage {
   return {
     methods: new Map(),
     hasIstanbulData: false,
+    measuresOperands: false,
     hasRuntimeData: false,
     coverageProvider: 'istanbul',
     isMethodCovered: () => false,

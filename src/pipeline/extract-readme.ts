@@ -21,7 +21,7 @@ No external tools or API keys required — you are the Reasoner.
 | \`prompts.json\` | 4 pre-built prompts (one per Reasoner job) — read these as your instructions |
 | \`reasoner-output.json\` | **Your deliverable** — empty template, fill it with your analysis |
 | \`runtime.json\` | *(if present)* Per-test pass/fail status, duration, and (Jest only) assertion counts |
-| \`istanbul-coverage.json\` | *(if present)* Istanbul line/branch/function coverage data |
+| \`istanbul-coverage.json\` | *(Vitest only, if present)* Istanbul line/branch/function coverage data — Jest's coverage is read from its own coverage directory instead, so this file never appears on a Jest project |
 
 ## Your task
 
