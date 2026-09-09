@@ -136,39 +136,29 @@ describe.each(['jest', 'vitest'] as const)(
       const hasAssertionCount = 'assertionCount' in runtime.testResults[0];
       expect(hasAssertionCount).toBe(framework === 'jest');
 
-      // The copy is best-effort, not guaranteed: both reporters' onRunComplete /
-      // onTestRunEnd read the runner's coverage-final.json synchronously, and both
-      // runners write that file only after invoking custom reporters (see the
-      // "best-effort" comments in jest-reporter.ts / vitest-reporter.ts). It can only
-      // ever find something to copy when a stale file from an earlier run already sits
-      // in the coverage directory this run points at — verified by execution for both
-      // runners (seeding a fake coverage-final.json and observing it deleted, then
-      // rewritten, entirely after onRunComplete / onTestRunEnd would have already run).
-      // Every non-'none' case here gets its own freshly created, single-use coverage
-      // directory (see runCase's coverageDirFlag — required so the six runs cannot
-      // contaminate each other's live coverage-final.json, see the comment above
-      // coverageDirFlag), so for the four coverage-collecting cases there is simply
-      // nothing on disk for the copy to find. The two 'none' cases are different: their
-      // coverageDirectory IS the shared `<fixture>/coverage` that beforeAll seeds, so a
-      // stale coverage-final.json genuinely is sitting there — the only reason the copy
-      // still doesn't fire is the reporters' own `coverageProvider !== 'none'` guard
-      // (jest-reporter.ts / vitest-reporter.ts). Those two rows are the only place this
-      // assertion has teeth; the other four would pass even if the guard were deleted.
-      // The copy is real production behaviour, not a mistake in this stand: it
-      // is a genuine gap in both reporters (DeepCoverVitestReporter's could be fixed by
-      // hooking onFinishedReportCoverage, which core Vitest fires after
-      // reportCoverage() resolves) — out of scope here, which only consumes the
-      // reporters. Asserted as always-false rather than skipped, so a future change
-      // that makes it non-deterministic (e.g. copying opportunistically mid-run) does
-      // not go unnoticed.
-      // NOTE: if DeepCoverVitestReporter is ever fixed to copy from
-      // onFinishedReportCoverage (or the Jest reporter from an equivalent
-      // post-write hook), coverage-final.json would already exist for the run
-      // that just produced it, and this expectation must flip to `true` for the
-      // four coverage-collecting cases — that flip is the fix working, not a
-      // regression. The two 'none' cases stay `false` regardless: they are
-      // blocked by the `coverageProvider !== 'none'` guard, not by hook timing.
-      expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(false);
+      // The Vitest reporter takes its snapshot in onFinishedReportCoverage, which core
+      // Vitest fires after the coverage provider has written its reports — the first
+      // moment coverage-final.json exists for the run just observed. So a
+      // coverage-collecting Vitest run really does leave one here, holding this run's
+      // data (see vitest-reporter.ts).
+      //
+      // Jest stays false, and not by oversight: its Reporter API ends at onRunComplete
+      // and Jest rewrites the coverage directory only afterwards, with no post-write
+      // hook to move the copy to. Jest's copy can therefore only ever find a *previous*
+      // run's file already sitting in the directory it points at — and every
+      // coverage-collecting case here gets its own freshly created, single-use coverage
+      // directory (see coverageDirFlag), so there is nothing for it to find. Both
+      // halves verified by execution.
+      //
+      // Both 'none' rows are false, but for different reasons than they used to be:
+      // Vitest never reaches the hook at all when coverage is disabled, and Jest is
+      // held back by its own `coverageProvider !== 'none'` guard. The reachable case
+      // for the Vitest guard is a *custom* provider — Vitest does fire the hook there,
+      // since a provider exists — which is covered in
+      // reporter/__tests__/vitest-reporter.spec.ts rather than from this stand.
+      expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(
+        framework === 'vitest' && c.provider !== 'none',
+      );
     });
 
     it.each(CASES[framework])('$provider: loader reads it back', (c) => {
