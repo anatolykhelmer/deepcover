@@ -1,6 +1,6 @@
 # Product Backlog
 
-> Last updated: 2026-09-08
+> Last updated: 2026-09-09
 > Repo: deep-cover
 
 ## Ready
@@ -37,6 +37,8 @@
 | BL-033 | Derive the e2e stand's stale-coverage path from the artifact | `runtime-artifact-e2e.spec.ts` hardcodes `<fixture>/coverage/coverage-final.json` while the loader derives it from `runtime.coverageDirectory`. They agree today; if they ever diverge, the `'none'` rows' non-vacuity precondition silently checks a path nothing reads — and that precondition is the only thing stopping those rows from passing for the wrong reason. | 2026-09-08 |
 | BL-034 | Non-discriminating test in istanbul-source.spec.ts | "reads the .deepcover copy when no coverage directory is recorded" (`:62-66`) never calls `writeLive`, so no live candidate exists either way and the test cannot distinguish "no directory recorded" from "directory recorded, file absent". Verified during BL-030 by flipping the flag: the suite stayed green. Fix: add a newer `writeLive`. | 2026-09-08 |
 | BL-035 | extract loads the runtime artifact two or three times per run | BL-030 routed `loadIstanbulByMethod` through `loadRuntimeArtifacts`, which `extract-stage.ts:70-71` already calls directly and `computeBugSignals` calls again under `--bugs`. Harmless except that a corrupt `runtime.json` logs its parse warning two or three times per extract, which reads as three separate problems. Fix: load once in `extract-stage` and thread it. | 2026-09-08 |
+| BL-036 | Scheduled e2e run on floating dependency ranges | Committing fixture lockfiles (PR #11) removed a signal nobody had designed but everybody relied on: the fixtures used to resolve `vitest: ^4.1.11` fresh each run, so CI was an accidental canary for "a new Vitest minor changed the reporter's inputs". That matters here specifically — the `vitest/v8` row exists because `@vitest/coverage-v8` 4.x emits `binary-expr`, and the stand now pins 4.1.11 until someone regenerates six lockfiles by hand. Proposal: keep the lockfiles for PR-time determinism and add a scheduled workflow that runs the e2e with `npm install` instead, so upstream drift arrives as its own dated signal rather than as a surprise at the next manual bump. Raised in PR #11 review. | 2026-09-09 |
+| BL-037 | `test:paradigms:e2e` silently depends on ending with the jest call | CI runs `npm run test:paradigms:e2e -- -t "real jest run"`, and npm appends the extra arguments to the end of the whole script string. The script is `npm run build && jest --config …`, so the filter lands on `jest` only because `jest` happens to be last. Append another `&&` step and `-t` attaches to the wrong command — CI keeps passing while silently running the full matrix, or nothing. Fix: move the filter into named scripts (`test:e2e:jest` / `test:e2e:vitest`) so the workflow stops passing positional arguments through. Raised in PR #11 review. | 2026-09-09 |
 | BL-031 | Persist CoverageKey on TestNode and Reasoner schemas | Write `CoverageKey` once at extract onto `TestNode` (and accept the same key — or `{file, owner, method}` — in Reasoner Zod schemas). Scoring stops re-resolving class names after extract via `ClassMethodOwners`/`ClassFileOwners`. Extends BL-003 (Done); related to BL-015 and BL-018. Supersedes BL-029. | 2026-09-03 |
 
 ## In Progress
