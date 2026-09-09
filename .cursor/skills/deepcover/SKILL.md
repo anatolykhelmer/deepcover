@@ -35,12 +35,12 @@ import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vit
 export default defineConfig({
   test: {
     reporters: ['default', new DeepCoverVitestReporter()],
-    coverage: { provider: 'istanbul', reporter: ['json'] },
+    coverage: { reporter: ['json'] },
   },
 });
 ```
 
-If it's missing, tell the user and offer to add it. For Jest, both `reporters` and `collectCoverage: true` are required together — one without the other silently loses half the data. For Vitest, both the reporter and `coverage: { provider: 'istanbul' }` are required together — Vitest's default `v8` provider does not record per-operand branch data, which disables the `untested-condition-operand` bug detector. Then have them run their test suite with coverage once (`npm test -- --coverage` for Jest, `npx vitest run --coverage` for Vitest) so `.deepcover/runtime.json` and `.deepcover/istanbul-coverage.json` exist before `extract`/`analyze`. Without these files, scoring falls back to static heuristics only — noticeably less accurate for Assertion Quality, State Coverage, Mutation Resilience, and Criticality. This step is optional but strongly recommended; proceed without it only if the user declines.
+If it's missing, tell the user and offer to add it. For Jest, both `reporters` and `collectCoverage: true` are required together — one without the other silently loses half the data. For Vitest, the reporter and `coverage: { reporter: ['json'] }` are required together; the `provider` can be left at its default (`v8`) — `@vitest/coverage-v8` 4.x remaps through the AST and measures per-operand branch data same as Istanbul, so `untested-condition-operand` works either way. Then have them run their test suite with coverage once (`npm test -- --coverage` for Jest, `npx vitest run --coverage` for Vitest) so `.deepcover/runtime.json` exists before `extract`/`analyze` — and, for Vitest, `.deepcover/istanbul-coverage.json` too (Vitest's reporter snapshots the coverage report; Jest's reads the runner's own coverage directory directly instead, so no snapshot file is expected there — its absence on a Jest project is not a broken setup). Without runtime data, scoring falls back to static heuristics only — noticeably less accurate for Assertion Quality, State Coverage, Mutation Resilience, and Criticality. This step is optional but strongly recommended; proceed without it only if the user declines.
 
 ### 1. Extract
 
@@ -76,7 +76,7 @@ Use `--format json` for machine-readable output. Add `--bug-threshold <n>` when 
 
 - Deterministic-only (no LLM): `npx deepcover run --root ... --module ... --no-llm`
 - Coverage-only (skip bug-finding): omit `--bugs` on extract/analyze
-- Runtime data: `analyze` auto-reads `.deepcover/runtime.json` and `istanbul-coverage.json` when present (see step 0; both the Jest and Vitest reporters write `runtime.json` — a pre-0.9.0 `.deepcover/jest-runtime.json` is still read too, so upgrading loses nothing). Report which files were found — if either is missing, say so rather than presenting heuristic numbers as ground truth
+- Runtime data: `analyze` auto-reads `.deepcover/runtime.json` (see step 0; both the Jest and Vitest reporters write it — a pre-0.9.0 `.deepcover/jest-runtime.json` is still read too, so upgrading loses nothing) plus coverage, read differently per runner: Vitest's reporter snapshots it to `.deepcover/istanbul-coverage.json`; Jest's reads the runner's own coverage directory directly, so that file never appears on a Jest project — its absence there is expected, not a broken setup. Report what was found — if `runtime.json` is missing, or a coverage-enabled run produced no coverage data at all, say so rather than presenting heuristic numbers as ground truth
 - Install for Cursor: `deepcover init --agent cursor` (default). For Claude Code: `deepcover init --agent claude`
 - Anthropic API path is optional (`reasoner.provider: 'anthropic'` + `ANTHROPIC_API_KEY`); default is the coding agent as Reasoner. If Anthropic is configured, you may run `npx deepcover reason --root … --module … --bugs` instead of filling `reasoner-output.json` yourself, then `analyze --root … --bugs`. Or run `deepcover run --bugs` to do all three stages at once.
 - Do not invent coverage numbers — ground claims in the CodeModel and reasoner output

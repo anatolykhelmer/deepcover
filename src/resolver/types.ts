@@ -24,11 +24,11 @@ export type TestFrameworkId = 'jest' | 'vitest';
 /**
  * How the coverage data was produced. Recorded as fact from the runner's own config —
  * but this id alone cannot decide whether per-operand (`binary-expr`) branch data is
- * available. Istanbul always measures operands. `v8` does not: it is reported by two
- * different providers that disagree — `@vitest/coverage-v8` 4.x emits `binary-expr`
- * branches, Jest's v8-to-istanbul does not — so `v8` must be judged by what the
- * artifact actually contains. See `artifactMeasuresOperands` in `istanbul-mapper.ts`,
- * the decision point that does that judging.
+ * available. Istanbul always measures operands. `v8` settles nothing either way: it is
+ * reported by two different providers that disagree — `@vitest/coverage-v8` 4.x emits
+ * `binary-expr` branches, Jest's v8-to-istanbul does not — so `v8` must be judged by
+ * what the artifact actually contains. See `artifactMeasuresOperands` in
+ * `istanbul-mapper.ts`, the decision point that does that judging.
  */
 export type CoverageProviderId = 'istanbul' | 'v8' | 'none';
 

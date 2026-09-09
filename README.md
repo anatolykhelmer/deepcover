@@ -125,13 +125,18 @@ Anyone running Vitest's default provider was silently getting no operand half of
 `untested-condition-operand` on data that was present. Availability is now derived
 from the artifact itself, so those runs gain bug signals they were denied.
 
-**A test run without coverage no longer scores the previous run's coverage.**
+### Breaking: a test run without coverage no longer scores the previous run's coverage
+
 When the runtime artifact records `coverageProvider: 'none'`, every coverage file
 on disk necessarily belongs to an earlier run. 0.9.0 loaded it and printed a
 warning; 0.10.0 refuses it and says so, falling back to static test attribution.
 If you run `jest`/`vitest` without `--coverage` and then `deepcover analyze`,
 expect a lower, honest score where you previously saw stale numbers — re-run with
 `--coverage` to restore them.
+
+Flagged breaking because it changes reported numbers on every affected project,
+the same bar 0.9.0 used for its own breaking section below — even though, unlike
+that one, no code needs to change to keep compiling.
 
 No public type changes. The exported `ResolvedCoverage` gains an optional
 `measuresOperands?: boolean`, which `resolveCoverage()` always sets — so both
