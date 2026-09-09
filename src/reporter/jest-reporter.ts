@@ -73,18 +73,17 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
       JSON.stringify(data, null, 2)
     );
 
-    // Best-effort snapshot. Jest has usually not written this file yet for the run
-    // we just observed, so the CLI reads the coverage directory directly and falls
-    // back to this copy only when it is the fresher of the two. Skipped entirely
-    // when this run did not measure coverage: copying would stamp a stale
-    // coverage-final.json with a fresh mtime, defeating the freshness comparison
-    // in istanbul-source.ts and laundering old data as new — same hole already
-    // closed on the Vitest reporter.
-    if (this.coverageProvider !== 'none') {
-      const istanbulSource = path.resolve(this.coverageDirectory, 'coverage-final.json');
-      if (fs.existsSync(istanbulSource)) {
-        fs.copyFileSync(istanbulSource, path.join(dir, 'istanbul-coverage.json'));
-      }
-    }
+    // No coverage snapshot is written here, deliberately. Jest's own CoverageReporter
+    // writes coverage-final.json from *its* onRunComplete, and core registers it after
+    // the loop that adds custom reporters (@jest/core/build/index.js:1208, dispatched
+    // in registration order at :307) — a position no user config can change, since the
+    // registration sits outside the `reporters` array. This hook can therefore only
+    // ever see a *previous* run's file, and copying that is worse than copying nothing:
+    // the snapshot would carry a fresh mtime, so istanbul-source.ts's freshness pick
+    // would hand back last run's coverage as current the moment the live directory was
+    // cleaned. `coverageDirectory` above is the replacement — the CLI resolves the live
+    // file from it. The Vitest reporter does write the snapshot, because Vitest exposes
+    // onFinishedReportCoverage, which fires after the report is on disk; Jest has no
+    // equivalent inside the reporter API.
   }
 }

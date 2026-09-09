@@ -57,7 +57,7 @@ Four-phase pipeline:
                               ┌──────────────┼──────────────┐
                               ▼              ▼              ▼
                      runtime.json       istanbul-coverage  coverage-final
-                     (pass/fail/dur)    .json (line/branch) (runner default)
+                     (pass/fail/dur)    .json (Vitest only)  (runner default)
                               │              │
 Source + Tests ──► [Extractor] ──► CodeModel  │
                     (ts-morph)        │       │
@@ -897,8 +897,8 @@ npx @anatolykhelmer/deep-cover run --root . --module src/your-module
 
 **Both pieces matter independently:**
 
-- Reporter only, no coverage → `runtime.json` is written (pass/fail, durations, assertion counts), but `istanbul-coverage.json` is silently skipped — no error, the file just won't exist and DeepCover falls back to heuristic line/branch estimates.
-- Coverage only, no reporter → Jest still writes `coverage/coverage-final.json`, but DeepCover never sees runtime pass/fail data, and nothing gets copied into `.deepcover/`.
+- Reporter only, no coverage → `runtime.json` is written (pass/fail, durations, assertion counts), but it records `coverageProvider: 'none'` and DeepCover falls back to heuristic line/branch estimates — no error, and no stale coverage from an earlier run is used.
+- Coverage only, no reporter → Jest still writes `coverage/coverage-final.json`, but DeepCover never sees runtime pass/fail data, and without `runtime.json` it does not know which directory to read the coverage from either.
 
 You want both configured together to get the full accuracy benefit.
 
@@ -908,13 +908,19 @@ After each test run, the reporter writes to `.deepcover/`:
 
 | File | Contents |
 |------|----------|
-| `runtime.json` | Per-test pass/fail status, duration, assertion counts |
-| `istanbul-coverage.json` | Istanbul line/branch/function coverage (from `coverage-final.json`, requires `collectCoverage: true`) |
+| `runtime.json` | Per-test pass/fail status, duration, assertion counts, and the coverage directory to read |
+
+Istanbul coverage itself is **not** copied into `.deepcover/` on Jest. Jest writes
+`coverage-final.json` from its own `CoverageReporter`, which core registers after every
+custom reporter, so the DeepCover reporter never sees the current run's file — it is
+read in place instead, from the `coverageDirectory` recorded in `runtime.json`. (The
+Vitest reporter does write a `istanbul-coverage.json` snapshot; Vitest exposes a hook
+that fires once the report is on disk, and Jest has no equivalent.)
 
 #### How it works
 
 1. **Run tests** — `npm test -- --coverage` executes tests and produces both artifacts
-2. **Run DeepCover** — the `analyze` / `score` commands auto-detect `.deepcover/runtime.json` and `istanbul-coverage.json`
+2. **Run DeepCover** — the `analyze` / `score` commands auto-detect `.deepcover/runtime.json` and read the runner's coverage from the directory it records
 3. **Coverage Resolver** merges the data:
    - Istanbul data → ground-truth line/branch coverage per method (via line-range overlay)
    - Runtime data → actual pass/fail, assertion counts, test durations

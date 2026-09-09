@@ -109,15 +109,13 @@ describe('DeepCoverReporter', () => {
   });
 
   /**
-   * A reporter pointed at a coverage directory that does not exist.
-   *
-   * `globalConfig.coverageDirectory` defaults to `'./coverage'` resolved
-   * against `process.cwd()`, so passing `{}` here makes the reporter read this
-   * repo's own `coverage/` directory. On any machine that has run
-   * `npm test -- --coverage` that directory holds a real `coverage-final.json`,
-   * which the reporter then copies into the test's output directory — green on
-   * a fresh clone, red locally. Every test that does not deliberately provide
-   * coverage data must go through this helper.
+   * A reporter pointed at a coverage directory that does not exist, so that
+   * `coverageDirectory` in the artifact is a fixed known value rather than this repo's
+   * own `coverage/` — which is where `globalConfig.coverageDirectory`'s './coverage'
+   * default resolves when tests pass `{}`. This used to matter far more: the reporter
+   * copied coverage-final.json, so a machine that had run `npm test -- --coverage`
+   * turned these tests red while a fresh clone stayed green. That copy is gone; the
+   * helper now only keeps the recorded directory predictable.
    */
   function isolatedReporter(options: { outputDir: string }): DeepCoverReporter {
     return new DeepCoverReporter({ coverageDirectory: path.join(tmpDir, 'no-coverage-here') }, options);
@@ -178,7 +176,17 @@ describe('DeepCoverReporter', () => {
     });
   });
 
-  it('copies coverage-final.json to outputDir when it exists', async () => {
+  /**
+   * Jest's own CoverageReporter writes coverage-final.json from *its* onRunComplete,
+   * and core registers it after the loop that adds custom reporters
+   * (`@jest/core/build/index.js:1208`, dispatched in registration order at `:307`).
+   * This reporter therefore cannot see the current run's file — only a previous run's,
+   * as here. Copying that would be worse than copying nothing: the snapshot carries a
+   * fresh mtime, so istanbul-source.ts's freshness pick would serve last run's coverage
+   * the moment the live directory was cleaned. The recorded coverageDirectory is the
+   * replacement, which is why it is asserted alongside the absent copy.
+   */
+  it('does not snapshot a coverage-final.json it can only have inherited', async () => {
     const coverageDir = path.join(tmpDir, 'coverage');
     fs.mkdirSync(coverageDir, { recursive: true });
     const coverageData = { '/project/src/foo.ts': { statementMap: {}, s: {}, branchMap: {}, b: {}, fnMap: {}, f: {} } };
@@ -192,10 +200,9 @@ describe('DeepCoverReporter', () => {
     const results = createMockAggregatedResult();
     await reporter.onRunComplete!(new Set(), results);
 
-    const istanbulPath = path.join(outputDir, 'istanbul-coverage.json');
-    expect(fs.existsSync(istanbulPath)).toBe(true);
-    const parsed = JSON.parse(fs.readFileSync(istanbulPath, 'utf-8')) as Record<string, unknown>;
-    expect(parsed['/project/src/foo.ts']).toBeDefined();
+    expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(false);
+    const runtime = JSON.parse(fs.readFileSync(path.join(outputDir, 'runtime.json'), 'utf-8'));
+    expect(runtime.coverageDirectory).toBe(coverageDir);
   });
 
   it('does not fail when coverage-final.json does not exist', async () => {
