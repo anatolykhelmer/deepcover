@@ -70,7 +70,12 @@ export class DeepCoverVitestReporter implements Reporter {
     // surviving copy becomes the only source the loader can find — and it is loaded as
     // current, because this run recorded a real provider and nothing marks it stale.
     if (this.coverageProvider !== 'none') {
-      fs.rmSync(path.join(dir, 'istanbul-coverage.json'), { force: true });
+      try {
+        fs.rmSync(path.join(dir, 'istanbul-coverage.json'), { force: true });
+      } catch {
+        // Best-effort cleanup of a best-effort artifact; must not fail an otherwise
+        // green run over a lost convenience, matching onFinishedReportCoverage below.
+      }
     }
   }
 

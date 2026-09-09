@@ -211,6 +211,24 @@ describe('DeepCoverVitestReporter', () => {
     expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
   });
 
+  /**
+   * `{ force: true }` on rmSync suppresses ENOENT (file already absent) but not
+   * EISDIR/EACCES (something exists at that path but can't be removed this way) — a
+   * directory standing in for the file reproduces that portably. onTestRunEnd must not
+   * let this crash the run over a best-effort cleanup, the same guarantee
+   * onFinishedReportCoverage already gives its own copyFileSync.
+   */
+  it("does not fail the run when the previous copy can't be removed", async () => {
+    const dir = mkTmpDir();
+    fs.mkdirSync(path.join(dir, 'istanbul-coverage.json'));
+
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+
+    // A rejection here propagates out of Vitest's `_testRun.end()` and fails the run.
+    await reporter.onTestRunEnd([] as never);
+  });
+
   it('reports coverage without a copy when no report was written', async () => {
     const dir = mkTmpDir();
     const coverageDir = path.join(dir, 'coverage');
