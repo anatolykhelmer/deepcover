@@ -282,6 +282,32 @@ describe('runAnalyzeStage', () => {
     expect(notes.some((n) => n.includes('condition-operand analysis is disabled'))).toBe(false);
   });
 
+  /**
+   * A run recorded a real provider — coverage was configured — but neither the live
+   * coverage-final.json nor a .deepcover copy exists, so hasIstanbulData is false and
+   * ignoredStaleIstanbul (specific to coverageProvider 'none') stays false too. Neither
+   * branch above fires, so before this test the score silently fell back to static
+   * attribution with no explanation at all — indistinguishable from a project that
+   * never configured coverage in the first place. Reproduces: a Vitest run that fails
+   * with the default reportOnFailure: false (no report written, ac9e637), or coverage
+   * enabled without `reporter: ['json']`.
+   */
+  it('explains a silent static fallback when coverage was configured but no data was found', () => {
+    fs.writeFileSync(
+      path.join(deepcoverDir, 'runtime.json'),
+      JSON.stringify({
+        framework: 'vitest',
+        coverageProvider: 'istanbul',
+        coverageDirectory: path.join(deepcoverDir, 'coverage'),
+        timestamp: new Date().toISOString(),
+        testResults: [],
+      }),
+    );
+
+    const { notes } = runAnalyzeStage({ rootDir: PROJECT_ROOT, deepcoverDir, bugs: false });
+    expect(notes.some((n) => n.includes('no coverage data was found'))).toBe(true);
+  });
+
   it('does not warn about stale coverage when coverageProvider is "none" and no Istanbul file exists', () => {
     fs.writeFileSync(
       path.join(deepcoverDir, 'runtime.json'),

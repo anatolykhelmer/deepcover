@@ -128,6 +128,23 @@ export function runAnalyzeStage(opts: AnalyzeStageOptions): AnalyzeStageResult {
       'The loaded coverage artifact carries no per-operand branch data — ' +
         `condition-operand analysis is disabled (not "found nothing"). ${remedy}`,
     );
+  } else if (
+    runtimeData?.runtime &&
+    runtimeData.runtime.coverageProvider !== 'none' &&
+    !resolvedCoverage.hasIstanbulData
+  ) {
+    // A run recorded a real provider — coverage was configured — but no coverage data
+    // resolved: not stale ('none' would have taken the branch above), just absent.
+    // Without this, the result is indistinguishable from a project that never
+    // configured coverage: same fallback, silently. Common causes: coverage disabled
+    // on this specific invocation despite the config, `reporter: ['json']` missing
+    // from the coverage config, or a run that recorded 'istanbul'/'v8' but wrote no
+    // report because it failed with reportOnFailure left off.
+    notes.push(
+      'The runtime artifact records coverage as measured, but no coverage data was ' +
+        'found on disk — scoring fell back to static test attribution. Confirm the ' +
+        "coverage config includes a 'json' reporter and that this run actually wrote one.",
+    );
   }
 
   const result = runScorer(codeModel, reasonerOutput, resolvedCoverage, {
