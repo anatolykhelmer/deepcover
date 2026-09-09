@@ -186,6 +186,26 @@ describe('DeepCoverReporter', () => {
    * the moment the live directory was cleaned. The recorded coverageDirectory is the
    * replacement, which is why it is asserted alongside the absent copy.
    */
+  /**
+   * Before this reporter stopped writing the snapshot (a956de0), an older DeepCover
+   * version could have left `.deepcover/istanbul-coverage.json` from an earlier run.
+   * Nothing here deletes it, so it survives every future run — and once the live
+   * `coverage/coverage-final.json` is absent (directory cleaned between test and
+   * analyze, or a split-CI job carrying only `.deepcover/`), istanbul-source.ts's
+   * only remaining candidate is that leftover, loaded as if it were current.
+   */
+  it('removes a leftover istanbul-coverage.json from an earlier reporter version', async () => {
+    const outputDir = path.join(tmpDir, 'deepcover-leftover');
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(path.join(outputDir, 'istanbul-coverage.json'), JSON.stringify({ leftover: true }));
+
+    const coverageDir = path.join(tmpDir, 'no-coverage-here');
+    const reporter = new DeepCoverReporter({ coverageDirectory: coverageDir }, { outputDir });
+    await reporter.onRunComplete!(new Set(), createMockAggregatedResult());
+
+    expect(fs.existsSync(path.join(outputDir, 'istanbul-coverage.json'))).toBe(false);
+  });
+
   it('does not snapshot a coverage-final.json it can only have inherited', async () => {
     const coverageDir = path.join(tmpDir, 'coverage');
     fs.mkdirSync(coverageDir, { recursive: true });

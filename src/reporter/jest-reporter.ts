@@ -85,5 +85,19 @@ export class DeepCoverReporter implements Pick<Reporter, 'onRunComplete'> {
     // file from it. The Vitest reporter does write the snapshot, because Vitest exposes
     // onFinishedReportCoverage, which fires after the report is on disk; Jest has no
     // equivalent inside the reporter API.
+    //
+    // A leftover from before this version still deserves cleanup, though: an older
+    // reporter did write this file, and nothing else will ever remove it now that this
+    // one no longer touches it on the happy path. Left alone, it would sit on disk
+    // permanently and get loaded as current the moment the live directory was absent —
+    // the same failure mode the Vitest reporter's onTestRunEnd guards against.
+    if (this.coverageProvider !== 'none') {
+      try {
+        fs.rmSync(path.join(dir, 'istanbul-coverage.json'), { force: true });
+      } catch {
+        // Best-effort cleanup of a best-effort artifact; a permission error here must
+        // not fail an otherwise green test run.
+      }
+    }
   }
 }
