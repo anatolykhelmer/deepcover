@@ -57,6 +57,7 @@ Paradigms live under `fixtures/paradigms/`. See the **Paradigm Testing** section
 - Describe **why**, not only what
 - Include a short test plan (commands you ran)
 - Keep PRs reviewable; large refactors should be split when possible
+- User-facing release notes go in [CHANGELOG.md](./CHANGELOG.md), not README.md — the README is the landing page
 
 ## Optional Anthropic provider
 

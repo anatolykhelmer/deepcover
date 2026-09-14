@@ -1,12 +1,18 @@
 # DeepCover
 
-An agentic code coverage analyzer that goes beyond line coverage. DeepCover combines deterministic AST analysis with bounded LLM reasoning to produce a "meaningful coverage" score — measuring whether your tests actually protect your code, not just execute it.
+[![npm](https://img.shields.io/npm/v/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
+[![CI](https://github.com/anatolykhelmer/deepcover/actions/workflows/ci.yml/badge.svg)](https://github.com/anatolykhelmer/deepcover/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/node/v/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
 
-## Why — DeepCover vs. Jest Coverage
+Line coverage tells you **what ran**. DeepCover tells you **what's actually protected**.
 
-Jest with Istanbul tells you **what ran**. DeepCover tells you **what's actually protected**.
+An agentic coverage analyzer for TypeScript projects tested with Jest or Vitest. Deterministic AST analysis plus bounded LLM reasoning (or your coding agent — no API key) produce a meaningful-coverage score: would these tests catch a real regression, or did they just execute a line?
 
-100% line coverage doesn't mean your tests are good:
+## Why Istanbul is not enough
+
+100% line coverage does not mean the tests are good:
 
 ```typescript
 it('should create order', async () => {
@@ -15,34 +21,90 @@ it('should create order', async () => {
 });
 ```
 
-Istanbul reports full coverage for `createOrder`. But that test would still pass if the method returned `null`, an empty object, or a completely wrong order. The assertion is too weak to catch any regression.
+Istanbul reports full coverage for `createOrder`. That test still passes if the method returns `null`, `{}`, or the wrong order.
 
-### What each tool sees
-
-| Question | Jest/Istanbul | DeepCover Extractor |
+| Question | Jest / Istanbul | DeepCover |
 |----------|:---:|:---:|
-| Was this line executed? | Yes | -- |
-| Was this branch hit? | Yes | -- |
-| Is the assertion meaningful? | -- | Yes |
-| Are all domain states tested? | -- | Yes |
-| Would tests catch a mutation? | -- | Yes |
-| Which untested code is riskiest? | -- | Yes |
-| What's mocked vs. real? | -- | Yes |
-| Dependency/transitive coverage? | -- | Yes |
+| Was this line executed? | Yes | — |
+| Was this branch hit? | Yes | — |
+| Is the assertion meaningful? | — | Yes |
+| Are all domain states tested? | — | Yes |
+| Would tests catch a mutation? | — | Yes |
+| Which untested code is riskiest? | — | Yes |
+| What's mocked vs. real? | — | Yes |
+| Dependency / transitive coverage? | — | Yes |
 
-### What DeepCover adds on top of line coverage
+Istanbul also cannot tell a *decisive* operand from one that was merely *evaluated*. A guard like `if (a || b || c)` can show full branch coverage when every test enters through `a`. DeepCover splits the chain and flags the operands you could delete with the suite still green.
 
-- **Assertion strength** — `toBeDefined()` is weak, `toEqual(expected)` is strong, `toHaveBeenCalledWith(...)` verifies interactions. Istanbul can't distinguish these.
-- **Branch semantics** — Istanbul knows a branch was hit; the Extractor knows it's a guard clause, error path, or retry condition — and feeds the exact condition expressions to the Reasoner for state discovery.
-- **Compound conditions** — `if (a || b)` is four things to test, not one. Istanbul's `binary-expr` counters record how often each operand was *evaluated*, never which one was *decisive*, so a guard entered only through `a` still reports as fully covered. The Extractor splits the chain into its operands and the `untested-condition-operand` detector flags the ones no test ever drives — the operands you could delete with the suite still green.
-- **Domain states** — the Reasoner identifies business scenarios, error conditions, and edge cases from branch conditions and test names. Istanbul can't tell you that "HTTP 429 rate limiting" is tested but "token expiry race condition" is not.
-- **Dependency graph** — if Controller delegates to Service which delegates to Gateway, the Extractor traces transitive paths. Istanbul treats each file in isolation.
-- **Criticality ranking** — a public method with high complexity, external calls, and error handling matters more than a simple getter. Istanbul counts all lines equally.
-- **Mock analysis** — detects tests that mock away the very thing they claim to test.
+DeepCover does not replace Istanbul — it **merges** with it. When both are available, Istanbul answers "did this run?" and DeepCover answers "is it protected?"
 
-### Better together
+## Report
 
-DeepCover doesn't replace Jest coverage — it **merges** with it. When both are available, Istanbul provides ground-truth "did this code run?" and the Extractor answers "do the tests actually protect it?" Neither alone gives the full picture.
+![DeepCover report: composite 47/100, createOrder weakly tested, deleteOrder uncovered](docs/assets/demo-report.svg)
+
+```
+DeepCover Report
+════════════════
+Composite Score: 47/100
+
+  Assertion Quality   ██████░░░░  62
+  State Coverage      ████░░░░░░  38
+  Mutation Resilience ████░░░░░░  41
+  Criticality Weight  █████░░░░░  51
+
+Per-method breakdown:
+  ✅ OrderService.getOrders      72  (well-tested)
+  ⚠️  OrderService.createOrder    23  (critical, weak tests)
+  ❌ OrderService.deleteOrder      0  (no tests)
+
+Top gaps:
+  #1 HIGH  OrderService.deleteOrder — "has no test coverage"
+  #2 MED   OrderService.createOrder — "only happy path tested"
+```
+
+With the [test-runner reporter](#test-runner-integration) and `--coverage`, the same report is grounded in real line/branch hits instead of static heuristics.
+
+## Quick start
+
+**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest. The Vitest reporter needs Node >= 20 (Vitest 4's own floor). Jest-only projects stay on Node >= 18.
+
+No API key:
+
+```bash
+npx @anatolykhelmer/deep-cover run --root . --module src/your-module --no-llm
+```
+
+CI gating — fail if the score is below the threshold:
+
+```bash
+npx @anatolykhelmer/deep-cover run --root . --module src/your-module \
+  --no-llm --format score --min-score 60
+```
+
+**Recommended:** use your coding agent as the Reasoner, then merge with runtime coverage.
+
+```bash
+npm install -g @anatolykhelmer/deep-cover
+deepcover init --agent cursor    # or: --agent claude
+```
+
+In Cursor Agent or Claude Code:
+
+> run deepcover on src/your-module
+
+Then [wire the reporter](#test-runner-integration) and run tests with `--coverage` before analyzing. Scores get sharply more accurate; without those artifacts, scoring falls back to static heuristics.
+
+DeepCover runs as three stages, always in this order, always through files in `<root>/.deepcover/`:
+
+| Stage | Command | Writes | LLM? |
+|---|---|---|---|
+| 1 | `deepcover extract --module <path>` | `code-model.json`, `prompts.json` | no |
+| 2 | `deepcover reason` | `reasoner-output.json` | yes — or a template for your agent |
+| 3 | `deepcover analyze` | nothing (prints the report) | no |
+
+`deepcover run` performs all three in one command. Stage 2 is the only stage that involves an LLM, and it always says which Reasoner it used.
+
+Walkthroughs: [Cursor](#install-for-cursor-recommended) · [Claude Code](#install-for-claude-code) · [Anthropic API](#install-for-anthropic) · [CLI](#cli) · [Scoring](#scoring-model) · [Configuration](#configuration) · [Test-runner integration](#test-runner-integration)
 
 ## Architecture
 
@@ -77,302 +139,18 @@ Source + Tests ──► [Extractor] ──► CodeModel  │
 
 - **Extractor** — Deterministic AST analysis: classes, methods, branches, dependencies, assertions, mocks
 - **Coverage Resolver** — Merges static AST analysis with Jest/Vitest runtime and Istanbul coverage data into unified, class-qualified coverage
-- **Reasoner** — LLM semantic analysis with enriched prompts: domain states (with branch conditions + test names + state taxonomy), assertion quality (with target method info), criticality (with blast radius from dependency graph), transitive coverage (with mock detection + intra-class call graph)
+- **Reasoner** — LLM semantic analysis with enriched prompts: domain states, assertion quality, criticality, transitive coverage
 - **Scorer** — Deterministic formula: 4 sub-scores, 3 of them with LLM influence capped by `reasoner.maxInfluence` (default ±20 points)
 
-## Quick Start
-
-**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest.
-
-```bash
-npm install -g @anatolykhelmer/deep-cover
-
-# One-shot, deterministic — no API key
-npx @anatolykhelmer/deep-cover run --root /path/to/project --module src/your-module --no-llm
-
-# CI gating — fail if the score is below the threshold
-npx @anatolykhelmer/deep-cover run --root /path/to/project --module src/your-module \
-  --no-llm --format score --min-score 60
-```
-
-DeepCover runs as three stages that always execute in the same order and always
-communicate through files in `<root>/.deepcover/`:
-
-| Stage | Command | Writes | LLM? |
-|---|---|---|---|
-| 1 | `deepcover extract --module <path>` | `code-model.json`, `prompts.json` | no |
-| 2 | `deepcover reason` | `reasoner-output.json` | yes — or a template for your agent |
-| 3 | `deepcover analyze` | nothing (prints the report) | no |
-
-`deepcover run` performs all three in one command. Stage 2 is the only stage that
-involves an LLM, and it always says which Reasoner it used.
-
-**Strongly recommended:** wire up the [test-runner reporter](#test-runner-integration) and run tests with `--coverage` before analyzing.
-
-**Limitations (honest):** DeepCover targets **TypeScript** sources and **Jest or Vitest** tests.
-
-## What's new in 0.10.0
-
-Two fixes on the reporter → loader → resolver path. Both change reported numbers,
-so a project's score can move without any change to its code or tests.
-
-**Condition-operand analysis now works under Vitest's default coverage provider.**
-DeepCover decided whether per-operand branch data was available by looking at the
-recorded provider id, on the assumption that only Istanbul emits `binary-expr`
-branches. That holds for Jest's `--coverageProvider=v8`, and not for
-`@vitest/coverage-v8`, which remaps v8 output through the AST and does emit them.
-Anyone running Vitest's default provider was silently getting no operand half of
-`untested-condition-operand` on data that was present. Availability is now derived
-from the artifact itself, so those runs gain bug signals they were denied.
-
-### Breaking: a test run without coverage no longer scores the previous run's coverage
-
-When the runtime artifact records `coverageProvider: 'none'`, every coverage file
-on disk necessarily belongs to an earlier run. 0.9.0 loaded it and printed a
-warning; 0.10.0 refuses it and says so, falling back to static test attribution.
-If you run `jest`/`vitest` without `--coverage` and then `deepcover analyze`,
-expect a lower, honest score where you previously saw stale numbers — re-run with
-`--coverage` to restore them.
-
-Flagged breaking because it changes reported numbers on every affected project,
-the same bar 0.9.0 used for its own breaking section below — even though, unlike
-that one, no code needs to change to keep compiling.
-
-No public type changes. The exported `ResolvedCoverage` gains an optional
-`measuresOperands?: boolean`, which `resolveCoverage()` always sets — so both
-callers who use its return value and anyone hand-building the type keep compiling.
-
-## What's new in 0.9.0
-
-### Vitest support
-
-DeepCover now works with Vitest as well as Jest. Wire up `DeepCoverVitestReporter` from `@anatolykhelmer/deep-cover/reporter/vitest` in your Vitest config (see [Test-runner integration](#test-runner-integration)) to get the same runtime-backed accuracy Jest projects have — including, as of 0.9.0, full `untested-condition-operand` detection when coverage runs through `@vitest/coverage-istanbul`. (As of 0.10.0, Vitest's default `v8` provider gets this too, with no config change — see "What's new in 0.10.0" above.)
-
-**Using the Vitest reporter requires Node >= 20** — Vitest 4 itself only supports Node `^20.0.0 || ^22.0.0 || >=24.0.0`. DeepCover's own Node >= 18 requirement (see Prerequisites) is unaffected for Jest-only projects.
-
-### The runtime artifact is renamed, and it isn't Jest-specific anymore
-
-Both reporters now write `.deepcover/runtime.json` — previously `.deepcover/jest-runtime.json`, written only by the Jest reporter. **Existing Jest users need to do nothing**: DeepCover's loaders still read the old name too and take whichever of the two files has the newer mtime, so upgrading doesn't lose data and a Jest → Vitest migration doesn't need to delete anything mid-flight. Neither reporter writes the old name going forward.
-
-The exported type follows the same rename: `RuntimeData` replaces `JestRuntimeData` as the canonical name. `JestRuntimeData` remains exported as a deprecated alias of `RuntimeData`, so existing type annotations keep compiling.
-
-### Breaking: two `MethodCoverage` fields are now optional
-
-Two fields reachable from the publicly exported `MethodCoverage` type narrowed from required to optional, both to stop a missing measurement from impersonating a real one:
-
-- `RuntimeTestResult.assertionCount` — absent (not `0`) when the runner doesn't report a per-test assertion count, which is every Vitest run today.
-- `IstanbulMethodMetrics.binaryExpressions` — absent (not `[]`) when the coverage provider doesn't measure operands, which **in 0.9.0** was every `v8`-provider run. That determination changed in 0.10.0 (see "What's new in 0.10.0" above): it's no longer based on the provider id, and most `v8`-provider Vitest runs measure operands now. The field's optionality itself, described here, is unchanged since 0.9.0 — only which runs land on which side of it has moved.
-
-If your code reads either field and does arithmetic or array operations on it without a guard, this is a compile error under `strict` mode. The fix is to handle the "not measured" case explicitly — the same way DeepCover's own scorer and bug-detector now do. This is the one part of 0.9.0 that isn't purely additive.
-
-## What's new in 0.8.0
-
-### New public exports
-
-Writing a custom detector or scorer against DeepCover's `CodeModel` used to
-mean re-implementing the class-scoping rule that decides which tests count as
-evidence about which method — the library exported `allCallables` for walking
-source, but nothing for walking tests. Four exports close that gap:
-
-- `allTests(testFiles)` and `testsInFile(file)` walk the test inventory in
-  source order, replacing a hand-written `testFiles → describes → tests` loop.
-- `testInScopeOf(test, scope, classFileOwners)` is the scoping rule itself: a
-  test counts toward a class method only when its resolved `targetClass` is
-  that method's owner **and** resolves to that method's own file, so a
-  same-named method on an unrelated class — or a second class of the same name
-  in another file — cannot inherit the credit. Ownership that cannot be
-  established fails closed. Standalone functions carry no per-test class
-  signal, so the gate admits every test for them; that limitation is unchanged
-  and now documented in one place.
-- `TestScope` is the shape `testInScopeOf` matches against. The existing
-  `Callable` satisfies it structurally, so a `Callable` from `allCallables`
-  passes straight through.
-
-Additive only. No existing export changed, and analysis output is unchanged in
-every case — this release moves internal duplication behind a shared module and
-publishes it.
-
-## What's new in 0.7.0
-
-### Bug detection
-
-The `unhandled-error-path` detector now also scans standalone functions, not
-just class methods — a function with a `try/catch` or that throws, and no
-test that provokes the error path, now surfaces a signal the same way a
-method does. This is new output on existing analyses; nothing else about
-`potentialBugs` changed.
-
-### Coverage resolution
-
-A criticality or assertion-quality rating naming a class method that does not
-exist could, in a narrow case, silently pick up the coverage of a same-named
-standalone function declared in the same file instead of being dropped. Fixed
-— such a lookup now correctly resolves to nothing, matching every other
-fail-closed path in the resolver.
-
-### Config and CLI
-
-- `weights` must now sum to `1`, checked after merging with your config's
-  values and defaults; a mistyped or partial override that doesn't restate
-  all four now throws instead of silently skewing the composite.
-- `reasoner.maxInfluence` is now threaded to assertion quality and
-  criticality weighting, in addition to mutation resilience (see
-  [Configuration](#configuration) for how far each sub-score can actually
-  move at a given setting — the default only visibly binds mutation
-  resilience). State coverage is deliberately unaffected.
-- `thresholds.composite` is now the default for `--min-score` on `analyze`,
-  `score`, and `run` — set it once in the config instead of passing the flag
-  everywhere. A `--min-score` flag still overrides it. Precedence: flag >
-  config > no gate.
-- `--min-score` now validates its argument: a value that isn't a finite
-  number throws instead of being silently coerced. Notably `--min-score
-  60abc` used to be read as `60`; it now fails with an error naming the bad
-  value instead of gating at a number you didn't type. It must also be
-  within `0..100` — the same bound `thresholds.composite` has always had —
-  so `--min-score -5` no longer replaces a configured gate with one that can
-  never fire. `0` and `100` remain valid: "never gate" and "must be
-  perfect" are real settings. The flag's own `'0'` default was removed since
-  `thresholds.composite` (or no gate) now takes over when it's omitted.
-- `--min-score` is now resolved and validated **before** the pipeline runs on
-  `analyze`, `score`, and `run`, so a typo fails immediately rather than
-  after extraction, a paid LLM call, and a printed report.
-- **`include`, `exclude`, and `testPattern` now actually apply.** They were
-  accepted by the config schema and read by nothing, so `include:
-  ['src/foo.ts']` silently analysed the default `**/*.ts` set instead. If you
-  have any of these in your config today, this release starts honouring them
-  — check that they say what you meant. `--module` and `--file` override
-  `include`, matching the flag > config precedence used elsewhere.
-
-## What's new in 0.6.0
-
-### Config files are validated
-
-`deepcover.config.{ts,js,json}` is now checked against a schema when it loads.
-An unknown key, an invalid value, or a file that cannot be read or parsed
-**stops the run** with exit code 1, naming the file and every offending key:
-
-```
-Invalid config in /project/deepcover.config.json:
-✖ Unrecognized key: "resoner"
-✖ Invalid option: expected one of "cursor"|"anthropic"|"mock"|"none"
-  → at reasoner.provider
-
-Fix the config, or delete it to run with defaults.
-```
-
-DeepCover stops rather than falling back to defaults because the fallback
-changes what it does — most sharply `reasoner.provider`, where a typo in one
-field would quietly run the analysis against a different provider than the one
-configured. In CI, where `--min-score` gates the build, silently-wrong numbers
-are worse than a stopped run. The check happens before any work, so a failing
-run writes no artifacts.
-
-Having **no** config file is still perfectly normal and runs on defaults
-silently — this applies only to a config file that exists and cannot be
-honoured.
-
-A partially specified section now keeps the defaults for the fields it does not
-mention; previously `weights: { assertionQuality: 0.5 }` silently dropped the
-other three weights. (Historical note, as of 0.7.0: this example itself no
-longer runs as of the weights change documented above — `weights` must now
-sum to `1` after merging with defaults, and `{ assertionQuality: 0.5 }`
-merged with the other three defaults sums to `1.2`, so it throws. See
-[Configuration](#configuration).)
-
-### State coverage
-
-All four state consumers (aggregate state coverage, per-method scores,
-untested lists, gap generation) now read one StateCatalog — the union of
-statically extracted states and reasoner-discovered states, with testedness
-decided once. Scores will shift on re-analysis:
-
-- The state metric is now **applicable without an LLM run** when the
-  extractor finds static states.
-- A reasoner state only counts as tested when the resolver confirms its
-  method is covered (this floor previously applied per-method but not to
-  the aggregate).
-- A static state is tested per affected method, not when any affected
-  method happens to be covered.
-- State gaps are emitted per state×method with unified risk rules; the
-  same state found by both sources yields one gap.
-- Gap `scenario` for a state is now the bare state name (previously
-  static gaps used `state "X" (values)`).
-- Reasoner states naming a method or class the code model does not declare
-  are dropped from scoring entirely.
-
-## Migrating to 0.5.0
-
-`ResolvedCoverage`'s accessors — `getMethodCoverage`, `isMethodCovered`,
-`getTestsForMethod` — now **require** the `filePath` third argument that 0.4.0
-made optional.
-
-```ts
-// 0.4.0 — compiled, but fell back to a name-only lookup
-coverage.getMethodCoverage('OrderService', 'create');
-
-// 0.5.0 — the declaring file is part of the identity
-coverage.getMethodCoverage('OrderService', 'create', 'src/order.service.ts');
-```
-
-The optional argument was the problem: omitting it fell back to a
-`ClassName.methodName` index that returns nothing once two files declare the
-same class name, and every caller read that nothing differently — one as "no
-coverage data", another as "untested". Requiring it makes each such site a
-compile error instead.
-
-If you only have a class name (for example when consuming Reasoner output,
-which names an owner but never a file), resolve it first:
-
-```ts
-import { buildClassFileOwners, resolveReasonerOwnerFile } from '@anatolykhelmer/deep-cover';
-
-const owners = buildClassFileOwners(codeModel.modules);
-const filePath = resolveReasonerOwnerFile(rating.className, owners);
-// null → that class name is declared in several files; drop the judgment
-// rather than scoring it against whichever declaration a lookup reaches first
-```
-
-Bug detectors now also scan `mod.functions`, so standalone functions produce bug
-signals, and every detector scopes test evidence to the declaring file.
-
-## Migrating to 0.4.0
-
-Internal coverage identity is now file-qualified: class methods are keyed
-`filePath:ClassName.methodName` (matching how standalone functions were already
-keyed by file), so two files that both export a class with the same name no
-longer overwrite each other's coverage.
-
-**Re-run `deepcover extract` (or `run`) after upgrading.** A `code-model.json`
-produced by 0.3.x keys class methods as `ClassName.methodName`; the 0.4.0
-resolver looks them up file-qualified and would silently find no static
-coverage in the old artifact.
-
-For the API, `ResolvedCoverage` accessors (`getMethodCoverage`,
-`isMethodCovered`, `getTestsForMethod`) gained an optional `filePath` third
-argument. Without it, lookups of a class name declared in several files fail
-closed (return nothing) rather than guess. **0.5.0 makes this argument
-required** — see above.
-
-Known limitation: when duplicate class names exist, a test's credit is
-attributed via the file its spec imports the class from (barrel re-exports are
-followed to the declaring file). If the import cannot be resolved statically,
-the credit is dropped rather than guessed.
-
-## Migrating from 0.2.x
-
-`analyze` and `score` no longer extract or call an LLM — they score the artifacts
-on disk. The removed flags fail with the replacement command rather than being
-ignored.
-
-| 0.2.x | 0.3.0 |
-|---|---|
-| `analyze --module X --no-llm` | `run --no-llm --module X` |
-| `analyze --module X` (API provider) | `run --module X` |
-| `analyze --reasoner-input f.json` | `analyze` — `.deepcover/reasoner-output.json` is the default input |
-| `score --module X --no-llm --min-score 60` | `run --no-llm --module X --format score --min-score 60` |
-
-`--min-score` and `--bug-threshold` now work with every `--format`, so
-`analyze --format json --min-score 60` prints the full report *and* gates on it.
+What DeepCover adds on top of line coverage:
+
+- **Assertion strength** — `toBeDefined()` is weak, `toEqual(expected)` is strong, `toHaveBeenCalledWith(...)` verifies interactions.
+- **Branch semantics** — a hit branch is classified as a guard, error path, or retry condition, and the exact expressions go to the Reasoner.
+- **Compound conditions** — `if (a || b)` is four things to test, not one. The `untested-condition-operand` detector flags operands no test ever drives.
+- **Domain states** — business scenarios, error conditions, and edge cases from branch conditions and test names.
+- **Dependency graph** — Controller → Service → Gateway is traced as a path. Istanbul treats each file in isolation.
+- **Criticality ranking** — a public method with high complexity and external calls outranks a getter.
+- **Mock analysis** — detects tests that mock away the thing they claim to test.
 
 ## Install for Cursor (recommended)
 
@@ -680,52 +458,6 @@ The `resolves`, `rejects` and `not` modifiers are unwrapped, so `await expect(p)
 
 **Transitive assertion credit:** When an assertion targets a method call (e.g. `expect(user.getName()).toBe('Alice')`), the `getName` method gets credit even though the test targets `createUser`. This properly reflects how service-level tests transitively verify data-class methods.
 
-## Example Output
-
-Without runtime coverage data:
-
-```
-DeepCover Report
-════════════════
-Composite Score: 47/100
-
-  Assertion Quality   ██████░░░░  62
-  State Coverage      ████░░░░░░  38
-  Mutation Resilience ████░░░░░░  41
-  Criticality Weight  █████░░░░░  51
-
-Per-method breakdown:
-  ✅ OrderService.getOrders      72  (well-tested)
-  ⚠️  OrderService.createOrder    23  (critical, weak tests)
-  ❌ OrderService.deleteOrder      0  (no tests)
-
-Top gaps:
-  #1 HIGH  OrderService.deleteOrder — "has no test coverage"
-  #2 MED   OrderService.createOrder — "only happy path tested"
-```
-
-With runtime coverage data (run `npm test -- --coverage`, or `npx vitest run --coverage`, first):
-
-```
-DeepCover Report (with runtime coverage data)
-════════════════
-Composite Score: 61/100
-
-  Assertion Quality   ████████░░  78
-  State Coverage      █████░░░░░  52
-  Mutation Resilience ██████░░░░  63
-  Criticality Weight  █████░░░░░  54
-
-Per-method breakdown:
-  ✅ OrderService.getOrders      82  (92% lines, 4/5 branches)
-  ⚠️  OrderService.createOrder    34  (41% lines, critical, weak tests)
-  ❌ OrderService.deleteOrder      0  (no tests)
-
-Top gaps:
-  #1 HIGH  OrderService.deleteOrder — "has no test coverage"
-  #2 MED   OrderService.createOrder — "partially covered (41% lines, 33% branches)"
-```
-
 ## Configuration
 
 Create `deepcover.config.ts` in your project root:
@@ -939,6 +671,8 @@ that fires once the report is on disk, and Jest has no equivalent.)
 
 ### Vitest
 
+**Requires Node >= 20** — Vitest 4 itself only supports Node `^20.0.0 || ^22.0.0 || >=24.0.0`. DeepCover's own Node >= 18 requirement is unaffected for Jest-only projects.
+
 #### Setup
 
 Install `@vitest/coverage-v8` as a devDependency — Vitest's `v8` provider is its
@@ -1037,6 +771,10 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup and PR expectations.
 - **Zod** — LLM response validation
 - **Jest + ts-jest** — testing
 - **@anthropic-ai/sdk** — optional peer dependency for Anthropic provider
+
+## Changelog
+
+Release notes and migrations: [CHANGELOG.md](./CHANGELOG.md). Also on [GitHub Releases](https://github.com/anatolykhelmer/deepcover/releases).
 
 ## License
 
