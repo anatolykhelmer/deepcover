@@ -65,6 +65,7 @@
     "code-quality",
     "agentic",
     "jest",
+    "vitest",
     "typescript",
     "mutation-testing",
     "assertion-quality"

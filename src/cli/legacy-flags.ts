@@ -60,7 +60,7 @@ export function assertNoLegacyFlags(options: LegacyFlagCarrier, commandName: str
     throw new Error(
       `\`${flag}\` was removed in DeepCover 0.3.0 — \`${commandName}\` no longer extracts or calls an LLM.\n` +
         `  Use: ${replacement(commandName)}\n` +
-        `  See the migration table in README.md.`,
+        `  See the migration table in CHANGELOG.md.`,
     );
   }
 }

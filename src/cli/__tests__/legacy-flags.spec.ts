@@ -47,7 +47,7 @@ describe('assertNoLegacyFlags replacements name the command that was run', () =>
     throw new Error('expected assertNoLegacyFlags to throw');
   }
 
-  it('keeps the score gate in the --no-llm hint for score (README migration row)', () => {
+  it('keeps the score gate in the --no-llm hint for score (CHANGELOG migration row)', () => {
     const message = messageFor({ llm: false, module: 'src/x' }, 'score');
     expect(message).toContain('deepcover run --no-llm --module <path> --format score --min-score <n>');
   });
