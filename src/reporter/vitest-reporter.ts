@@ -2,6 +2,31 @@ import type { Reporter } from 'vitest/reporters';
 import type { Vitest, TestModule } from 'vitest/node';
 import type { CoverageProviderId, RuntimeData } from '../resolver/types';
 
+type RuntimeTestResult = RuntimeData['testResults'][number];
+
+/**
+ * Vitest 2 reports `pass`/`fail`; Vitest 3+ already uses `passed`/`failed`.
+ * `todo` is a skip, not a failure. Unknown states are dropped rather than stored.
+ */
+const VITEST_2_STATUS: Record<string, RuntimeTestResult['status']> = {
+  pass: 'passed',
+  fail: 'failed',
+  skip: 'skipped',
+  todo: 'skipped',
+};
+
+/**
+ * The File/Task tree Vitest 2.x passes to `onFinished`. Kept local so this file
+ * does not import a Vitest 2 type the 4.x `vitest/reporters` entry doesn't export.
+ */
+type Vitest2Task = {
+  type?: string;
+  name?: string;
+  filepath?: string;
+  tasks?: Vitest2Task[];
+  result?: { state?: string; duration?: number };
+};
+
 /**
  * Type-only imports: the class implements Vitest's interface and never calls into
  * it, so `vitest` stays a devDependency and installing DeepCover pulls in no runner.
@@ -30,6 +55,49 @@ export class DeepCoverVitestReporter implements Reporter {
   }
 
   async onTestRunEnd(testModules: ReadonlyArray<TestModule>): Promise<void> {
+    const testResults: RuntimeTestResult[] = [];
+    for (const mod of testModules) {
+      for (const test of mod.children.allTests()) {
+        const state = test.result().state;
+        // 'pending' means collected but never run — it is not a skip, and giving it
+        // one would let an unfinished test count as evidence.
+        if (state === 'pending') continue;
+        testResults.push({
+          testFilePath: mod.moduleId,
+          testName: test.fullName,
+          status: state,
+          duration: test.diagnostic()?.duration ?? 0,
+          // assertionCount is deliberately absent: Vitest does not report it, and
+          // `0` would truncate the static assertion list to nothing downstream.
+        });
+      }
+    }
+    await this.persistRuntime(testResults);
+  }
+
+  /**
+   * Vitest 2.x equivalent of `onTestRunEnd`. 2.1.x dispatches this and never
+   * calls `onTestRunEnd`; Vitest 4 does the opposite for custom reporters (it
+   * still has an `onFinished` websocket event for the UI, which is not this).
+   * Coverage has not been written yet — same as `onTestRunEnd` — so the snapshot
+   * still happens in `onFinishedReportCoverage`, which 2.1.x already duck-types.
+   */
+  async onFinished(files: readonly Vitest2Task[] = []): Promise<void> {
+    await this.persistRuntime(collectVitest2Results(files));
+  }
+
+  /**
+   * Shared by both hooks so a Vitest 2 run and a Vitest 3+ run write the same
+   * artifact. The coverage snapshot is deliberately not taken here — see
+   * onFinishedReportCoverage for why this moment is always too early. Any snapshot
+   * still on disk therefore belongs to an earlier run, and must not outlive the
+   * runtime.json just overwritten: Vitest skips the coverage hook entirely when
+   * tests fail and reportOnFailure is off, having already cleaned the coverage
+   * directory, so a surviving copy becomes the only source the loader can find —
+   * and it is loaded as current, because this run recorded a real provider and
+   * nothing marks it stale.
+   */
+  private async persistRuntime(testResults: RuntimeTestResult[]): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
     const dir = path.resolve(this.outputDir);
@@ -40,35 +108,11 @@ export class DeepCoverVitestReporter implements Reporter {
       coverageProvider: this.coverageProvider,
       coverageDirectory: path.resolve(this.coverageDirectory),
       timestamp: new Date().toISOString(),
-      testResults: [],
+      testResults,
     };
-
-    for (const mod of testModules) {
-      for (const test of mod.children.allTests()) {
-        const state = test.result().state;
-        // 'pending' means collected but never run — it is not a skip, and giving it
-        // one would let an unfinished test count as evidence.
-        if (state === 'pending') continue;
-        data.testResults.push({
-          testFilePath: mod.moduleId,
-          testName: test.fullName,
-          status: state,
-          duration: test.diagnostic()?.duration ?? 0,
-          // assertionCount is deliberately absent: Vitest does not report it, and
-          // `0` would truncate the static assertion list to nothing downstream.
-        });
-      }
-    }
 
     fs.writeFileSync(path.join(dir, 'runtime.json'), JSON.stringify(data, null, 2));
 
-    // The coverage snapshot is deliberately not taken here — see
-    // onFinishedReportCoverage for why this moment is always too early. Any snapshot
-    // still on disk therefore belongs to an earlier run, and must not outlive the
-    // runtime.json just overwritten: Vitest skips the hook entirely when tests fail
-    // and reportOnFailure is off, having already cleaned the coverage directory, so a
-    // surviving copy becomes the only source the loader can find — and it is loaded as
-    // current, because this run recorded a real provider and nothing marks it stale.
     if (this.coverageProvider !== 'none') {
       try {
         fs.rmSync(path.join(dir, 'istanbul-coverage.json'), { force: true });
@@ -124,4 +168,41 @@ export class DeepCoverVitestReporter implements Reporter {
       // reportCoverage() and fail an otherwise green run over a lost convenience.
     }
   }
+}
+
+/**
+ * Walks Vitest 2's File → suite → test tree into the same rows `onTestRunEnd`
+ * writes. An empty result is valid: a file whose tests were collected but never
+ * finished (no result, or `run`/`only`) must not invent skips, and a run with
+ * no tests still needs a current `runtime.json`.
+ */
+function collectVitest2Results(files: readonly Vitest2Task[]): RuntimeTestResult[] {
+  const testResults: RuntimeTestResult[] = [];
+
+  const walk = (task: Vitest2Task, ancestors: string[], filePath: string): void => {
+    if (task.type === 'suite') {
+      for (const child of task.tasks ?? []) {
+        walk(child, [...ancestors, task.name ?? ''], filePath);
+      }
+      return;
+    }
+    const state = task.result?.state;
+    // No result means collected but never run — not a skip.
+    if (!state || state === 'run' || state === 'only') return;
+    const status = VITEST_2_STATUS[state];
+    if (!status) return;
+    testResults.push({
+      testFilePath: filePath,
+      testName: [...ancestors, task.name].filter(Boolean).join(' > '),
+      status,
+      duration: task.result?.duration ?? 0,
+    });
+  };
+
+  for (const file of files) {
+    for (const task of file.tasks ?? []) {
+      walk(task, [], file.filepath ?? file.name ?? '');
+    }
+  }
+  return testResults;
 }

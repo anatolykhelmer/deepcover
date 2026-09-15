@@ -66,7 +66,7 @@ With the [test-runner reporter](#test-runner-integration) and `--coverage`, the 
 
 ## Quick start
 
-**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest. The Vitest reporter needs Node >= 20 (Vitest 4's own floor). Jest-only projects stay on Node >= 18.
+**Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest. The Vitest reporter works with Vitest 2+ (Vitest 4 itself needs Node >= 20). Jest-only projects stay on Node >= 18.
 
 No API key:
 
@@ -671,7 +671,9 @@ that fires once the report is on disk, and Jest has no equivalent.)
 
 ### Vitest
 
-**Requires Node >= 20** — Vitest 4 itself only supports Node `^20.0.0 || ^22.0.0 || >=24.0.0`. DeepCover's own Node >= 18 requirement is unaffected for Jest-only projects.
+**Vitest 2 and Vitest 3+.** The reporter implements both `onFinished` (what Vitest 2.x actually calls) and `onTestRunEnd` (Vitest 3+). A Vitest 2 project that wired the reporter in 0.10.0 got a silent empty `.deepcover/` — no error — because 2.x never fires `onTestRunEnd`. Both hooks write the same `runtime.json`. Vitest 4 still requires Node >= 20; Vitest 2 runs on Node 18.
+
+Per-operand (`binary-expr`) analysis is a separate question from the reporter: `@vitest/coverage-v8` 2.x does not emit it, and DeepCover disables that detector rather than guessing. `@vitest/coverage-v8` 4.x does emit it; Istanbul does on either runner.
 
 #### Setup
 

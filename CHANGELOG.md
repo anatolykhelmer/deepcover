@@ -4,6 +4,10 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Vitest reporter now implements `onFinished`, so Vitest 2.x writes `.deepcover/runtime.json`. 0.10.0 only implemented Vitest 3's `onTestRunEnd`, which 2.x never calls, so those runs silently scored from static heuristics.
+
 ### Documentation
 
 - README is the landing page (problem, report, one command). Release notes and migrations live here.
