@@ -8,9 +8,10 @@ import type { IstanbulCoverageData, RuntimeData } from './types';
  * only once reporters are done, and a run without `--coverage` leaves whatever
  * was already there untouched. The Jest reporter therefore cannot copy that file
  * for the run it just observed — at best it copies the previous run's data (if the
- * directory still holds one from before), at worst it finds nothing at all. Vitest
- * has no such gap: its reporter snapshots from `onFinishedReportCoverage`, which
- * core Vitest fires only once the report is on disk.
+ * directory still holds one from before), at worst it finds nothing at all. Vitest 4
+ * duck-types `onFinishedReportCoverage` on custom reporters once the report is on
+ * disk; Vitest 2.x and 3.x call that hook only on their internal UI reporter, so
+ * those runs rely on the live coverage directory instead.
  *
  * So `.deepcover/istanbul-coverage.json` can lag a run behind. The runner's coverage
  * directory, on the other hand, is guaranteed current by the time the CLI executes. We

@@ -261,4 +261,105 @@ describe('DeepCoverVitestReporter', () => {
     // A rejection here propagates out of Vitest's reportCoverage() and fails the run.
     await reporter.onFinishedReportCoverage();
   });
+
+  /**
+   * Vitest 2's Reporter interface has `onFinished(files)` and never calls
+   * `onTestRunEnd`. v0.10.0 only implemented the Vitest 3+ hook, so a Vitest 2
+   * run wrote nothing — no error, no warning — and scoring quietly fell back to
+   * static heuristics. The File/Task shape and `pass`/`fail` states below are
+   * what 2.1.x actually passes; Vitest 4 does not dispatch this hook to custom
+   * reporters (only to the UI websocket).
+   */
+  it('writes runtime.json from Vitest 2 onFinished files', async () => {
+    const dir = mkTmpDir();
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+
+    await reporter.onFinished([
+      {
+        type: 'suite',
+        filepath: '/repo/src/a.spec.ts',
+        name: 'a.spec.ts',
+        tasks: [
+          {
+            type: 'suite',
+            name: 'A',
+            tasks: [
+              { type: 'test', name: 'does b', result: { state: 'pass', duration: 3 } },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const data = JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8'));
+    expect(data.framework).toBe('vitest');
+    expect(data.coverageProvider).toBe('istanbul');
+    expect(data.testResults).toEqual([
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'A > does b', status: 'passed', duration: 3 },
+    ]);
+  });
+
+  it('maps Vitest 2 fail/skip/todo onto passed/failed/skipped and omits unfinished tests', async () => {
+    const dir = mkTmpDir();
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+
+    await reporter.onFinished([
+      {
+        type: 'suite',
+        filepath: '/repo/src/a.spec.ts',
+        tasks: [
+          { type: 'test', name: 'fails', result: { state: 'fail', duration: 2 } },
+          { type: 'test', name: 'skipped', mode: 'skip' },
+          { type: 'test', name: 'todo', mode: 'todo' },
+          { type: 'test', name: 'still running', result: { state: 'run' } },
+          { type: 'test', name: 'never started' },
+        ],
+      },
+    ]);
+
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8')).testResults).toEqual([
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'fails', status: 'failed', duration: 2 },
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'skipped', status: 'skipped', duration: 0 },
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'todo', status: 'skipped', duration: 0 },
+    ]);
+  });
+
+  it("drops a previous run's copy when Vitest 2 onFinished fires", async () => {
+    const dir = mkTmpDir();
+    fs.writeFileSync(path.join(dir, 'istanbul-coverage.json'), JSON.stringify({ run: 'previous' }));
+
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+    await reporter.onFinished([]);
+
+    expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
+  });
+
+  it('keeps onTestRunEnd rows when Vitest 3 also fires onFinished in the same run', async () => {
+    const dir = mkTmpDir();
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+
+    await reporter.onTestRunEnd([
+      fakeModule('/repo/src/a.spec.ts', [
+        fakeCase('passes', 'passed', 1),
+        fakeCase('skipped one', 'skipped'),
+      ]),
+    ] as never);
+
+    await reporter.onFinished([
+      {
+        type: 'suite',
+        filepath: '/repo/src/a.spec.ts',
+        tasks: [{ type: 'test', name: 'passes', result: { state: 'pass', duration: 1 } }],
+      },
+    ]);
+
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8')).testResults).toEqual([
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'passes', status: 'passed', duration: 1 },
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'skipped one', status: 'skipped', duration: 1 },
+    ]);
+  });
 });

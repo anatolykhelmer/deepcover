@@ -4,9 +4,17 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-15
+
+### Fixed
+
+- The Vitest reporter now implements `onFinished`, so Vitest 2.x writes `.deepcover/runtime.json`. 0.10.0 only implemented Vitest 3's `onTestRunEnd`, which 2.x never calls, so those runs silently scored from static heuristics.
+- Vitest 3 fires both hooks in one tick — the legacy `onFinished` path stands down after `onTestRunEnd` so skipped tests are not dropped. Static `it.skip` / `it.todo` on Vitest 2 are read from `task.mode`, not a fabricated `result`.
+
 ### Documentation
 
 - README is the landing page (problem, report, one command). Release notes and migrations live here.
+- Launch article: [docs/100-percent-coverage-still-green.md](./docs/100-percent-coverage-still-green.md) (canonical original for the Dev.to cross-post).
 
 ## [0.10.0] - 2026-09-09
 
@@ -285,7 +293,8 @@ ignored.
 `--min-score` and `--bug-threshold` now work with every `--format`, so
 `analyze --format json --min-score 60` prints the full report *and* gates on it.
 
-[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.1
 [0.10.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.0
 [0.9.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.9.0
 [0.8.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.8.0
