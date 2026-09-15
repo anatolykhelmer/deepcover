@@ -671,9 +671,11 @@ that fires once the report is on disk, and Jest has no equivalent.)
 
 ### Vitest
 
-**Vitest 2 and Vitest 3+.** The reporter implements both `onFinished` (what Vitest 2.x actually calls) and `onTestRunEnd` (Vitest 3+). A Vitest 2 project that wired the reporter in 0.10.0 got a silent empty `.deepcover/` — no error — because 2.x never fires `onTestRunEnd`. Both hooks write the same `runtime.json`. Vitest 4 still requires Node >= 20; Vitest 2 runs on Node 18.
+**Vitest 2 and Vitest 3+.** The reporter implements both `onFinished` (the only hook Vitest 2.x fires) and `onTestRunEnd` (Vitest 3+). A Vitest 2 project that wired the reporter in 0.10.0 got a silent empty `.deepcover/` — no error — because 2.x never fires `onTestRunEnd`. Vitest 3 fires *both*, and the reporter keeps the richer `onTestRunEnd` data in that case; either way one `runtime.json` is written per run. Vitest 4 still requires Node >= 20; Vitest 2 runs on Node 18.
 
-Per-operand (`binary-expr`) analysis is a separate question from the reporter: `@vitest/coverage-v8` 2.x does not emit it, and DeepCover disables that detector rather than guessing. `@vitest/coverage-v8` 4.x does emit it; Istanbul does on either runner.
+On Vitest 2 and 3 the reporter's best-effort `.deepcover/istanbul-coverage.json` snapshot is never taken — those versions dispatch `onFinishedReportCoverage` only to their own internal UI reporter — so DeepCover reads the live coverage directory recorded in `runtime.json` instead. Nothing is lost; the snapshot is only an optimisation (Vitest 4 custom reporters do get it).
+
+Per-operand (`binary-expr`) analysis is a separate question from the reporter: `@vitest/coverage-v8` 2.x does not emit it, and DeepCover disables that detector rather than guessing. `@vitest/coverage-v8` 4.x remaps through the AST and does emit it; Istanbul does on either runner.
 
 #### Setup
 
@@ -708,7 +710,7 @@ npx vitest run --coverage
 npx @anatolykhelmer/deep-cover run --root . --module src/your-module
 ```
 
-**Vitest's default `v8` provider already gets the full detector set.** DeepCover decides whether per-operand (`binary-expr`) branch data is available by inspecting the coverage artifact itself, not by trusting the provider id: `@vitest/coverage-v8` (Vitest 4.x, DeepCover's supported version) remaps its output through the AST and does emit `binary-expr` branches, so the "operand never evaluated" half of the `untested-condition-operand` detector runs on the default setup above with no extra configuration. `@vitest/coverage-istanbul` still works if you'd rather use it, but it is no longer required for this.
+**Vitest's default `v8` provider gets the full detector set on Vitest 4.** DeepCover decides whether per-operand (`binary-expr`) branch data is available by inspecting the coverage artifact itself, not by trusting the provider id: `@vitest/coverage-v8` on Vitest 4.x remaps its output through the AST and does emit `binary-expr` branches, so the "operand never evaluated" half of the `untested-condition-operand` detector runs on that default setup with no extra configuration. On Vitest 2 the v8 provider does not emit operand data — DeepCover disables that half rather than guessing. `@vitest/coverage-istanbul` still works if you'd rather use it on any Vitest version.
 
 This is *not* true of every `v8`-labeled provider, which is why DeepCover checks the artifact instead of the id: Jest's own `--coverageProvider=v8` converts through `v8-to-istanbul`, which does not produce `binary-expr` branches, so operand detection there still needs Jest's default `babel` provider (i.e. running Jest without `--coverageProvider=v8`). When DeepCover does load an artifact with no operand data — a Vitest run with no compound conditions to remap, or a Jest `v8` run — the detector's operand half is **disabled, not empty**, and `analyze`/`score` say so explicitly in their output notes instead of silently reporting no findings.
 
@@ -721,7 +723,7 @@ This is *not* true of every `v8`-labeled provider, which is why DeepCover checks
 | File | Contents |
 |------|----------|
 | `runtime.json` | Per-test pass/fail status and duration — no assertion counts (see above) |
-| `istanbul-coverage.json` | *(if coverage enabled)* Coverage data from the configured provider (`istanbul` or `v8`) |
+| `istanbul-coverage.json` | *(Vitest 4 + coverage enabled)* Best-effort snapshot; on Vitest 2/3 the CLI reads the live `coverage/` directory instead |
 
 ## Paradigm Testing
 

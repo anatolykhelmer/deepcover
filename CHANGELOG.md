@@ -9,6 +9,7 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 ### Fixed
 
 - The Vitest reporter now implements `onFinished`, so Vitest 2.x writes `.deepcover/runtime.json`. 0.10.0 only implemented Vitest 3's `onTestRunEnd`, which 2.x never calls, so those runs silently scored from static heuristics.
+- Vitest 3 fires both hooks in one tick — the legacy `onFinished` path stands down after `onTestRunEnd` so skipped tests are not dropped. Static `it.skip` / `it.todo` on Vitest 2 are read from `task.mode`, not a fabricated `result`.
 
 ### Documentation
 

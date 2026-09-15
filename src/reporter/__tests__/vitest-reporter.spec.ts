@@ -311,8 +311,8 @@ describe('DeepCoverVitestReporter', () => {
         filepath: '/repo/src/a.spec.ts',
         tasks: [
           { type: 'test', name: 'fails', result: { state: 'fail', duration: 2 } },
-          { type: 'test', name: 'skipped', result: { state: 'skip', duration: 0 } },
-          { type: 'test', name: 'todo', result: { state: 'todo', duration: 0 } },
+          { type: 'test', name: 'skipped', mode: 'skip' },
+          { type: 'test', name: 'todo', mode: 'todo' },
           { type: 'test', name: 'still running', result: { state: 'run' } },
           { type: 'test', name: 'never started' },
         ],
@@ -335,5 +335,31 @@ describe('DeepCoverVitestReporter', () => {
     await reporter.onFinished([]);
 
     expect(fs.existsSync(path.join(dir, 'istanbul-coverage.json'))).toBe(false);
+  });
+
+  it('keeps onTestRunEnd rows when Vitest 3 also fires onFinished in the same run', async () => {
+    const dir = mkTmpDir();
+    const reporter = new DeepCoverVitestReporter({ outputDir: dir });
+    init(reporter, true, 'istanbul', path.join(dir, 'coverage'));
+
+    await reporter.onTestRunEnd([
+      fakeModule('/repo/src/a.spec.ts', [
+        fakeCase('passes', 'passed', 1),
+        fakeCase('skipped one', 'skipped'),
+      ]),
+    ] as never);
+
+    await reporter.onFinished([
+      {
+        type: 'suite',
+        filepath: '/repo/src/a.spec.ts',
+        tasks: [{ type: 'test', name: 'passes', result: { state: 'pass', duration: 1 } }],
+      },
+    ]);
+
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'runtime.json'), 'utf-8')).testResults).toEqual([
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'passes', status: 'passed', duration: 1 },
+      { testFilePath: '/repo/src/a.spec.ts', testName: 'skipped one', status: 'skipped', duration: 1 },
+    ]);
   });
 });

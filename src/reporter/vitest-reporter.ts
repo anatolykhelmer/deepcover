@@ -22,6 +22,8 @@ const VITEST_2_STATUS: Record<string, RuntimeTestResult['status']> = {
 type Vitest2Task = {
   type?: string;
   name?: string;
+  /** 'run' | 'skip' | 'todo' | 'only'. The only marker a statically skipped test gets. */
+  mode?: string;
   filepath?: string;
   tasks?: Vitest2Task[];
   result?: { state?: string; duration?: number };
@@ -36,6 +38,8 @@ export class DeepCoverVitestReporter implements Reporter {
   private outputDir: string;
   private coverageProvider: CoverageProviderId = 'none';
   private coverageDirectory = './coverage';
+  /** Vitest 3 fires `onFinished` in the same tick as `onTestRunEnd`; legacy rows must not overwrite. */
+  private persistedByModernHook = false;
 
   constructor(options?: { outputDir?: string }) {
     this.outputDir = options?.outputDir ?? '.deepcover';
@@ -55,6 +59,9 @@ export class DeepCoverVitestReporter implements Reporter {
   }
 
   async onTestRunEnd(testModules: ReadonlyArray<TestModule>): Promise<void> {
+    // Set before the first await: Vitest 3 starts `onFinished` in this same tick,
+    // and it must see that the modern hook has already taken this run.
+    this.persistedByModernHook = true;
     const testResults: RuntimeTestResult[] = [];
     for (const mod of testModules) {
       for (const test of mod.children.allTests()) {
@@ -79,10 +86,17 @@ export class DeepCoverVitestReporter implements Reporter {
    * Vitest 2.x equivalent of `onTestRunEnd`. 2.1.x dispatches this and never
    * calls `onTestRunEnd`; Vitest 4 does the opposite for custom reporters (it
    * still has an `onFinished` websocket event for the UI, which is not this).
-   * Coverage has not been written yet — same as `onTestRunEnd` — so the snapshot
-   * still happens in `onFinishedReportCoverage`, which 2.1.x already duck-types.
+   * Vitest 3 dispatches BOTH from one `Promise.all` in `TestRun.end()` — this hook
+   * stands down once the modern one has taken the run, or coarser legacy rows
+   * overwrite richer ones and every statically skipped test disappears.
+   *
+   * Coverage has not been written yet — same as `onTestRunEnd`. The snapshot only
+   * runs on Vitest 4, which duck-types `onFinishedReportCoverage`; 2.x and 3.x
+   * dispatch it only to their internal UI reporter. The CLI reads the live coverage
+   * directory recorded in runtime.json.
    */
   async onFinished(files: readonly Vitest2Task[] = []): Promise<void> {
+    if (this.persistedByModernHook) return;
     await this.persistRuntime(collectVitest2Results(files));
   }
 
@@ -126,10 +140,12 @@ export class DeepCoverVitestReporter implements Reporter {
   /**
    * Copies the runner's `coverage-final.json` into the output directory.
    *
-   * Not part of Vitest's published `Reporter` interface: core dispatches it duck-typed
+   * Not part of Vitest's published `Reporter` interface. Vitest 4 duck-types it
    * (`'onFinishedReportCoverage' in reporter`) across every registered reporter from
    * `Vitest.reportCoverage()`, immediately after the coverage provider has finished
-   * writing its reports. That is the first moment the file exists for the run just
+   * writing its reports. Vitest 2.x and 3.x call it only on their internal
+   * `WebSocketReporter`, so custom reporters on those versions never reach here.
+   * That is the first moment the file exists for the run just
    * observed — `onTestRunEnd` fires from `_testRun.end()` one line earlier, and the
    * provider wipes the coverage directory before the first test, so a copy attempted
    * there finds either nothing at all or, with `coverage.clean: false`, the *previous*
@@ -186,10 +202,15 @@ function collectVitest2Results(files: readonly Vitest2Task[]): RuntimeTestResult
       }
       return;
     }
-    const state = task.result?.state;
-    // No result means collected but never run — not a skip.
+    // Vitest never assigns a `result` to a test whose mode is 'skip'/'todo' —
+    // @vitest/runner's runTest() returns at `if (test.mode !== 'run')` before the
+    // result is built — which is why Vitest's own JSON reporter reads
+    // `StatusMap[t.result?.state || t.mode]`.
+    const state = task.result?.state ?? task.mode;
     if (!state || state === 'run' || state === 'only') return;
-    const status = VITEST_2_STATUS[state];
+    const status = Object.prototype.hasOwnProperty.call(VITEST_2_STATUS, state)
+      ? VITEST_2_STATUS[state]
+      : undefined;
     if (!status) return;
     testResults.push({
       testFilePath: filePath,
@@ -200,8 +221,10 @@ function collectVitest2Results(files: readonly Vitest2Task[]): RuntimeTestResult
   };
 
   for (const file of files) {
+    const filePath = file.filepath ?? file.name;
+    if (!filePath) continue;
     for (const task of file.tasks ?? []) {
-      walk(task, [], file.filepath ?? file.name ?? '');
+      walk(task, [], filePath);
     }
   }
   return testResults;
