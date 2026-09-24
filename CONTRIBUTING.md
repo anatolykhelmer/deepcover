@@ -12,7 +12,7 @@ Thanks for contributing. This doc covers local setup and the usual workflows.
 
 ```bash
 git clone https://github.com/anatolykhelmer/deepcover.git
-cd deep-cover
+cd deepcover
 npm install
 npm test
 npm run build

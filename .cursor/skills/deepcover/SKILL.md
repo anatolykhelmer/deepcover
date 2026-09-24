@@ -21,7 +21,7 @@ Jest (`jest.config.js`):
 
 ```json
 {
-  "reporters": ["default", "@anatolykhelmer/deep-cover/reporter"],
+  "reporters": ["default", "@anatolykhelmer/deepcover/reporter"],
   "collectCoverage": true
 }
 ```
@@ -30,7 +30,7 @@ Vitest (`vitest.config.ts`):
 
 ```ts
 import { defineConfig } from 'vitest/config';
-import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vitest';
+import { DeepCoverVitestReporter } from '@anatolykhelmer/deepcover/reporter/vitest';
 
 export default defineConfig({
   test: {

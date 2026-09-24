@@ -1,10 +1,10 @@
 # DeepCover
 
-[![npm](https://img.shields.io/npm/v/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
+[![npm](https://img.shields.io/npm/v/@anatolykhelmer/deepcover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deepcover)
 [![CI](https://github.com/anatolykhelmer/deepcover/actions/workflows/ci.yml/badge.svg)](https://github.com/anatolykhelmer/deepcover/actions/workflows/ci.yml)
-[![Node](https://img.shields.io/node/v/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
+[![Node](https://img.shields.io/node/v/@anatolykhelmer/deepcover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deepcover)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm downloads](https://img.shields.io/npm/dm/@anatolykhelmer/deep-cover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deep-cover)
+[![npm downloads](https://img.shields.io/npm/dm/@anatolykhelmer/deepcover.svg)](https://www.npmjs.com/package/@anatolykhelmer/deepcover)
 
 Line coverage tells you **what ran**. DeepCover tells you **what's actually protected**.
 
@@ -66,25 +66,27 @@ With the [test-runner reporter](#test-runner-integration) and `--coverage`, the 
 
 ## Quick start
 
+> **Package name:** DeepCover is published as `@anatolykhelmer/deepcover` (formerly `@anatolykhelmer/deep-cover`). The unscoped `deepcover` package on npm is an unrelated project — always use the scoped name with `npx`.
+
 **Prerequisites:** Node.js >= 18, a TypeScript project tested with Jest or Vitest. The Vitest reporter works with Vitest 2+ (Vitest 4 itself needs Node >= 20). Jest-only projects stay on Node >= 18.
 
 No API key:
 
 ```bash
-npx @anatolykhelmer/deep-cover run --root . --module src/your-module --no-llm
+npx @anatolykhelmer/deepcover run --root . --module src/your-module --no-llm
 ```
 
 CI gating — fail if the score is below the threshold:
 
 ```bash
-npx @anatolykhelmer/deep-cover run --root . --module src/your-module \
+npx @anatolykhelmer/deepcover run --root . --module src/your-module \
   --no-llm --format score --min-score 60
 ```
 
 **Recommended:** use your coding agent as the Reasoner, then merge with runtime coverage.
 
 ```bash
-npm install -g @anatolykhelmer/deep-cover
+npm install -g @anatolykhelmer/deepcover
 deepcover init --agent cursor    # or: --agent claude
 ```
 
@@ -159,13 +161,13 @@ DeepCover uses the Cursor agent as the Reasoner — no API key. The npm package 
 ### 1. Install the CLI
 
 ```bash
-npm install -g @anatolykhelmer/deep-cover
+npm install -g @anatolykhelmer/deepcover
 ```
 
 Or without a global install:
 
 ```bash
-npx @anatolykhelmer/deep-cover --help
+npx @anatolykhelmer/deepcover --help
 ```
 
 ### 2. Install the Cursor skill (once)
@@ -214,7 +216,7 @@ Same skill workflow as Cursor — Claude Code is the Reasoner (uses your Claude 
 ### 1. Install the CLI
 
 ```bash
-npm install -g @anatolykhelmer/deep-cover
+npm install -g @anatolykhelmer/deepcover
 ```
 
 ### 2. Install the Claude Code skill (once)
@@ -363,9 +365,9 @@ Run the LLM Reasoner via the configured provider and write `reasoner-output.json
 Staged CI example:
 
 ```bash
-npx @anatolykhelmer/deep-cover extract --module src/orders
-npx @anatolykhelmer/deep-cover reason  --module src/orders --bugs
-npx @anatolykhelmer/deep-cover score   --min-score 60 --bugs
+npx @anatolykhelmer/deepcover extract --module src/orders
+npx @anatolykhelmer/deepcover reason  --module src/orders --bugs
+npx @anatolykhelmer/deepcover score   --min-score 60 --bugs
 ```
 
 `--code-model .deepcover/code-model.json` can replace `--module` on `reason` if `extract` already ran.
@@ -553,13 +555,13 @@ Setup: [Install for Cursor](#install-for-cursor-recommended) (Claude Code: [Inst
 
 ```bash
 # Step 1: Extract
-npx @anatolykhelmer/deep-cover extract \
+npx @anatolykhelmer/deepcover extract \
   --root . --module src/webhooks
 
 # Step 2: Cursor agent fills .deepcover/reasoner-output.json
 
 # Step 3: Score with insights
-npx @anatolykhelmer/deep-cover analyze --root .
+npx @anatolykhelmer/deepcover analyze --root .
 ```
 
 ### Why Cursor over an API?
@@ -620,7 +622,7 @@ Add the DeepCover reporter to your project's Jest config, **and** enable coverag
 
 ```json
 {
-  "reporters": ["default", "@anatolykhelmer/deep-cover/reporter"],
+  "reporters": ["default", "@anatolykhelmer/deepcover/reporter"],
   "collectCoverage": true
 }
 ```
@@ -629,7 +631,7 @@ If you'd rather not turn on coverage by default, keep `collectCoverage` out of t
 
 ```bash
 npm test -- --coverage
-npx @anatolykhelmer/deep-cover run --root . --module src/your-module
+npx @anatolykhelmer/deepcover run --root . --module src/your-module
 ```
 
 **Both pieces matter independently:**
@@ -691,7 +693,7 @@ Add the DeepCover reporter to your Vitest config, **and** enable coverage — bo
 
 ```ts
 import { defineConfig } from 'vitest/config';
-import { DeepCoverVitestReporter } from '@anatolykhelmer/deep-cover/reporter/vitest';
+import { DeepCoverVitestReporter } from '@anatolykhelmer/deepcover/reporter/vitest';
 
 export default defineConfig({
   test: {
@@ -707,7 +709,7 @@ Then run tests with coverage before analyzing:
 
 ```bash
 npx vitest run --coverage
-npx @anatolykhelmer/deep-cover run --root . --module src/your-module
+npx @anatolykhelmer/deepcover run --root . --module src/your-module
 ```
 
 **Vitest's default `v8` provider gets the full detector set on Vitest 4.** DeepCover decides whether per-operand (`binary-expr`) branch data is available by inspecting the coverage artifact itself, not by trusting the provider id: `@vitest/coverage-v8` on Vitest 4.x remaps its output through the AST and does emit `binary-expr` branches, so the "operand never evaluated" half of the `untested-condition-operand` detector runs on that default setup with no extra configuration. On Vitest 2 the v8 provider does not emit operand data — DeepCover disables that half rather than guessing. `@vitest/coverage-istanbul` still works if you'd rather use it on any Vitest version.

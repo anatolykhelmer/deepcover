@@ -4,6 +4,23 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **The npm package is renamed to `@anatolykhelmer/deepcover`** so the package, the repository, and the `deepcover` binary share one name. `@anatolykhelmer/deep-cover` is deprecated.
+
+  Migrate by swapping the package and every import specifier:
+
+  ```bash
+  npm uninstall @anatolykhelmer/deep-cover
+  npm install -D @anatolykhelmer/deepcover
+  ```
+
+  - Jest: `"@anatolykhelmer/deep-cover/reporter"` → `"@anatolykhelmer/deepcover/reporter"`
+  - Vitest: `@anatolykhelmer/deep-cover/reporter/vitest` → `@anatolykhelmer/deepcover/reporter/vitest`
+  - `npx @anatolykhelmer/deep-cover …` → `npx @anatolykhelmer/deepcover …`
+
+  The CLI binary is still `deepcover`. The unscoped `deepcover` package on npm is an unrelated project.
+
 ## [0.10.1] - 2026-09-15
 
 ### Fixed

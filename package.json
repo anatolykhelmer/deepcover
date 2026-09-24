@@ -1,5 +1,5 @@
 {
-  "name": "@anatolykhelmer/deep-cover",
+  "name": "@anatolykhelmer/deepcover",
   "version": "0.10.1",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
