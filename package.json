@@ -1,6 +1,6 @@
 {
-  "name": "@anatolykhelmer/deep-cover",
-  "version": "0.10.1",
+  "name": "@anatolykhelmer/deepcover",
+  "version": "0.11.0",
   "description": "Agentic code coverage analyzer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,6 +23,9 @@
       "require": "./dist/reporter/vitest.js",
       "default": "./dist/reporter/vitest.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",

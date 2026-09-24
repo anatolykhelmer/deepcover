@@ -7,7 +7,7 @@ import { DeepCoverReporter } from './jest-reporter';
  * "Reporter is not a constructor".
  *
  * The named and default properties are re-attached so that
- * `import { DeepCoverReporter } from '@anatolykhelmer/deep-cover/reporter'` and
+ * `import { DeepCoverReporter } from '@anatolykhelmer/deepcover/reporter'` and
  * Jest's `.default` fallback keep working against the same class.
  */
 type DeepCoverReporterConstructor = typeof DeepCoverReporter;

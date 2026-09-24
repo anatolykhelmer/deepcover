@@ -21,16 +21,16 @@ export const FRAMEWORKS: Record<TestFrameworkId, FrameworkDescriptor> = {
   jest: {
     id: 'jest',
     displayName: 'Jest',
-    reporterSpecifier: '@anatolykhelmer/deep-cover/reporter',
+    reporterSpecifier: '@anatolykhelmer/deepcover/reporter',
     setupHint:
-      'Add "@anatolykhelmer/deep-cover/reporter" to `reporters` in your Jest config and run tests with --coverage.',
+      'Add "@anatolykhelmer/deepcover/reporter" to `reporters` in your Jest config and run tests with --coverage.',
   },
   vitest: {
     id: 'vitest',
     displayName: 'Vitest',
-    reporterSpecifier: '@anatolykhelmer/deep-cover/reporter/vitest',
+    reporterSpecifier: '@anatolykhelmer/deepcover/reporter/vitest',
     setupHint:
-      'Add DeepCoverVitestReporter from "@anatolykhelmer/deep-cover/reporter/vitest" to `test.reporters` in your Vitest config, ' +
+      'Add DeepCoverVitestReporter from "@anatolykhelmer/deepcover/reporter/vitest" to `test.reporters` in your Vitest config, ' +
       'set `test.coverage.provider` to "istanbul", and run tests with --coverage.',
   },
 };
