@@ -4,6 +4,8 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-24
+
 ### Changed
 
 - **The npm package is renamed to `@anatolykhelmer/deepcover`** so the package, the repository, and the `deepcover` binary share one name. `@anatolykhelmer/deep-cover` is deprecated.
@@ -310,7 +312,8 @@ ignored.
 `--min-score` and `--bug-threshold` now work with every `--format`, so
 `analyze --format json --min-score 60` prints the full report *and* gates on it.
 
-[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.11.0
 [0.10.1]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.1
 [0.10.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.0
 [0.9.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.9.0
