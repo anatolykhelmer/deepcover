@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { formatTerminalReport } from '../formatters/terminal';
+import { formatTerminalReport, formatScore } from '../formatters/terminal';
 import type { ScoreResult } from '../../scorer/types';
 
 const CLI = 'npx tsx src/cli/index.ts';
@@ -165,6 +165,20 @@ describe('analyze command', () => {
     expect(formatted).toContain('✅');
     expect(formatted).toContain('⚠️');
     expect(formatted).toContain('❌');
+  });
+
+  it('terminal report ends with the GitHub link; the score format stays bare', () => {
+    const sub = { base: 50, llmAdjustment: 0, final: 50, confidence: 0, applicable: true };
+    const result: ScoreResult = {
+      composite: 47,
+      subScores: { assertionQuality: sub, stateCoverage: sub, mutationResilience: sub, criticalityWeighting: sub },
+      perFunction: [],
+      gaps: [],
+      potentialBugs: [],
+    };
+    const lastLine = formatTerminalReport(result).trimEnd().split('\n').pop();
+    expect(lastLine).toBe('⭐ Found this useful? Star DeepCover: https://github.com/anatolykhelmer/deepcover');
+    expect(formatScore(result)).toBe('47\n');
   });
 });
 
