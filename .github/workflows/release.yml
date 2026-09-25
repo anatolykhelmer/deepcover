@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'package.json'
+  workflow_dispatch:
 
+# Every step checks what already exists and skips it, so a failed run can be
+# re-run as-is. npm goes first: a version can never be republished, while a tag
+# and a release are cheap to create afterwards.
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -13,65 +17,62 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Get version from package.json
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Check if tag exists
-        id: check-tag
-        run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create tag
-        if: steps.check-tag.outputs.exists == 'false'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
-
-      - name: Create Release
-        if: steps.check-tag.outputs.exists == 'false'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: "v${{ steps.version.outputs.version }}"
-          release_name: "Release ${{ steps.version.outputs.version }}"
-          draft: false
-          prerelease: false
+      - uses: actions/checkout@v5
 
       - name: Use Node.js
-        if: steps.check-tag.outputs.exists == 'false'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22.x
           cache: npm
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for OIDC trusted publishing
-        if: steps.check-tag.outputs.exists == 'false'
         run: npm install -g npm@latest
 
+      - name: Read package name and version
+        id: pkg
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is already on npm; skipping publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
-        if: steps.check-tag.outputs.exists == 'false'
+        if: steps.pkg.outputs.published == 'false'
         run: npm ci
 
       - name: Build
-        if: steps.check-tag.outputs.exists == 'false'
+        if: steps.pkg.outputs.published == 'false'
         run: npm run build
 
       - name: Publish to npm with provenance
-        if: steps.check-tag.outputs.exists == 'false'
+        if: steps.pkg.outputs.published == 'false'
         run: npm publish --provenance
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
+          # Release notes are the version's CHANGELOG section, heading excluded.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          # Creates the tag at this commit unless it already exists.
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Release $VERSION" \
+            --notes-file release-notes.md
