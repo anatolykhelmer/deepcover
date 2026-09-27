@@ -180,6 +180,29 @@ describe('analyze command', () => {
     expect(lastLine).toBe('⭐ Found this useful? Star DeepCover: https://github.com/anatolykhelmer/deepcover');
     expect(formatScore(result)).toBe('47\n');
   });
+
+  it('names the branch-and-matcher sub-score by what it measures, with all four bars aligned', () => {
+    const sub = { base: 50, llmAdjustment: 0, final: 50, confidence: 0, applicable: true };
+    const result: ScoreResult = {
+      composite: 47,
+      subScores: { assertionQuality: sub, stateCoverage: sub, mutationResilience: sub, criticalityWeighting: sub },
+      perFunction: [],
+      gaps: [],
+      potentialBugs: [],
+    };
+
+    const report = formatTerminalReport(result);
+
+    expect(report).toContain('Branch & Matcher Strength');
+    // The sub-score never modelled a mutant (BL-039); the report must not say it did.
+    expect(report).not.toMatch(/mutation/i);
+    const barColumns = report
+      .split('\n')
+      .filter((line) => /[█░]/.test(line))
+      .map((line) => line.search(/[█░]/));
+    expect(barColumns).toHaveLength(4);
+    expect(new Set(barColumns).size).toBe(1);
+  });
 });
 
 /**

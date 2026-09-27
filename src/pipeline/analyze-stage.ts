@@ -33,7 +33,7 @@ const SECTIONS = [
   { key: 'discoveredStates', label: 'Domain States', impact: 'State Coverage' },
   { key: 'assertionJudgments', label: 'Assertion Quality Judgments', impact: 'Assertion Quality' },
   { key: 'criticalityRatings', label: 'Criticality Ratings', impact: 'Criticality Weight' },
-  { key: 'transitiveInferences', label: 'Transitive Inferences', impact: 'Mutation Resilience' },
+  { key: 'transitiveInferences', label: 'Transitive Inferences', impact: 'Branch & Matcher Strength' },
 ] as const;
 
 /**
