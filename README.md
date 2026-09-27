@@ -739,7 +739,7 @@ DeepCover includes acceptance tests that validate the quality of its analysis ag
 | `dont-test-getters-setters` | A data class with getters/setters and private helpers should score 100 when all methods are exercised through a consuming service's tests |
 | `bug-unhandled-error` | A method with a try/catch should flag `unhandled-error-path` when only the happy path is tested |
 | `same-method-name-different-class` | Two unrelated classes declaring a same-named method must be scored independently — the untested one must not inherit the other's test credit |
-| `compound-guard-operand` | A guard built from four `||` operands that every test enters through the same one should flag `untested-condition-operand`, even though Istanbul reports the `binary-expr` fully covered |
+| `compound-guard-operand` | A guard built from four `\|\|` operands that every test enters through the same one should flag `untested-condition-operand`, even though Istanbul reports the `binary-expr` fully covered |
 | `compound-guard-operand-covered` | The same guard with a test for the second operand must report nothing — the false-positive guard for that detector |
 | `guard-operand-never-short-circuits` | A returning guard `if (!rows \|\| !rows.length) return []` whose first operand runs on every call but is never true (`binary-expr [3, 3]`). Pins that `untested-condition-operand` stays silent — a known miss, tracked as BL-040 |
 
