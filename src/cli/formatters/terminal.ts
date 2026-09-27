@@ -1,5 +1,7 @@
 import type { ScoreResult, FunctionScore, PrioritizedGap } from '../../scorer/types';
 
+const REPO_URL = 'https://github.com/anatolykhelmer/deepcover';
+
 function bar(value: number, max: number = 100, width: number = 10): string {
   const filled = Math.round((value / max) * width);
   const empty = width - filled;
@@ -99,6 +101,10 @@ export function formatTerminalReport(result: ScoreResult): string {
       lines.push('');
     }
   }
+
+  // Human-readable format only: `json` and `score` are machine contracts.
+  if (lines[lines.length - 1] !== '') lines.push('');
+  lines.push(`⭐ Found this useful? Star DeepCover: ${REPO_URL}`);
 
   return lines.join('\n');
 }

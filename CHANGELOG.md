@@ -4,6 +4,10 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+### Added
+
+- The terminal report ends with a one-line link to the GitHub repository. `--format json` and `--format score` are unchanged.
+
 ## [0.11.0] - 2026-09-24
 
 ### Changed

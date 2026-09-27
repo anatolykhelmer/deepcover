@@ -67,7 +67,7 @@ The deterministic bug pass is noisy on purpose. The reasoning pass validates eac
 This run had no per-operand branch data (Vitest 2's v8 provider), so that check was disabled rather than guessed. The deleted `!arrays ||` above is a hand edit I ran against their suite, not a mutation-testing feature.
 
 ```
-npx @anatolykhelmer/deep-cover@0.10.1 run --root . --module src/foo
+npx @anatolykhelmer/deepcover@0.11.0 run --root . --module src/foo
 ```
 
 I wrote it: [github.com/anatolykhelmer/deepcover](https://github.com/anatolykhelmer/deepcover)
