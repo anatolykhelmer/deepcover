@@ -4,6 +4,8 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-27
+
 ### Added
 
 - The terminal report ends with a one-line link to the GitHub repository. `--format json` and `--format score` are unchanged.
@@ -316,7 +318,8 @@ ignored.
 `--min-score` and `--bug-threshold` now work with every `--format`, so
 `analyze --format json --min-score 60` prints the full report *and* gates on it.
 
-[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.12.0
 [0.11.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.11.0
 [0.10.1]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.1
 [0.10.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.0
