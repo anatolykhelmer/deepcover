@@ -29,12 +29,11 @@ Istanbul reports full coverage for `createOrder`. That test still passes if the 
 | Was this branch hit? | Yes | — |
 | Is the assertion meaningful? | — | Yes |
 | Are all domain states tested? | — | Yes |
-| Would tests catch a mutation? | — | Yes |
 | Which untested code is riskiest? | — | Yes |
 | What's mocked vs. real? | — | Yes |
 | Dependency / transitive coverage? | — | Yes |
 
-Istanbul also cannot tell a *decisive* operand from one that was merely *evaluated*. A guard like `if (a || b || c)` can show full branch coverage when every test enters through `a`. DeepCover splits the chain and flags the operands you could delete with the suite still green.
+Istanbul also cannot tell a *decisive* operand from one that was merely *evaluated*. A guard like `if (a || b || c)` can show full branch coverage when every test enters through `a`. DeepCover splits the chain and flags an operand that no test ever evaluates. For a guard that throws, it also flags an operand whose argument no test varies. It does not yet catch an operand that runs on every call but never decides the outcome, such as `!a` in `if (!a || !a.length) return []` when no test passes a nullish `a`.
 
 DeepCover does not replace Istanbul — it **merges** with it. When both are available, Istanbul answers "did this run?" and DeepCover answers "is it protected?"
 
@@ -47,10 +46,10 @@ DeepCover Report
 ════════════════
 Composite Score: 47/100
 
-  Assertion Quality   ██████░░░░  62
-  State Coverage      ████░░░░░░  38
-  Mutation Resilience ████░░░░░░  41
-  Criticality Weight  █████░░░░░  51
+  Assertion Quality          ██████░░░░  62
+  State Coverage             ████░░░░░░  38
+  Branch & Matcher Strength  ████░░░░░░  41
+  Criticality Weight         █████░░░░░  51
 
 Per-method breakdown:
   ✅ OrderService.getOrders      72  (well-tested)
@@ -424,7 +423,7 @@ Four sub-scores combined with configurable weights:
 |-----------|--------|-----------------|
 | Assertion Quality | 30% | Are assertions meaningful? (strong > medium > weak matchers, relative to method complexity) |
 | State Coverage | 30% | Are all meaningful domain states tested? (purely reasoner-driven — business scenarios, error conditions, edge cases) |
-| Mutation Resilience | 25% | Would tests catch subtle code changes? (branch coverage + assertion specificity) |
+| Branch & Matcher Strength | 25% | How many branches tests reach, and how specific their matchers are. Not a mutation test. |
 | Criticality Weighting | 15% | Is the important code tested? (blast radius + business criticality) |
 
 The LLM's adjustment to each sub-score is capped by `reasoner.maxInfluence`
@@ -433,7 +432,7 @@ coverage, which the LLM never adjusts directly; its number comes from
 resolver-confirmed states, not a confidence-weighted nudge. Assertion quality
 and criticality weighting are, by how their formulas average per-judgment
 contributions, naturally bounded well inside that cap in practice; only
-mutation resilience routinely reaches it. See
+branch & matcher strength routinely reaches it. See
 [Configuration](#configuration) for the exact bound on each. Without LLM
 (`--no-llm`), you get the deterministic base scores only.
 
@@ -480,7 +479,7 @@ export default {
   weights: {
     assertionQuality: 0.30,
     stateCoverage: 0.30,
-    mutationResilience: 0.25,
+    mutationResilience: 0.25,  // Branch & Matcher Strength (key name kept for compatibility)
     criticalityWeighting: 0.15,
   },
   thresholds: {
@@ -502,9 +501,9 @@ and `run` exit `1` when the composite falls below it. A `--min-score` flag on th
 command line overrides it for that invocation. With neither set, no gate applies.
 
 `reasoner.maxInfluence` caps how far the reasoner may move **assertion quality**,
-**mutation resilience**, and **criticality weighting** — each sub-score's LLM
+**branch & matcher strength**, and **criticality weighting** — each sub-score's LLM
 adjustment is clamped to ±`maxInfluence` × 100 points. In practice that clamp is
-the binding constraint only for mutation resilience: its adjustment scales with
+the binding constraint only for branch & matcher strength: its adjustment scales with
 the number of LLM-confirmed transitive coverage inferences and is one-sided (the
 reasoner can only raise it), so enough confirmations reach the cap at any
 configured value, including the default. Assertion quality and criticality
@@ -610,7 +609,7 @@ fixtures/
 
 ## Test-runner integration
 
-DeepCover works without this section — the Extractor can score a module from static AST analysis alone. But **configuring the reporter for your test runner and running tests with coverage is strongly recommended**: it's the difference between DeepCover *guessing* which test covers which method and *knowing*, from real Istanbul line/branch data and real pass/fail results. This directly sharpens Assertion Quality, State Coverage, Mutation Resilience, and Criticality (see "How it works" below). Do this once per project and every `analyze`/`score` run after that benefits automatically.
+DeepCover works without this section — the Extractor can score a module from static AST analysis alone. But **configuring the reporter for your test runner and running tests with coverage is strongly recommended**: it's the difference between DeepCover *guessing* which test covers which method and *knowing*, from real Istanbul line/branch data and real pass/fail results. This directly sharpens Assertion Quality, State Coverage, Branch & Matcher Strength, and Criticality (see "How it works" below). Do this once per project and every `analyze`/`score` run after that benefits automatically.
 
 Both reporters write the same artifact, `.deepcover/runtime.json`. DeepCover's loaders still read the legacy `.deepcover/jest-runtime.json` name too, so **existing Jest users on the old reporter need to change nothing** — whichever of the two files has the newer mtime wins, so a stale `jest-runtime.json` left over from a Jest → Vitest migration can't shadow a fresh `runtime.json`. Neither reporter writes the old name anymore.
 
@@ -667,7 +666,7 @@ that fires once the report is on disk, and Jest has no equivalent.)
 4. **Scorer** uses the merged data for more accurate sub-scores:
    - Assertion Quality filters out failed tests, detects runtime assertion count mismatches
    - State Coverage scales by Istanbul branch coverage when available
-   - Mutation Resilience uses actual branch hit counts instead of heuristic estimates
+   - Branch & Matcher Strength uses actual branch hit counts instead of heuristic estimates
    - Criticality scales coverage proportionally by Istanbul line coverage
    - Gap Generator reports "partially covered" methods (< 50% line/branch coverage)
 

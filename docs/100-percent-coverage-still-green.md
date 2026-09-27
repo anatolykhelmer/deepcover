@@ -64,7 +64,7 @@ The full score uses a coding agent as the reasoner. This is not a linter you dro
 
 The deterministic bug pass is noisy on purpose. The reasoning pass validates each signal; on this run it rejected all seven as false positives.
 
-This run had no per-operand branch data (Vitest 2's v8 provider), so that check was disabled rather than guessed. The deleted `!arrays ||` above is a hand edit I ran against their suite, not a mutation-testing feature.
+This run had no per-operand branch data (Vitest 2's v8 provider), so that check was disabled rather than guessed. It would not have caught `!arrays ||` anyway: both operands run on every call, and DeepCover does not yet notice that `!arrays` is never the one that decides. The deleted `!arrays ||` above is a hand edit I ran against their suite, not a mutation-testing feature.
 
 ```
 npx @anatolykhelmer/deepcover@0.11.0 run --root . --module src/foo
