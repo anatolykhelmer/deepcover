@@ -1,6 +1,6 @@
 # BL-039 — Mutation Resilience reports 100 on a module where a mutant survives
 
-**Status:** Ready (designing, option 2 chosen) · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
+**Status:** In Progress (option 2 chosen — shown in chat and the Decision Log as "option A") · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
 
 ## The contradiction
 
@@ -49,7 +49,7 @@ The docs overclaim in four places, not one:
 
 Restated 2026-09-27. The original first criterion ("no longer reports 100") could be met by fixing BL-018 alone or by `--no-llm`, both giving 96.95, which displays as 97 and is the same contradiction.
 
-- No user-facing surface calls this sub-score "Mutation Resilience" or says it answers whether tests catch a mutation or a subtle change: CLI, JSON, README, agent README, and article. The one exception is a documented migration note for the renamed JSON key, if a rename is chosen there.
+- No user-facing surface calls this sub-score "Mutation Resilience" or says it answers whether tests catch a mutation or a subtle change: CLI, JSON, README, agent README, and article. The one exception is the `mutationResilience` key in JSON output and in `weights`, kept for compatibility and documented in the README.
 - README `:37` and article `:67` no longer claim or imply that DeepCover flags an operand whose deletion leaves the suite green, beyond what `untested-condition-operand` actually detects: operands never evaluated, and throwing guards whose operand no test varies.
 - A paradigm fixture reproduces `if (!a || !a.length) return []`, with tests that never pass a nullish `a`. It pins what DeepCover does and does not say about that guard, so a later change (BL-040) shows up as a deliberate diff rather than silently.
 - No reported number changes. This item is naming and claims only.

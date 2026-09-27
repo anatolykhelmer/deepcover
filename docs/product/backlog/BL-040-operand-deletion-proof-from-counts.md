@@ -29,7 +29,7 @@ This proof is one-sided. A zero proves a survivor. A non-zero does not prove a k
 
 1. **Detector.** Add a *never short-circuits* signal to `untested-condition-operand` from count differences. It is proof from data, so it should get high confidence, like *never evaluated*. It also needs the `if`/ternary path counts for the last operand, which `BinaryExprCoverage` does not carry today.
 2. **Sub-score.** Count those proven survivors against the renamed BL-039 sub-score. Restore a mutation framing only for the part it actually measures.
-3. **Docs.** Once this ships, README `:37` ("flags the operands you could delete with the suite still green") becomes true for flat chains under Istanbul. BL-039 softens it until then.
+3. **Docs.** Once this ships, README can again say DeepCover flags an operand that could be deleted with the suite still green, for flat chains under Istanbul. BL-039 narrowed that claim to what the detector does today.
 
 ## Open questions (resolve before design)
 

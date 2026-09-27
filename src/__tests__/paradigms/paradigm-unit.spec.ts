@@ -5,6 +5,7 @@ import {
   assertParadigm,
 } from './paradigm-runner';
 import { allCallables } from '../../types/callable';
+import { UntestedConditionOperandDetector } from '../../bug-detector/detectors/untested-condition-operand';
 
 describe('paradigm tests (unit — pre-computed Istanbul)', () => {
   const paradigms = listParadigms();
@@ -33,9 +34,15 @@ describe('guard-operand-never-short-circuits preconditions', () => {
 
     const coverage = resolvedCoverage.getMethodCoverage(ungroup!.owner, 'ungroup', ungroup!.filePath);
     expect(coverage?.isCovered).toBe(true);
-    const counts = coverage?.istanbul?.binaryExpressions?.find((e) => e.line === guard!.lineNumber)?.pathCounts;
+    const onLine = coverage?.istanbul?.binaryExpressions?.filter((e) => e.line === guard!.lineNumber) ?? [];
+    expect(onLine).toHaveLength(1);
+    const counts = onLine[0].pathCounts;
     expect(counts).toHaveLength(2);
     expect(counts![0]).toBeGreaterThan(0);
     expect(counts![1]).toBe(counts![0]);
+
+    // The fact the fixture pins, checked on the detector itself so it cannot pass because
+    // bug detection was switched off upstream.
+    expect(new UntestedConditionOperandDetector().detect(codeModel, resolvedCoverage)).toEqual([]);
   });
 });

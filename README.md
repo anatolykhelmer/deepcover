@@ -33,7 +33,7 @@ Istanbul reports full coverage for `createOrder`. That test still passes if the 
 | What's mocked vs. real? | — | Yes |
 | Dependency / transitive coverage? | — | Yes |
 
-Istanbul also cannot tell a *decisive* operand from one that was merely *evaluated*. A guard like `if (a || b || c)` can show full branch coverage when every test enters through `a`. DeepCover splits the chain and flags an operand that no test ever evaluates. For a guard that throws, it also flags an operand whose argument no test varies. It does not yet catch an operand that runs on every call but never decides the outcome, such as `!a` in `if (!a || !a.length) return []` when no test passes a nullish `a`.
+Istanbul also cannot tell a *decisive* operand from one that was merely *evaluated*. A guard like `if (a || b || c)` can show full branch coverage when every test enters through `a`. DeepCover splits the chain and flags an operand that no test ever evaluates. For a guard that throws, it also flags an operand whose argument no test varies. It does not yet catch such an operand in a guard that returns, such as `!a` in `if (!a || !a.length) return []` when no test passes a nullish `a`.
 
 DeepCover does not replace Istanbul — it **merges** with it. When both are available, Istanbul answers "did this run?" and DeepCover answers "is it protected?"
 
@@ -147,7 +147,7 @@ What DeepCover adds on top of line coverage:
 
 - **Assertion strength** — `toBeDefined()` is weak, `toEqual(expected)` is strong, `toHaveBeenCalledWith(...)` verifies interactions.
 - **Branch semantics** — a hit branch is classified as a guard, error path, or retry condition, and the exact expressions go to the Reasoner.
-- **Compound conditions** — `if (a || b)` is four things to test, not one. The `untested-condition-operand` detector flags operands no test ever drives.
+- **Compound conditions** — `if (a || b)` is four things to test, not one. The `untested-condition-operand` detector flags operands no test ever evaluates and, for guards that throw, operands whose argument no test varies.
 - **Domain states** — business scenarios, error conditions, and edge cases from branch conditions and test names.
 - **Dependency graph** — Controller → Service → Gateway is traced as a path. Istanbul treats each file in isolation.
 - **Criticality ranking** — a public method with high complexity and external calls outranks a getter.
@@ -739,6 +739,7 @@ DeepCover includes acceptance tests that validate the quality of its analysis ag
 | `same-method-name-different-class` | Two unrelated classes declaring a same-named method must be scored independently — the untested one must not inherit the other's test credit |
 | `compound-guard-operand` | A guard built from four `||` operands that every test enters through the same one should flag `untested-condition-operand`, even though Istanbul reports the `binary-expr` fully covered |
 | `compound-guard-operand-covered` | The same guard with a test for the second operand must report nothing — the false-positive guard for that detector |
+| `guard-operand-never-short-circuits` | A returning guard `if (!rows \|\| !rows.length) return []` whose first operand runs on every call but is never true (`binary-expr [3, 3]`). Pins that `untested-condition-operand` stays silent — a known miss, tracked as BL-040 |
 
 ### Running paradigm tests
 
