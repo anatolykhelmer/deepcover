@@ -1,0 +1,8 @@
+{
+  "paradigm": "guard-operand-never-short-circuits",
+  "description": "`ungroup` has a returning guard `if (!rows || !rows.length) return []`. Its empty case is reached only through `group()`, whose rest parameter is always an array, so no test passes a nullish `rows`. `!rows` is evaluated on every call and is never true. Istanbul records binary-expr [3, 3] and 100% branches, and deleting `!rows ||` keeps every test green: the radashi `unzip` case from BL-039. KNOWN MISS: `untested-condition-operand` stays silent. Its never-evaluated signal needs a zero count, and its never-decisive signal only handles guards that throw. BL-040 would prove this survivor from the equal counts; when it lands, move the pattern to expectedBugPatterns.",
+  "assertions": {
+    "allMethodsCovered": true,
+    "knownMissedBugPatterns": ["untested-condition-operand"]
+  }
+}

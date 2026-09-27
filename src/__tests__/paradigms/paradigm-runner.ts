@@ -7,6 +7,7 @@ import type { ReasonerOutput } from '../../reasoner/types';
 import type { ResolvedCoverage } from '../../resolver/types';
 import type { ScoreResult } from '../../scorer/types';
 import type { IstanbulCoverageData } from '../../resolver/types';
+import type { CodeModel } from '../../types/code-model';
 
 const PARADIGMS_DIR = path.resolve(__dirname, '../../../fixtures/paradigms');
 
@@ -36,12 +37,19 @@ export interface ParadigmExpectations {
      * detectors whose value depends on staying quiet once the gap is actually tested.
      */
     unexpectedBugPatterns?: string[];
+    /**
+     * Patterns a detector is known to miss on this fixture: a pinned false negative, not a
+     * guarded false positive. Asserted absent. When a detector learns the case, this fails
+     * on purpose, so that the fixture moves to `expectedBugPatterns` deliberately.
+     */
+    knownMissedBugPatterns?: string[];
   };
 }
 
 export interface ParadigmResult {
   scoreResult: ScoreResult;
   resolvedCoverage: ResolvedCoverage;
+  codeModel: CodeModel;
   expected: ParadigmExpectations;
 }
 
@@ -80,11 +88,13 @@ export function runParadigm(
   });
 
   const enableBugs = !!(
-    expected.assertions.expectedBugPatterns || expected.assertions.unexpectedBugPatterns
+    expected.assertions.expectedBugPatterns ||
+    expected.assertions.unexpectedBugPatterns ||
+    expected.assertions.knownMissedBugPatterns
   );
   const scoreResult = runScorer(codeModel, EMPTY_REASONER_OUTPUT, resolvedCoverage, { enableBugs });
 
-  return { scoreResult, resolvedCoverage, expected };
+  return { scoreResult, resolvedCoverage, codeModel, expected };
 }
 
 export function loadPreComputedIstanbul(paradigmName: string): IstanbulCoverageData {
@@ -176,6 +186,18 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
     const evidence = scoreResult.potentialBugs.map((b) => b.evidence);
     for (const fragment of assertions.expectedBugEvidence) {
       expect(evidence.some((e) => e.includes(fragment))).toBe(true);
+    }
+  }
+
+  if (assertions.knownMissedBugPatterns) {
+    const foundPatterns: string[] = scoreResult.potentialBugs.map((b) => b.pattern);
+    for (const missed of assertions.knownMissedBugPatterns) {
+      if (foundPatterns.includes(missed)) {
+        throw new Error(
+          `Known blind spot "${missed}" is now detected on ${expected.paradigm}: move it to ` +
+            'expectedBugPatterns and update the fixture description.'
+        );
+      }
     }
   }
 }
