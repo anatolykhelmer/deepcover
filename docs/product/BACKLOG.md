@@ -10,7 +10,6 @@
 | BL-033 | Derive the e2e stand's stale-coverage path from the artifact | `runtime-artifact-e2e.spec.ts:12` hardcodes `<fixture>/coverage/coverage-final.json` while the loader derives it from `runtime.coverageDirectory`. They agree today; if they ever diverge, the `'none'` rows' non-vacuity precondition silently checks a path nothing reads — and that precondition is the only thing stopping those rows from passing for the wrong reason. Ships as one pass with BL-034 and BL-035. |  |  | 2026-09-08 |
 | BL-034 | Non-discriminating test in istanbul-source.spec.ts | "reads the .deepcover copy when no coverage directory is recorded" (`:61-65`) never calls `writeLive`, so no live candidate exists either way and the test cannot distinguish "no directory recorded" from "directory recorded, file absent". Verified during BL-030 by flipping the flag: the suite stayed green; re-verified at the 2026-09-11 groom, still no `writeLive`. Fix: add a newer `writeLive`. Ships as one pass with BL-033 and BL-035. |  |  | 2026-09-08 |
 | BL-035 | extract loads the runtime artifact two or three times per run | BL-030 routed `loadIstanbulByMethod` through `loadRuntimeArtifacts`, which `extract-stage.ts:71` already calls directly and `computeBugSignals` calls again under `--bugs` (`loaders.ts:129`, `:142`). Harmless except that a corrupt `runtime.json` logs its parse warning two or three times per extract, which reads as three separate problems. Fix: load once in `extract-stage` and thread it. Ships as one pass with BL-033 and BL-034. |  |  | 2026-09-08 |
-| BL-039 | Mutation Resilience reports 100 on a module where a mutant survives | **designing** — option A chosen 2026-09-27: rename the sub-score to what it measures and remove every mutation or operand overclaim (README `:32`, `:37`, `:427`, article `:67`), plus a paradigm fixture. The proof that earns the name back is BL-040. Correction to the original cause: per-operand data would **not** have caught `!arrays ||`. Istanbul records `binary-expr [4, 4]`, and neither detector signal fires on it. **Blocks the Show HN post.** [BL-039](./backlog/BL-039-mutation-resilience-overclaims.md). |  |  | 2026-09-27 |
 
 ## Ideas
 
@@ -43,7 +42,7 @@
 
 | ID | Title | Handoff | Branch |
 |----|----|----|----|
-| | | _No items._ | |
+| BL-039 | Mutation Resilience reports 100 on a module where a mutant survives → rename to Branch & Matcher Strength | `docs/superpowers/plans/2026-09-27-mutation-resilience-rename.md` (local, gitignored) | `fix/bl-039-branch-matcher-strength` |
 
 ## Done
 
@@ -70,6 +69,10 @@
 | BL-029 | Extractor and scope gate resolve duplicate class names against different maps | Superseded by BL-031: do not patch the two owner maps separately; persist CoverageKey at extract so post-extract name resolution (and the ClassMethodOwners vs ClassFileOwners asymmetry) goes away. | 2026-09-03 |
 
 ## Decision Log
+
+### 2026-09-27 — BL-039 in progress
+
+- Spec and plan written (both local under `docs/superpowers/`, which this repo gitignores). Implementation on `fix/bl-039-branch-matcher-strength`.
 
 ### 2026-09-27 — BL-039 designing (option A), BL-040 opened, BL-039 cause corrected
 
