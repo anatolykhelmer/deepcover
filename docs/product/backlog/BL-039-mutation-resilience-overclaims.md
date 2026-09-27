@@ -1,6 +1,6 @@
 # BL-039 — Mutation Resilience reports 100 on a module where a mutant survives
 
-**Status:** In Progress (option 2 chosen — shown in chat and the Decision Log as "option A") · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
+**Status:** Done 2026-09-27 ([PR #20](https://github.com/anatolykhelmer/deepcover/pull/20); option 2, shown in chat and the Decision Log as "option A") · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
 
 ## The contradiction
 
