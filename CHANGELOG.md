@@ -4,6 +4,10 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+### Changed
+
+- The npm package description now matches the repository: "100% coverage, still broken. Finds tests that run your code but verify nothing."
+
 ## [0.12.1] - 2026-09-27
 
 ### Changed
