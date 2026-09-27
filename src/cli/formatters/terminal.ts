@@ -56,14 +56,14 @@ export function formatTerminalReport(result: ScoreResult): string {
   const subNames = {
     assertionQuality: 'Assertion Quality',
     stateCoverage: 'State Coverage',
-    mutationResilience: 'Mutation Resilience',
+    mutationResilience: 'Branch & Matcher Strength',
     criticalityWeighting: 'Criticality Weight',
   } as const;
 
   for (const [key, label] of Object.entries(subNames)) {
     const sub = result.subScores[key as keyof typeof result.subScores];
     const val = Math.round(sub.final);
-    lines.push(`  ${label.padEnd(22)} ${bar(val)}  ${val}`);
+    lines.push(`  ${label.padEnd(26)} ${bar(val)}  ${val}`);
   }
 
   lines.push('');

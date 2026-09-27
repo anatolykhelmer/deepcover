@@ -70,7 +70,6 @@
     "jest",
     "vitest",
     "typescript",
-    "mutation-testing",
     "assertion-quality"
   ],
   "author": "Anatoly Khelmer <anatoly.khelmer@gmail.com>",

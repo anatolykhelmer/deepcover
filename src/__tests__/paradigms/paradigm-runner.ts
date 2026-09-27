@@ -7,6 +7,9 @@ import type { ReasonerOutput } from '../../reasoner/types';
 import type { ResolvedCoverage } from '../../resolver/types';
 import type { ScoreResult } from '../../scorer/types';
 import type { IstanbulCoverageData } from '../../resolver/types';
+import type { CodeModel } from '../../types/code-model';
+import { allCallables } from '../../types/callable';
+import { UntestedConditionOperandDetector } from '../../bug-detector/detectors/untested-condition-operand';
 
 const PARADIGMS_DIR = path.resolve(__dirname, '../../../fixtures/paradigms');
 
@@ -36,12 +39,19 @@ export interface ParadigmExpectations {
      * detectors whose value depends on staying quiet once the gap is actually tested.
      */
     unexpectedBugPatterns?: string[];
+    /**
+     * Patterns a detector is known to miss on this fixture: a pinned false negative, not a
+     * guarded false positive. Asserted absent. When a detector learns the case, this fails
+     * on purpose, so that the fixture moves to `expectedBugPatterns` deliberately.
+     */
+    knownMissedBugPatterns?: string[];
   };
 }
 
 export interface ParadigmResult {
   scoreResult: ScoreResult;
   resolvedCoverage: ResolvedCoverage;
+  codeModel: CodeModel;
   expected: ParadigmExpectations;
 }
 
@@ -80,11 +90,13 @@ export function runParadigm(
   });
 
   const enableBugs = !!(
-    expected.assertions.expectedBugPatterns || expected.assertions.unexpectedBugPatterns
+    expected.assertions.expectedBugPatterns ||
+    expected.assertions.unexpectedBugPatterns ||
+    expected.assertions.knownMissedBugPatterns
   );
   const scoreResult = runScorer(codeModel, EMPTY_REASONER_OUTPUT, resolvedCoverage, { enableBugs });
 
-  return { scoreResult, resolvedCoverage, expected };
+  return { scoreResult, resolvedCoverage, codeModel, expected };
 }
 
 export function loadPreComputedIstanbul(paradigmName: string): IstanbulCoverageData {
@@ -178,4 +190,47 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
       expect(evidence.some((e) => e.includes(fragment))).toBe(true);
     }
   }
+
+  if (assertions.knownMissedBugPatterns) {
+    const foundPatterns: string[] = scoreResult.potentialBugs.map((b) => b.pattern);
+    for (const missed of assertions.knownMissedBugPatterns) {
+      if (foundPatterns.includes(missed)) {
+        throw new Error(
+          `Known blind spot "${missed}" is now detected on ${expected.paradigm}: move it to ` +
+            'expectedBugPatterns and update the fixture description.'
+        );
+      }
+    }
+  }
+}
+
+export const NEVER_SHORT_CIRCUITS_PARADIGM = 'guard-operand-never-short-circuits';
+
+/**
+ * What makes that fixture's `knownMissedBugPatterns` mean something: the detector had
+ * everything it reads, a split `||` chain on a returning guard and binary-expr counts showing
+ * the first operand never short-circuited, and still reported nothing. Run against both the
+ * committed snapshot and fresh Jest/Vitest coverage, so a runner that stops emitting
+ * binary-expr cannot pass the known miss for a different reason.
+ */
+export function assertNeverShortCircuitsPreconditions({ codeModel, resolvedCoverage }: ParadigmResult): void {
+  const ungroup = codeModel.modules.flatMap((mod) => [...allCallables(mod)]).find((c) => c.node.name === 'ungroup');
+  expect(ungroup).toBeDefined();
+  const guard = ungroup!.node.branches.find((b) => b.operator === '||');
+  expect(guard?.type).toBe('guard');
+  expect(guard?.guardExit).toBe('return');
+  expect(guard?.operands?.map((o) => o.text)).toEqual(['!rows', '!rows.length']);
+
+  const coverage = resolvedCoverage.getMethodCoverage(ungroup!.owner, 'ungroup', ungroup!.filePath);
+  expect(coverage?.isCovered).toBe(true);
+  const onLine = coverage?.istanbul?.binaryExpressions?.filter((e) => e.line === guard!.lineNumber) ?? [];
+  expect(onLine).toHaveLength(1);
+  const counts = onLine[0].pathCounts;
+  expect(counts).toHaveLength(2);
+  expect(counts[0]).toBeGreaterThan(0);
+  expect(counts[1]).toBe(counts[0]);
+
+  // Checked on the detector itself, so it cannot pass because bug detection was switched
+  // off upstream.
+  expect(new UntestedConditionOperandDetector().detect(codeModel, resolvedCoverage)).toEqual([]);
 }

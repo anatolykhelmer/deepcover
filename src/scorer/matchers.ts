@@ -71,7 +71,7 @@ export function getAssertionWeight(matcherUsed: string): number {
   return 1;
 }
 
-/** Specificity used by mutation resilience: strong 1, medium 0.6, anything else 0.2. */
+/** Specificity used by Branch & Matcher Strength (`mutationResilience`): strong 1, medium 0.6, anything else 0.2. */
 export function getAssertionSpecificity(matcherUsed: string): number {
   const strength = classifyMatcher(matcherUsed);
   if (strength === 'strong') return 1;

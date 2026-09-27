@@ -30,6 +30,9 @@ const NEVER_DECISIVE_CONFIDENCE = 0.4;
  *    operand reads. Istanbul's counts cannot establish this, so it is inferred from the
  *    arguments the tests pass, and emitted at low confidence for the Reasoner to confirm
  *    or reject via `signalValidations` (as `missing-boundary` does).
+ *
+ * Not implemented: for every operand but the last, equal consecutive counts would prove
+ * it never short-circuited, which catches returning guards too. See BL-040.
  */
 export class UntestedConditionOperandDetector implements BugDetector {
   readonly pattern = 'untested-condition-operand' as const;

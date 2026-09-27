@@ -53,6 +53,21 @@ function tallyAssertionSpecificity(
   return { specificitySum, count };
 }
 
+/**
+ * Branch & Matcher Strength. That is the name users see. The `mutationResilience` key,
+ * this file, and this function keep the historical name for config and JSON compatibility.
+ *
+ * The base is the mean of two ratios:
+ * - branches hit over branches known. With Istanbul data these are measured counts.
+ *   Without it, every branch of a tested callable counts as hit, and a tested callable
+ *   with no branches counts as 1/1;
+ * - mean matcher specificity over the assertions that reach each tested callable.
+ * The LLM then adds 2 points per confirmed transitive inference, up to `maxAdjustment`.
+ *
+ * Nothing here models a mutant. A suite with full branch coverage and strong matchers
+ * saturates this score even when a guard operand can be deleted with every test still
+ * green (radashi `unzip`, BL-039). BL-040 tracks proving such survivors from operand counts.
+ */
 export function calculateMutationResilience(
   codeModel: CodeModel,
   reasonerOutput: ReasonerOutput,

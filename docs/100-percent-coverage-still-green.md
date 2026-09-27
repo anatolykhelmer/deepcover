@@ -36,7 +36,7 @@ I wrote [DeepCover](https://github.com/anatolykhelmer/deepcover) to score whethe
 
 **reason** — your coding agent gets structured prompts against that model: which domain states exist and which are tested, how strong each assertion is, how critical each function is, what's covered transitively, and where tests create false confidence. The agent writes typed JSON. You are not pasting files into a chat.
 
-**analyze** — composite plus sub-scores, per-function breakdown, ranked gaps. LLM influence is capped at ±20% per sub-score so the number does not swing with model mood.
+**analyze** — composite plus sub-scores, per-function breakdown, ranked gaps. LLM influence is capped at 20 points per sub-score so the number does not swing with model mood. For branch & matcher strength it can only raise the score, by 2 points per confirmed inference.
 
 On radashi's `src/array` — 35 functions, 911 tests, 100% coverage:
 
@@ -64,7 +64,7 @@ The full score uses a coding agent as the reasoner. This is not a linter you dro
 
 The deterministic bug pass is noisy on purpose. The reasoning pass validates each signal; on this run it rejected all seven as false positives.
 
-This run had no per-operand branch data (Vitest 2's v8 provider), so that check was disabled rather than guessed. The deleted `!arrays ||` above is a hand edit I ran against their suite, not a mutation-testing feature.
+This run had no per-operand branch data (Vitest 2's v8 provider), so that check was disabled rather than guessed. It would not have caught `!arrays ||` anyway: both operands run on every call, and the operand check does not yet notice that `!arrays` is never the one that decides. The deleted `!arrays ||` above is a hand edit I ran against their suite, not a mutation-testing feature.
 
 ```
 npx @anatolykhelmer/deepcover@0.11.0 run --root . --module src/foo
