@@ -4,11 +4,17 @@ Version history for DeepCover. GitHub Releases carry the same notes.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-27
+
 ### Changed
 
 - **Mutation Resilience is now displayed as Branch & Matcher Strength.** The sub-score is the mean of the branch hit ratio and matcher specificity, plus an LLM bonus, and it never modelled a mutant. On a module with 100% branch coverage and strong matchers it read 100 while a guard operand could be deleted with every test still green. Scores are unchanged. The `mutationResilience` key in `--format json` and in `weights` is unchanged.
 - The README no longer claims DeepCover answers "Would tests catch a mutation?". It now describes `untested-condition-operand` as it works: it flags operands no test evaluates and, for throwing guards, operands whose argument no test varies, rather than every operand that could be deleted with the suite still green.
 - The `mutation-testing` npm keyword is removed.
+
+### Fixed
+
+- The README paradigm table rendered the `compound-guard-operand` row cut off on GitHub, because an unescaped `||` inside a code span split the cell. It now renders in full.
 
 ## [0.12.0] - 2026-09-27
 
@@ -324,7 +330,8 @@ ignored.
 `--min-score` and `--bug-threshold` now work with every `--format`, so
 `analyze --format json --min-score 60` prints the full report *and* gates on it.
 
-[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/anatolykhelmer/deepcover/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.12.1
 [0.12.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.12.0
 [0.11.0]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.11.0
 [0.10.1]: https://github.com/anatolykhelmer/deepcover/releases/tag/v0.10.1
