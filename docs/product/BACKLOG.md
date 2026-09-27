@@ -42,12 +42,13 @@
 
 | ID | Title | Handoff | Branch |
 |----|----|----|----|
-| BL-039 | Mutation Resilience reports 100 on a module where a mutant survives → rename to Branch & Matcher Strength | `docs/superpowers/plans/2026-09-27-mutation-resilience-rename.md` (local, gitignored) | `fix/bl-039-branch-matcher-strength` |
+| | | _No items._ | |
 
 ## Done
 
 | ID | Title | Completed | Notes |
 |----|----|----|----|
+| BL-039 | Mutation Resilience reports 100 on a module where a mutant survives | 2026-09-27 | [PR #20](https://github.com/anatolykhelmer/deepcover/pull/20). Displayed as **Branch & Matcher Strength**. Key, files and scores unchanged. README, SVG, skill, article and npm-keyword overclaims removed. `guard-operand-never-short-circuits` pins the known miss. Unreleased: 0.12.0 still prints the old name, so the HN post waits for the next patch. Follow-up: BL-040. |
 | BL-030 | End-to-end guard for the reporter → loader → resolver path | 2026-09-09 | [spec](../superpowers/specs/2026-09-06-runtime-artifact-e2e-guard-design.md) / [plan](../superpowers/plans/2026-09-06-runtime-artifact-e2e-guard.md); [PR #11](https://github.com/anatolykhelmer/deepcover/pull/11) merged (`9b5d450`); released as 0.10.0, `v0.10.0` tagged on the merge commit — the row's release-time obligation is discharged. New `fixtures/runtime-artifact/` stand, 2×3 matrix `{jest,vitest} × {istanbul,v8,none}`, asserted at all three layers. Carried two source fixes: operand availability follows the artifact rather than the provider id, and a run recording `'none'` stops scoring an earlier run's coverage (a **reversal** of 0.9.0's tested warn-don't-block decision), each shipping its analyze-stage note in the same commit. The branch also closed BL-032 and opened BL-033..BL-037. | 
 | BL-032 | Reporters copy `coverage-final.json` from a hook that runs before it exists | 2026-09-09 | Closed in two halves on `runtime-artifact-guard`. **Vitest** (`44b3715`): the copy moved to `onFinishedReportCoverage`, which core dispatches after `reportCoverage()` resolves — it now genuinely snapshots the run just observed. **Jest**: the copy was *deleted*, not repaired. `CoverageReporter` is registered after the loop that adds custom reporters (`@jest/core:1208`, dispatched in registration order at `:307`), a position no user config can change, so the hook could only ever inherit a previous run's file — and copying that is worse than copying nothing, since the fresh mtime would outrank the live directory in `istanbul-source.ts`'s freshness pick once `coverage/` was cleaned. README corrected in four places: it had documented `istanbul-coverage.json` as a Jest artifact for two releases while nothing ever produced it. A post-write snapshot for Jest remains *possible* via `globalTeardown` (`runJest:3458`, verified to run after the file is written) — reopen as a feature if `.deepcover/` ever needs to be self-contained on Jest. |
 | BL-009 | Vitest support | 2026-09-02 | [PR #10](https://github.com/anatolykhelmer/deepcover/pull/10) merged (`6c8075b`); breaking, released as 0.9.0, `v0.9.0` tagged on the merge commit. [spec](../superpowers/specs/2026-08-31-vitest-support-design.md) / [plan](../superpowers/plans/2026-08-31-vitest-support.md) |
@@ -69,6 +70,15 @@
 | BL-029 | Extractor and scope gate resolve duplicate class names against different maps | Superseded by BL-031: do not patch the two owner maps separately; persist CoverageKey at extract so post-extract name resolution (and the ClassMethodOwners vs ClassFileOwners asymmetry) goes away. | 2026-09-03 |
 
 ## Decision Log
+
+### 2026-09-27 — BL-039 done
+
+- Merged as PR #20 (`234628b`). Review feedback folded in before merge:
+  - README now says this sub-score is not confidence-scaled.
+  - The detector doc's BL-040 remark is a separate "not implemented" note.
+  - The known-miss preconditions also run on fresh Jest and Vitest coverage in e2e, so a runner that stops emitting `binary-expr` cannot pass the known miss for the wrong reason.
+- **Not shipped yet.** 0.12.0 was cut before the merge and still prints "Mutation Resilience". The launch post waits for the next patch release, which must also bump the article's `@0.11.0` pin (`docs/100-percent-coverage-still-green.md:70`).
+- Left open: the README paradigm-table row for `compound-guard-operand` has an unescaped `||` inside a code span, which likely splits the cell on GitHub. That row predates this item.
 
 ### 2026-09-27 — BL-039 in progress
 
