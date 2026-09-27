@@ -36,7 +36,7 @@ I wrote [DeepCover](https://github.com/anatolykhelmer/deepcover) to score whethe
 
 **reason** — your coding agent gets structured prompts against that model: which domain states exist and which are tested, how strong each assertion is, how critical each function is, what's covered transitively, and where tests create false confidence. The agent writes typed JSON. You are not pasting files into a chat.
 
-**analyze** — composite plus sub-scores, per-function breakdown, ranked gaps. LLM influence is capped at ±20% per sub-score so the number does not swing with model mood.
+**analyze** — composite plus sub-scores, per-function breakdown, ranked gaps. LLM influence is capped at 20 points per sub-score so the number does not swing with model mood. For branch & matcher strength it can only raise the score, by 2 points per confirmed inference.
 
 On radashi's `src/array` — 35 functions, 911 tests, 100% coverage:
 

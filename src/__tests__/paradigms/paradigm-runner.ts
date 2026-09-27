@@ -8,6 +8,8 @@ import type { ResolvedCoverage } from '../../resolver/types';
 import type { ScoreResult } from '../../scorer/types';
 import type { IstanbulCoverageData } from '../../resolver/types';
 import type { CodeModel } from '../../types/code-model';
+import { allCallables } from '../../types/callable';
+import { UntestedConditionOperandDetector } from '../../bug-detector/detectors/untested-condition-operand';
 
 const PARADIGMS_DIR = path.resolve(__dirname, '../../../fixtures/paradigms');
 
@@ -200,4 +202,35 @@ export function assertParadigm({ scoreResult, resolvedCoverage, expected }: Para
       }
     }
   }
+}
+
+export const NEVER_SHORT_CIRCUITS_PARADIGM = 'guard-operand-never-short-circuits';
+
+/**
+ * What makes that fixture's `knownMissedBugPatterns` mean something: the detector had
+ * everything it reads, a split `||` chain on a returning guard and binary-expr counts showing
+ * the first operand never short-circuited, and still reported nothing. Run against both the
+ * committed snapshot and fresh Jest/Vitest coverage, so a runner that stops emitting
+ * binary-expr cannot pass the known miss for a different reason.
+ */
+export function assertNeverShortCircuitsPreconditions({ codeModel, resolvedCoverage }: ParadigmResult): void {
+  const ungroup = codeModel.modules.flatMap((mod) => [...allCallables(mod)]).find((c) => c.node.name === 'ungroup');
+  expect(ungroup).toBeDefined();
+  const guard = ungroup!.node.branches.find((b) => b.operator === '||');
+  expect(guard?.type).toBe('guard');
+  expect(guard?.guardExit).toBe('return');
+  expect(guard?.operands?.map((o) => o.text)).toEqual(['!rows', '!rows.length']);
+
+  const coverage = resolvedCoverage.getMethodCoverage(ungroup!.owner, 'ungroup', ungroup!.filePath);
+  expect(coverage?.isCovered).toBe(true);
+  const onLine = coverage?.istanbul?.binaryExpressions?.filter((e) => e.line === guard!.lineNumber) ?? [];
+  expect(onLine).toHaveLength(1);
+  const counts = onLine[0].pathCounts;
+  expect(counts).toHaveLength(2);
+  expect(counts[0]).toBeGreaterThan(0);
+  expect(counts[1]).toBe(counts[0]);
+
+  // Checked on the detector itself, so it cannot pass because bug detection was switched
+  // off upstream.
+  expect(new UntestedConditionOperandDetector().detect(codeModel, resolvedCoverage)).toEqual([]);
 }

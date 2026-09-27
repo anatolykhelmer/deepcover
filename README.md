@@ -429,7 +429,9 @@ Four sub-scores combined with configurable weights:
 The LLM's adjustment to each sub-score is capped by `reasoner.maxInfluence`
 (default `0.2`, i.e. ±20 points) and scaled by its confidence — except state
 coverage, which the LLM never adjusts directly; its number comes from
-resolver-confirmed states, not a confidence-weighted nudge. Assertion quality
+resolver-confirmed states, not a confidence-weighted nudge. Branch & matcher
+strength is not confidence-scaled either: it gains 2 points per confirmed
+transitive inference, whatever that inference's confidence. Assertion quality
 and criticality weighting are, by how their formulas average per-judgment
 contributions, naturally bounded well inside that cap in practice; only
 branch & matcher strength routinely reaches it. See

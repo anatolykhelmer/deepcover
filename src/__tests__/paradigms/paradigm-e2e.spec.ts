@@ -7,6 +7,8 @@ import {
   loadFreshIstanbul,
   runParadigm,
   assertParadigm,
+  assertNeverShortCircuitsPreconditions,
+  NEVER_SHORT_CIRCUITS_PARADIGM,
 } from './paradigm-runner';
 
 jest.setTimeout(120000);
@@ -68,7 +70,11 @@ describe.each(RUNNERS)('paradigm tests (e2e — real $framework run)', ({ framew
     execSync(command, { cwd: fixturePath, stdio: 'pipe' });
 
     // Same expected.json for both runners — that shared file is the parity assertion.
-    assertParadigm(runParadigm(paradigmName, loadFreshIstanbul(paradigmName)));
+    const result = runParadigm(paradigmName, loadFreshIstanbul(paradigmName));
+    assertParadigm(result);
+    // A fresh run that emitted no binary-expr would leave the known miss silent for a
+    // different reason, so the e2e row checks the same preconditions as the unit run.
+    if (paradigmName === NEVER_SHORT_CIRCUITS_PARADIGM) assertNeverShortCircuitsPreconditions(result);
   });
 
   // Enumerated (not omitted) so the Vitest run visibly reports this case as skipped —
