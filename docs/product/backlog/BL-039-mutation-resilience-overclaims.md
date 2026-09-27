@@ -1,6 +1,6 @@
 # BL-039 — Mutation Resilience reports 100 on a module where a mutant survives
 
-**Status:** Ready · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
+**Status:** Ready (designing, option 2 chosen) · **Added:** 2026-09-27 · **Blocks:** Show HN launch post (see `docs/superpowers/plans/2026-09-15-hn-launch-post-handoff.md`, Blockers)
 
 ## The contradiction
 
@@ -21,9 +21,18 @@ The sub-score never reasons about mutants:
   - `specificityFactor`: mean matcher specificity (`toEqual` > `toBeDefined`). radashi's assertions are strong, so ~0.94.
 - `llmAdjustment = min(maxAdjustment, 2 × confirmed transitiveInferences)`. Here +12, and it pushes the score past the cap. It credits LLM-claimed call paths without checking them (BL-018).
 
-So on a suite with full branch coverage and strong matchers, the score saturates regardless of whether any single operand is decisive. The case that actually kills this mutant (a test where `arrays` is `undefined`) is exactly per-operand branch data, which `untested-condition-operand` uses. In that run it was **disabled**, because `@vitest/coverage-v8@2.1.5` emits no `binary-expr` branches. The sub-score did not reflect the missing signal either.
+So on a suite with full branch coverage and strong matchers, the score saturates regardless of whether any single operand is decisive.
 
-README compounds it: the comparison table (`README.md:32`) answers "Would tests catch a mutation?" with **Yes**, while the weights table (`README.md:427`) describes the sub-score honestly as "branch coverage + assertion specificity".
+> **Corrected 2026-09-27.** An earlier version of this file said per-operand branch data would have caught this mutant, and that it was only missing because `@vitest/coverage-v8@2.1.5` emits no `binary-expr` branches. The second half is true: radashi's `coverage-final.json` has 974 `branch` entries and zero `binary-expr`. The first half is false. Replaying the suite's inputs to `unzip` under `istanbul-lib-instrument` gives `binary-expr [4, 4]`. Both operands were evaluated, so *never evaluated* does not fire. The guard returns `[]` rather than throwing, so *never decisive* does not fire either. `untested-condition-operand` emits nothing for this guard on any provider. Equal counts do prove the deletion survives, but nothing reads them that way yet; that is BL-040.
+>
+> The reasoner did see it. The `zip → unzip` transitive inference carries the caveat "zip can never drive the `!arrays` operand; unzip needs its own nullish test", is marked `coveredTransitively: true`, and so contributes +2 of the +12 (BL-018).
+
+The docs overclaim in four places, not one:
+
+- `README.md:32`: the comparison table answers "Would tests catch a mutation?" with **Yes**.
+- `README.md:37`: "DeepCover splits the chain and flags the operands you could delete with the suite still green". It did not flag the operand the post deletes, and it would not have with Istanbul data either.
+- `README.md:427`: the weights table's "What it measures" cell still leads with "Would tests catch subtle code changes?" before the honest parenthetical.
+- `docs/100-percent-coverage-still-green.md:67`: "This run had no per-operand branch data … so that check was disabled rather than guessed." Placed next to the `!arrays ||` demo, it implies the check would have found it.
 
 ## Options (pick in design)
 
@@ -34,11 +43,16 @@ README compounds it: the comparison table (`README.md:32`) answers "Would tests 
 
 1 and 2 are not exclusive: rename now, then earn the name back with 1.
 
+**Chosen 2026-09-27: option 2 now; option 1 reworked as BL-040.** As written, option 1 would change nothing on this case, because the detector does not flag it (see the correction above). Two of its levers are also no-ops. A sub-score's `confidence` is read by neither the composer nor any reporter. `applicable` is a boolean that drops the whole weight, and no "partially applicable" state exists.
+
 ## Acceptance
 
-- On radashi `src/array` (or a fixture reproducing `if (!a || !a.length)` with no `a === undefined` test), the sub-score no longer reports 100, or it is no longer called "Mutation Resilience".
-- The README comparison table no longer claims DeepCover answers "Would tests catch a mutation?" unless option 1 or 4 has shipped.
-- A paradigm fixture pins the case, so it cannot regress silently.
+Restated 2026-09-27. The original first criterion ("no longer reports 100") could be met by fixing BL-018 alone or by `--no-llm`, both giving 96.95, which displays as 97 and is the same contradiction.
+
+- No user-facing surface calls this sub-score "Mutation Resilience" or says it answers whether tests catch a mutation or a subtle change: CLI, JSON, README, agent README, and article. The one exception is a documented migration note for the renamed JSON key, if a rename is chosen there.
+- README `:37` and article `:67` no longer claim or imply that DeepCover flags an operand whose deletion leaves the suite green, beyond what `untested-condition-operand` actually detects: operands never evaluated, and throwing guards whose operand no test varies.
+- A paradigm fixture reproduces `if (!a || !a.length) return []`, with tests that never pass a nullish `a`. It pins what DeepCover does and does not say about that guard, so a later change (BL-040) shows up as a deliberate diff rather than silently.
+- No reported number changes. This item is naming and claims only.
 
 ## Related
 
