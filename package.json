@@ -1,7 +1,7 @@
 {
   "name": "@anatolykhelmer/deepcover",
   "version": "0.12.1",
-  "description": "Agentic code coverage analyzer",
+  "description": "100% coverage, still broken. Finds tests that run your code but verify nothing. TypeScript · Jest · Vitest",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
